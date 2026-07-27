@@ -152,7 +152,7 @@ test-docker-app: docker-env
 	else \
 	  echo "INFRA_SERVICES is empty, skipping infra startup"; \
 	fi; \
-	$(DC_TEST_DOCKER) run --build --name $(TEST_RUNNER) app \
+	$(DC_TEST_DOCKER) run -T --build --name $(TEST_RUNNER) app \
 		pytest $(PYTEST_ARGS_VERBOSE) \
 			$(PYTEST_PATHS_APP_INFRA) \
 			$(PYTEST_ARGS_COV_DOCKER) \
@@ -170,7 +170,7 @@ test-docker-migrations: docker-env
 	rc=0; \
 	$(DC_TEST_DOCKER) down -v --remove-orphans >/dev/null 2>&1 || true; \
 	$(DC_TEST_DOCKER) up -d --build --wait --wait-timeout 180 $(MIGRATION_DB_SERVICE); \
-	$(DC_TEST_DOCKER) run --build --no-deps --name $(TEST_RUNNER) app \
+	$(DC_TEST_DOCKER) run -T --build --no-deps --name $(TEST_RUNNER) app \
 		pytest $(PYTEST_ARGS_VERBOSE) \
 			$(PYTEST_PATHS_MIGRATIONS) \
 		|| rc=$$?; \

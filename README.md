@@ -72,9 +72,9 @@ git commit -m "feat(scope): brief description (vX.Y.Z)"
 
 Common prefixes: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`
 
-**3. Switch back to main and merge**
+**3. Switch back to master and merge**
 ```shell
-git checkout main
+git checkout master
 git merge feature/<short-description>
 ```
 
