@@ -53,6 +53,46 @@ make migration msg=<msg>
 
 See [Makefile](Makefile) for more commands
 
+## How to Commit
+
+This project uses [pre-commit hooks](.pre-commit-config.yaml) that automatically run linting, type checking, vulnerability scanning, and formatting checks before every commit. Committing directly to `main` or `master` is blocked by the `no-commit-to-branch` hook.
+
+### Commit Protocol
+
+**1. Create a feature branch**
+```shell
+git checkout -b feature/<short-description>
+```
+
+**2. Stage and commit your changes using [Conventional Commits](https://www.conventionalcommits.org/)**
+```shell
+git add .
+git commit -m "feat(scope): brief description (vX.Y.Z)"
+```
+
+Common prefixes: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`
+
+**3. Switch back to main and merge**
+```shell
+git checkout main
+git merge feature/<short-description>
+```
+
+**4. Delete the feature branch (cleanup)**
+```shell
+git branch -d feature/<short-description>
+```
+
+### Pre-commit Hooks Summary
+
+| Hook | Stage | What it does |
+|------|-------|-------------|
+| `code-check` | pre-commit | Runs linter, formatter, and type checker (`make check`) |
+| `pip-audit` | pre-commit | Scans dependencies for known security vulnerabilities |
+| `test-docker` | pre-push | Runs the full integration test suite before pushing |
+| `no-commit-to-branch` | pre-commit | Blocks direct commits to `main` / `master` |
+| `typos` | pre-commit | Catches common spelling mistakes in code and docs |
+
 Thanks for your patience and support
 
 [Acknowledgements](https://github.com/ivan-borovets/fastapi-clean-example/tree/legacy-2025?tab=readme-ov-file#acknowledgements)
