@@ -31,6 +31,19 @@ Full API access:
 - set its role to `super_admin` manually in DB
 - log in as super admin
 
+### Database Management (Adminer)
+
+To inspect and manage the PostgreSQL database visually, open a separate terminal and run Adminer (version 4 is recommended for network compatibility):
+```shell
+docker run --rm -p 8080:8080 --network fastapi-clean-example_default -e ADMINER_DEFAULT_SERVER=db_pg adminer:4
+```
+Access it at **http://localhost:8080** with the following credentials:
+- **System**: PostgreSQL
+- **Server**: `db_pg` (or `fastapi-clean-example-db_pg-1`)
+- **Username**: `postgres`
+- **Password**: `password`
+- **Database**: `clean-example`
+
 Stop
 ```shell
 make down
@@ -40,11 +53,13 @@ Test (light paths)
 ```shell
 make check
 ```
+*Generates unit test coverage report. View in browser at `htmlcov/index.html`*
 
 Test (all paths)
 ```shell
 make test-docker
 ```
+*Generates full integration test coverage report. View in browser at `htmlcov-docker/index.html`*
 
 Generate a migration
 ```shell
