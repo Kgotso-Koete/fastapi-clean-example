@@ -6,6 +6,7 @@ from app.core.common.authorization.current_user_service import CurrentUserServic
 from app.core.common.services.user import UserService
 from app.core.common.value_objects.raw_password import RawPassword
 from app.core.common.value_objects.username import Username
+from app.core.queries.models.user import UserQm
 from app.outbound.auth_ctx.exceptions import (
     AlreadyAuthenticatedError,
     AuthenticationError,
@@ -45,7 +46,7 @@ class LogIn:
         self._user_service = user_service
         self._auth_service = auth_service
 
-    async def execute(self, request: LogInRequest) -> None:
+    async def execute(self, request: LogInRequest) -> UserQm:
         logger.info("Log in: started.")
 
         try:
@@ -69,3 +70,12 @@ class LogIn:
         await self._auth_service.issue_session(user.id_)
 
         logger.info("Log in: done.")
+
+        return UserQm(
+            id=user.id_,
+            username=user.username.value,
+            role=user.role.value,
+            is_active=user.is_active,
+            created_at=user.created_at.value,
+            updated_at=user.updated_at.value,
+        )

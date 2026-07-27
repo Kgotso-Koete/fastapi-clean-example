@@ -13,7 +13,7 @@ from tests.integration.with_infra.factories import (
 )
 
 
-async def test_returns_204_and_sets_cookie(
+async def test_returns_200_and_sets_cookie(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
     it_user_service: UserService,
@@ -26,8 +26,15 @@ async def test_returns_204_and_sets_cookie(
 
     r = await it_client.post(LOG_IN_ENDPOINT, json=payload)
 
-    assert r.status_code == 204
+    assert r.status_code == 200
     assert AUTH_COOKIE_NAME in r.cookies
+
+    data = r.json()
+    assert data["username"] == user.username.value
+    assert data["role"] == user.role.value
+    assert data["is_active"] is True
+    assert "id" in data
+    assert "password_hash" not in data
 
 
 async def test_returns_400_when_username_is_too_short(

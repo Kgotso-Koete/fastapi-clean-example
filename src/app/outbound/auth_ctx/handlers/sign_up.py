@@ -10,6 +10,7 @@ from app.core.common.factories.id_factory import create_user_id
 from app.core.common.services.user import UserService
 from app.core.common.value_objects.raw_password import RawPassword
 from app.core.common.value_objects.username import Username
+from app.core.queries.models.user import UserQm
 from app.outbound.auth_ctx.exceptions import (
     AlreadyAuthenticatedError,
     AuthenticationError,
@@ -49,7 +50,7 @@ class SignUp:
         self._flusher = flusher
         self._transaction_manager = transaction_manager
 
-    async def execute(self, request: SignUpRequest) -> None:
+    async def execute(self, request: SignUpRequest) -> UserQm:
         logger.info("Sign up: started.")
 
         try:
@@ -76,3 +77,12 @@ class SignUp:
         await self._transaction_manager.commit()
 
         logger.info("Sign up: done.")
+
+        return UserQm(
+            id=user.id_,
+            username=user.username.value,
+            role=user.role.value,
+            is_active=user.is_active,
+            created_at=user.created_at.value,
+            updated_at=user.updated_at.value,
+        )

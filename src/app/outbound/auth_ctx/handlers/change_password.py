@@ -10,6 +10,7 @@ from app.outbound.auth_ctx.exceptions import (
     AuthenticationChangeError,
     ReAuthenticationError,
 )
+from app.outbound.auth_ctx.service import AuthService
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ class ChangePassword:
     - Open to authenticated users.
     - Current user can change their password.
     - New password must differ from current password.
+    - Automatically revokes all existing sessions to secure the account.
     """
 
     def __init__(
@@ -33,11 +35,13 @@ class ChangePassword:
         user_service: UserService,
         utc_timer: UtcTimer,
         transaction_manager: TransactionManager,
+        auth_service: AuthService,
     ) -> None:
         self._current_user_service = current_user_service
         self._user_service = user_service
         self._utc_timer = utc_timer
         self._transaction_manager = transaction_manager
+        self._auth_service = auth_service
 
     async def execute(self, request: ChangePasswordRequest) -> None:
         logger.info("Change password: started.")
@@ -57,5 +61,9 @@ class ChangePassword:
             now=self._utc_timer.now,
         )
         await self._transaction_manager.commit()
+
+        # Security: Invalidate the current cookie and wipe all sessions from the database
+        await self._auth_service.logout_current_session()
+        await self._auth_service.revoke_all_sessions(current_user.id_)
 
         logger.info("Change password: done.")

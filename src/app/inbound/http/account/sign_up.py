@@ -7,6 +7,7 @@ from fastapi import APIRouter, status
 from app.core.commands.exceptions import UsernameAlreadyExistsError
 from app.core.common.authorization.exceptions import AuthorizationError
 from app.core.common.exceptions import BusinessTypeError
+from app.core.queries.models.user import UserQm
 from app.inbound.http.errors.callbacks import log_info
 from app.inbound.http.errors.router import make_error_aware_router
 from app.inbound.http.errors.rules import HTTP_503_SERVICE_UNAVAILABLE_RULE
@@ -29,14 +30,14 @@ def make_sign_up_router() -> APIRouter:
             PasswordHasherBusyError: HTTP_503_SERVICE_UNAVAILABLE_RULE,
             UsernameAlreadyExistsError: status.HTTP_409_CONFLICT,
         },
-        status_code=status.HTTP_204_NO_CONTENT,
+        status_code=status.HTTP_200_OK,
         description=getdoc(SignUp),
     )
     @inject
     async def sign_up(
         request: SignUpRequest,
         handler: FromDishka[SignUp],
-    ) -> None:
-        await handler.execute(request)
+    ) -> UserQm:
+        return await handler.execute(request)
 
     return router

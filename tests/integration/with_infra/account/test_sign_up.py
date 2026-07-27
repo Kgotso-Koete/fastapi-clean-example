@@ -18,7 +18,7 @@ from tests.integration.with_infra.factories import (
 )
 
 
-async def test_returns_204_and_creates_user(
+async def test_returns_200_and_creates_user(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
 ) -> None:
@@ -28,12 +28,19 @@ async def test_returns_204_and_creates_user(
 
     r = await it_client.post(SIGN_UP_ENDPOINT, json=payload)
 
-    assert r.status_code == 204
+    assert r.status_code == 200
     stmt = select(User).where(users_table.c.username == username)
     user = await it_session.scalar(stmt)
     assert isinstance(user, User)
     assert user.role == UserRole.USER
     assert user.is_active is True
+
+    data = r.json()
+    assert data["username"] == username
+    assert data["role"] == UserRole.USER.value
+    assert data["is_active"] is True
+    assert "id" in data
+    assert "password_hash" not in data
 
 
 async def test_returns_400_when_username_is_too_short(
