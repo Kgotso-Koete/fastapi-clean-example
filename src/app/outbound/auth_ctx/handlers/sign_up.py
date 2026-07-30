@@ -1,13 +1,19 @@
 import logging
 from dataclasses import dataclass
 
-from app.core.commands.exceptions import UsernameAlreadyExistsError
+from app.core.commands.exceptions import (
+    EmailAlreadyExistsError,
+    PhoneNumberAlreadyExistsError,
+    UsernameAlreadyExistsError,
+)
 from app.core.commands.ports.flusher import Flusher
 from app.core.commands.ports.transaction_manager import TransactionManager
 from app.core.commands.ports.utc_timer import UtcTimer
 from app.core.common.authorization.current_user_service import CurrentUserService
 from app.core.common.factories.id_factory import create_user_id
 from app.core.common.services.user import UserService
+from app.core.common.value_objects.email import Email
+from app.core.common.value_objects.phone_number import PhoneNumber
 from app.core.common.value_objects.raw_password import RawPassword
 from app.core.common.value_objects.username import Username
 from app.core.queries.models.user import UserQm
@@ -24,6 +30,8 @@ logger = logging.getLogger(__name__)
 class SignUpRequest:
     username: str
     password: str
+    email: str
+    phone_number: str
 
 
 class SignUp:
@@ -61,10 +69,14 @@ class SignUp:
 
         username = Username(request.username)
         password = RawPassword(request.password)
+        email = Email(request.email)
+        phone_number = PhoneNumber(request.phone_number)
         now = self._utc_timer.now
         user = await self._user_service.create_user_with_raw_password(
             user_id=create_user_id(),
             username=username,
+            email=email,
+            phone_number=phone_number,
             raw_password=password,
             now=now,
         )
@@ -72,6 +84,10 @@ class SignUp:
         try:
             await self._flusher.flush()
         except UsernameAlreadyExistsError:
+            raise
+        except EmailAlreadyExistsError:
+            raise
+        except PhoneNumberAlreadyExistsError:
             raise
 
         await self._transaction_manager.commit()
@@ -81,6 +97,8 @@ class SignUp:
         return UserQm(
             id=user.id_,
             username=user.username.value,
+            email=user.email.value,
+            phone_number=user.phone_number.value,
             role=user.role.value,
             is_active=user.is_active,
             created_at=user.created_at.value,

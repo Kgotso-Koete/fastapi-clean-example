@@ -7,6 +7,8 @@ from starlette import status
 
 from app.core.commands.create_user import CreateUser, CreateUserRequest, CreateUserResponse
 from app.core.commands.exceptions import (
+    EmailAlreadyExistsError,
+    PhoneNumberAlreadyExistsError,
     UsernameAlreadyExistsError,
 )
 from app.core.common.authorization.exceptions import AuthorizationError
@@ -31,6 +33,8 @@ def make_create_user_router() -> APIRouter:
             BusinessTypeError: status.HTTP_400_BAD_REQUEST,
             PasswordHasherBusyError: HTTP_503_SERVICE_UNAVAILABLE_RULE,
             UsernameAlreadyExistsError: status.HTTP_409_CONFLICT,
+            EmailAlreadyExistsError: status.HTTP_409_CONFLICT,
+            PhoneNumberAlreadyExistsError: status.HTTP_409_CONFLICT,
         },
         status_code=status.HTTP_201_CREATED,
         description=getdoc(CreateUser),

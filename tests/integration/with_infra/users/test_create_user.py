@@ -9,7 +9,9 @@ from app.core.common.value_objects.raw_password import RawPassword
 from app.core.common.value_objects.username import Username
 from tests.integration.with_infra.authentication import authenticate
 from tests.integration.with_infra.factories import (
+    create_raw_email,
     create_raw_password,
+    create_raw_phone_number,
     create_raw_username,
     create_user,
     create_user_with_password,
@@ -23,7 +25,13 @@ async def test_returns_201_and_creates_user(
     it_admin: User,
 ) -> None:
     username = create_raw_username()
-    payload = {"username": username, "password": create_raw_password(), "role": "user"}
+    payload = {
+        "username": username,
+        "email": create_raw_email(),
+        "phone_number": create_raw_phone_number(),
+        "password": create_raw_password(),
+        "role": "user",
+    }
 
     r = await it_client.post(USERS_ENDPOINT, json=payload)
 
@@ -43,7 +51,13 @@ async def test_returns_201_and_super_admin_creates_admin(
     it_super_admin: User,
 ) -> None:
     username = create_raw_username()
-    payload = {"username": username, "password": create_raw_password(), "role": "admin"}
+    payload = {
+        "username": username,
+        "email": create_raw_email(),
+        "phone_number": create_raw_phone_number(),
+        "password": create_raw_password(),
+        "role": "admin",
+    }
 
     r = await it_client.post(USERS_ENDPOINT, json=payload)
 
@@ -58,7 +72,13 @@ async def test_returns_400_when_username_is_too_short(
     it_client: httpx2.AsyncClient,
     it_admin: User,
 ) -> None:
-    payload = {"username": "x" * (Username.MIN_LEN - 1), "password": create_raw_password(), "role": "user"}
+    payload = {
+        "username": "x" * (Username.MIN_LEN - 1),
+        "email": create_raw_email(),
+        "phone_number": create_raw_phone_number(),
+        "password": create_raw_password(),
+        "role": "user",
+    }
 
     r = await it_client.post(USERS_ENDPOINT, json=payload)
 
@@ -69,7 +89,13 @@ async def test_returns_400_when_password_is_too_short(
     it_client: httpx2.AsyncClient,
     it_admin: User,
 ) -> None:
-    payload = {"username": create_raw_username(), "password": "x" * (RawPassword.MIN_LEN - 1), "role": "user"}
+    payload = {
+        "username": create_raw_username(),
+        "email": create_raw_email(),
+        "phone_number": create_raw_phone_number(),
+        "password": "x" * (RawPassword.MIN_LEN - 1),
+        "role": "user",
+    }
 
     r = await it_client.post(USERS_ENDPOINT, json=payload)
 
@@ -79,7 +105,13 @@ async def test_returns_400_when_password_is_too_short(
 async def test_returns_401_when_not_authenticated(
     it_client: httpx2.AsyncClient,
 ) -> None:
-    payload = {"username": create_raw_username(), "password": create_raw_password(), "role": "user"}
+    payload = {
+        "username": create_raw_username(),
+        "email": create_raw_email(),
+        "phone_number": create_raw_phone_number(),
+        "password": create_raw_password(),
+        "role": "user",
+    }
 
     r = await it_client.post(USERS_ENDPOINT, json=payload)
 
@@ -96,7 +128,13 @@ async def test_returns_403_when_user_role(
     it_session.add(user)
     await it_session.commit()
     await authenticate(it_client, user.username.value, password)
-    payload = {"username": create_raw_username(), "password": create_raw_password(), "role": "user"}
+    payload = {
+        "username": create_raw_username(),
+        "email": create_raw_email(),
+        "phone_number": create_raw_phone_number(),
+        "password": create_raw_password(),
+        "role": "user",
+    }
 
     r = await it_client.post(USERS_ENDPOINT, json=payload)
 
@@ -107,7 +145,13 @@ async def test_returns_403_when_admin_creates_admin(
     it_client: httpx2.AsyncClient,
     it_admin: User,
 ) -> None:
-    payload = {"username": create_raw_username(), "password": create_raw_password(), "role": "admin"}
+    payload = {
+        "username": create_raw_username(),
+        "email": create_raw_email(),
+        "phone_number": create_raw_phone_number(),
+        "password": create_raw_password(),
+        "role": "admin",
+    }
 
     r = await it_client.post(USERS_ENDPOINT, json=payload)
 
@@ -124,7 +168,13 @@ async def test_returns_409_when_username_already_exists(
     existing = create_user(it_user_service, raw_username=username)
     it_session.add(existing)
     await it_session.commit()
-    payload = {"username": username, "password": create_raw_password(), "role": "user"}
+    payload = {
+        "username": username,
+        "email": create_raw_email(),
+        "phone_number": create_raw_phone_number(),
+        "password": create_raw_password(),
+        "role": "user",
+    }
 
     r = await it_client.post(USERS_ENDPOINT, json=payload)
 

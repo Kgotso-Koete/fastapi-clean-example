@@ -8,8 +8,10 @@ from app.core.common.exceptions import (
     RoleChangeNotPermittedError,
 )
 from tests.unit.core.common.services.factories import (
+    create_email,
     create_now,
     create_password_hash,
+    create_phone_number,
     create_raw_password,
     create_super_user,
     create_user,
@@ -32,6 +34,8 @@ async def test_creates_active_user_with_hashed_password(
     sut = create_user_service(password_hasher=password_hasher)
     user_id = create_user_id()
     username = create_username()
+    email = create_email()
+    phone_number = create_phone_number()
     raw_password = create_raw_password()
     expected_hash = create_password_hash()
     created_at = create_now()
@@ -40,6 +44,8 @@ async def test_creates_active_user_with_hashed_password(
     user = await sut.create_user_with_raw_password(
         user_id=user_id,
         username=username,
+        email=email,
+        phone_number=phone_number,
         raw_password=raw_password,
         now=created_at,
         role=role,
@@ -60,6 +66,8 @@ async def test_creates_inactive_user_if_specified(password_hasher: PasswordHashe
     sut = create_user_service(password_hasher=password_hasher)
     user_id = create_user_id()
     username = create_username()
+    email = create_email()
+    phone_number = create_phone_number()
     raw_password = create_raw_password()
     created_at = create_now()
     password_hasher.hash.return_value = create_password_hash()
@@ -67,6 +75,8 @@ async def test_creates_inactive_user_if_specified(password_hasher: PasswordHashe
     user = await sut.create_user_with_raw_password(
         user_id=user_id,
         username=username,
+        email=email,
+        phone_number=phone_number,
         raw_password=raw_password,
         now=created_at,
         is_active=False,
@@ -82,12 +92,16 @@ async def test_fails_to_create_user_with_unassignable_role() -> None:
     sut = create_user_service()
     user_id = create_user_id()
     username = create_username()
+    email = create_email()
+    phone_number = create_phone_number()
     raw_password = create_raw_password()
 
     with pytest.raises(RoleAssignmentNotPermittedError):
         await sut.create_user_with_raw_password(
             user_id=user_id,
             username=username,
+            email=email,
+            phone_number=phone_number,
             raw_password=raw_password,
             now=create_now(),
             role=UserRole.SUPER_ADMIN,
@@ -107,6 +121,8 @@ async def test_checks_password_authenticity(password: str, expected: bool) -> No
     user = await sut.create_user_with_raw_password(
         user_id=create_user_id(),
         username=create_username(),
+        email=create_email(),
+        phone_number=create_phone_number(),
         raw_password=create_raw_password("test-password"),
         now=create_now(),
     )
@@ -122,6 +138,8 @@ async def test_changes_password() -> None:
     user = await sut.create_user_with_raw_password(
         user_id=create_user_id(),
         username=create_username(),
+        email=create_email(),
+        phone_number=create_phone_number(),
         raw_password=old_raw,
         now=created_at,
     )

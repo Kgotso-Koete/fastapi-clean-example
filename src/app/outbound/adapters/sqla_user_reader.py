@@ -30,6 +30,8 @@ class SqlaUserReader(UserReader):
             select(
                 users_table.c.id,
                 users_table.c.username,
+                users_table.c.email,
+                users_table.c.phone_number,
                 users_table.c.role,
                 users_table.c.is_active,
                 users_table.c.created_at,
@@ -61,6 +63,8 @@ class SqlaUserReader(UserReader):
             UserQm(
                 id=row.id,
                 username=row.username,
+                email=row.email,
+                phone_number=row.phone_number,
                 role=row.role,
                 is_active=row.is_active,
                 created_at=row.created_at,

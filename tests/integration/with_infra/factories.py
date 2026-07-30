@@ -1,9 +1,12 @@
+import random
 import uuid
 from datetime import UTC, datetime
 
 from app.core.common.entities.types_ import UserId, UserPasswordHash, UserRole
 from app.core.common.entities.user import User
 from app.core.common.services.user import UserService
+from app.core.common.value_objects.email import Email
+from app.core.common.value_objects.phone_number import PhoneNumber
 from app.core.common.value_objects.raw_password import RawPassword
 from app.core.common.value_objects.username import Username
 from app.core.common.value_objects.utc_datetime import UtcDatetime
@@ -15,6 +18,17 @@ def create_raw_user_id(value: uuid.UUID | None = None) -> uuid.UUID:
 
 def create_raw_username(value: str | None = None) -> str:
     return value if value is not None else f"user_{uuid.uuid4().hex[:8]}"
+
+
+def create_raw_email(value: str | None = None) -> str:
+    return value if value is not None else f"user_{uuid.uuid4().hex[:8]}@example.com"
+
+
+def create_raw_phone_number(value: str | None = None) -> str:
+    if value is not None:
+        return value
+    # Generate 9 random digits after country code 27
+    return f"27{''.join(random.choices('0123456789', k=9))}"
 
 
 def create_raw_password(value: str | None = None) -> str:
@@ -37,6 +51,8 @@ def create_user(
     *,
     raw_user_id: uuid.UUID | None = None,
     raw_username: str | None = None,
+    raw_email: str | None = None,
+    raw_phone_number: str | None = None,
     raw_password_hash: bytes | None = None,
     role: UserRole = UserRole.USER,
     is_active: bool = True,
@@ -46,6 +62,8 @@ def create_user(
     return user_service.create_user(
         user_id=UserId(raw_user_id if raw_user_id is not None else create_raw_user_id()),
         username=Username(raw_username if raw_username is not None else create_raw_username()),
+        email=Email(raw_email if raw_email is not None else create_raw_email()),
+        phone_number=PhoneNumber(raw_phone_number if raw_phone_number is not None else create_raw_phone_number()),
         password_hash=UserPasswordHash(
             raw_password_hash if raw_password_hash is not None else create_raw_password_hash()
         ),
@@ -60,6 +78,8 @@ async def create_user_with_password(
     *,
     raw_user_id: uuid.UUID | None = None,
     raw_username: str | None = None,
+    raw_email: str | None = None,
+    raw_phone_number: str | None = None,
     raw_password: str | None = None,
     role: UserRole = UserRole.USER,
     is_active: bool = True,
@@ -69,6 +89,8 @@ async def create_user_with_password(
     return await user_service.create_user_with_raw_password(
         user_id=UserId(raw_user_id if raw_user_id is not None else create_raw_user_id()),
         username=Username(raw_username if raw_username is not None else create_raw_username()),
+        email=Email(raw_email if raw_email is not None else create_raw_email()),
+        phone_number=PhoneNumber(raw_phone_number if raw_phone_number is not None else create_raw_phone_number()),
         raw_password=RawPassword(raw_password if raw_password is not None else create_raw_password()),
         now=now,
         role=role,
@@ -81,6 +103,8 @@ async def create_super_admin_with_password(
     *,
     raw_user_id: uuid.UUID | None = None,
     raw_username: str | None = None,
+    raw_email: str | None = None,
+    raw_phone_number: str | None = None,
     raw_password: str | None = None,
     is_active: bool = True,
     raw_now: datetime | None = None,
@@ -90,6 +114,8 @@ async def create_super_admin_with_password(
         user_service,
         raw_user_id=raw_user_id,
         raw_username=raw_username,
+        raw_email=raw_email,
+        raw_phone_number=raw_phone_number,
         raw_password=raw_password,
         is_active=is_active,
         raw_now=raw_now,

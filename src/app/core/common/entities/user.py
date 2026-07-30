@@ -1,5 +1,7 @@
 from app.core.common.entities.base import Entity
 from app.core.common.entities.types_ import UserId, UserPasswordHash, UserRole
+from app.core.common.value_objects.email import Email
+from app.core.common.value_objects.phone_number import PhoneNumber
 from app.core.common.value_objects.username import Username
 from app.core.common.value_objects.utc_datetime import UtcDatetime
 
@@ -10,6 +12,8 @@ class User(Entity[UserId]):
         *,
         id_: UserId,
         username: Username,
+        email: Email,
+        phone_number: PhoneNumber,
         password_hash: UserPasswordHash,
         role: UserRole,
         is_active: bool,
@@ -18,6 +22,8 @@ class User(Entity[UserId]):
     ) -> None:
         super().__init__(id_=id_)
         self.username = username
+        self.email = email
+        self.phone_number = phone_number
         self.password_hash = password_hash
         self.role = role
         self.is_active = is_active

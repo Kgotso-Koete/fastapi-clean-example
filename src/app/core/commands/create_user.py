@@ -5,7 +5,11 @@ from enum import StrEnum
 from typing import TypedDict
 from uuid import UUID
 
-from app.core.commands.exceptions import UsernameAlreadyExistsError
+from app.core.commands.exceptions import (
+    EmailAlreadyExistsError,
+    PhoneNumberAlreadyExistsError,
+    UsernameAlreadyExistsError,
+)
 from app.core.commands.ports.flusher import Flusher
 from app.core.commands.ports.transaction_manager import TransactionManager
 from app.core.commands.ports.user_tx_storage import UserTxStorage
@@ -16,6 +20,8 @@ from app.core.common.authorization.permissions import CanManageRole, RoleManagem
 from app.core.common.entities.types_ import UserRole
 from app.core.common.factories.id_factory import create_user_id
 from app.core.common.services.user import UserService
+from app.core.common.value_objects.email import Email
+from app.core.common.value_objects.phone_number import PhoneNumber
 from app.core.common.value_objects.raw_password import RawPassword
 from app.core.common.value_objects.username import Username
 
@@ -30,6 +36,8 @@ class UserRoleRequestEnum(StrEnum):
 @dataclass(frozen=True, slots=True, kw_only=True)
 class CreateUserRequest:
     username: str
+    email: str
+    phone_number: str
     password: str
     role: UserRoleRequestEnum
 
@@ -76,9 +84,13 @@ class CreateUser:
         )
         username = Username(request.username)
         password = RawPassword(request.password)
+        email = Email(request.email)
+        phone_number = PhoneNumber(request.phone_number)
         user = await self._user_service.create_user_with_raw_password(
             user_id=create_user_id(),
             username=username,
+            email=email,
+            phone_number=phone_number,
             raw_password=password,
             now=self._utc_timer.now,
             role=role,
@@ -87,6 +99,10 @@ class CreateUser:
         try:
             await self._flusher.flush()
         except UsernameAlreadyExistsError:
+            raise
+        except EmailAlreadyExistsError:
+            raise
+        except PhoneNumberAlreadyExistsError:
             raise
 
         await self._transaction_manager.commit()

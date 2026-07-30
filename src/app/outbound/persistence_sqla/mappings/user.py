@@ -5,6 +5,8 @@ from sqlalchemy.orm import composite
 
 from app.core.common.entities.types_ import UserRole
 from app.core.common.entities.user import User
+from app.core.common.value_objects.email import Email
+from app.core.common.value_objects.phone_number import PhoneNumber
 from app.core.common.value_objects.username import Username
 from app.core.common.value_objects.utc_datetime import UtcDatetime
 from app.outbound.persistence_sqla.registry import mapper_registry
@@ -20,6 +22,8 @@ users_table = Table(
     mapper_registry.metadata,
     Column("id", UUID(as_uuid=True), primary_key=True),
     Column("username", String(Username.MAX_LEN), nullable=False, unique=True),
+    Column("email", String(Email.MAX_LEN), nullable=False, unique=True),
+    Column("phone_number", String(PhoneNumber.MAX_LEN), nullable=False, unique=True),
     Column("password_hash", LargeBinary, nullable=False),
     Column(
         "role",
@@ -45,6 +49,8 @@ def map_users_table() -> None:
         properties={
             "id_": users_table.c.id,
             "username": composite(Username, users_table.c.username),
+            "email": composite(Email, users_table.c.email),
+            "phone_number": composite(PhoneNumber, users_table.c.phone_number),
             "password_hash": users_table.c.password_hash,
             "role": users_table.c.role,
             "is_active": users_table.c.is_active,

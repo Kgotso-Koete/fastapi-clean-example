@@ -5,7 +5,11 @@ from typing import Final
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.commands.exceptions import UsernameAlreadyExistsError
+from app.core.commands.exceptions import (
+    EmailAlreadyExistsError,
+    PhoneNumberAlreadyExistsError,
+    UsernameAlreadyExistsError,
+)
 from app.core.commands.ports.flusher import Flusher
 from app.outbound.exceptions import StorageError
 from app.outbound.persistence_sqla import constraint_names as cn
@@ -18,6 +22,8 @@ DB_FLUSH_FAILED: Final[str] = "Flush failed."
 
 CONSTRAINT_TO_ERROR: Final[Mapping[str, type[Exception]]] = {
     cn.UQ_USERS_USERNAME: UsernameAlreadyExistsError,
+    cn.UQ_USERS_EMAIL: EmailAlreadyExistsError,
+    cn.UQ_USERS_PHONE_NUMBER: PhoneNumberAlreadyExistsError,
 }
 
 

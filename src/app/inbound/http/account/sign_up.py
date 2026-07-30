@@ -4,7 +4,11 @@ from dishka import FromDishka
 from dishka.integrations.fastapi import inject
 from fastapi import APIRouter, status
 
-from app.core.commands.exceptions import UsernameAlreadyExistsError
+from app.core.commands.exceptions import (
+    EmailAlreadyExistsError,
+    PhoneNumberAlreadyExistsError,
+    UsernameAlreadyExistsError,
+)
 from app.core.common.authorization.exceptions import AuthorizationError
 from app.core.common.exceptions import BusinessTypeError
 from app.core.queries.models.user import UserQm
@@ -29,6 +33,8 @@ def make_sign_up_router() -> APIRouter:
             BusinessTypeError: status.HTTP_400_BAD_REQUEST,
             PasswordHasherBusyError: HTTP_503_SERVICE_UNAVAILABLE_RULE,
             UsernameAlreadyExistsError: status.HTTP_409_CONFLICT,
+            EmailAlreadyExistsError: status.HTTP_409_CONFLICT,
+            PhoneNumberAlreadyExistsError: status.HTTP_409_CONFLICT,
         },
         status_code=status.HTTP_200_OK,
         description=getdoc(SignUp),

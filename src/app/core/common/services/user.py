@@ -6,6 +6,8 @@ from app.core.common.exceptions import (
     RoleChangeNotPermittedError,
 )
 from app.core.common.ports.password_hasher import PasswordHasher
+from app.core.common.value_objects.email import Email
+from app.core.common.value_objects.phone_number import PhoneNumber
 from app.core.common.value_objects.raw_password import RawPassword
 from app.core.common.value_objects.username import Username
 from app.core.common.value_objects.utc_datetime import UtcDatetime
@@ -19,6 +21,8 @@ class UserService:
         self,
         user_id: UserId,
         username: Username,
+        email: Email,
+        phone_number: PhoneNumber,
         password_hash: UserPasswordHash,
         *,
         now: UtcDatetime,
@@ -30,6 +34,8 @@ class UserService:
         return User(
             id_=user_id,
             username=username,
+            email=email,
+            phone_number=phone_number,
             password_hash=password_hash,
             role=role,
             is_active=is_active,
@@ -41,6 +47,8 @@ class UserService:
         self,
         user_id: UserId,
         username: Username,
+        email: Email,
+        phone_number: PhoneNumber,
         raw_password: RawPassword,
         *,
         now: UtcDatetime,
@@ -51,6 +59,8 @@ class UserService:
         return self.create_user(
             user_id,
             username,
+            email,
+            phone_number,
             password_hash,
             now=now,
             role=role,

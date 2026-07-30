@@ -11,7 +11,9 @@ from app.outbound.persistence_sqla.mappings.user import users_table
 from tests.integration.with_infra.account.constants import SIGN_UP_ENDPOINT
 from tests.integration.with_infra.authentication import authenticate
 from tests.integration.with_infra.factories import (
+    create_raw_email,
     create_raw_password,
+    create_raw_phone_number,
     create_raw_username,
     create_user,
     create_user_with_password,
@@ -24,7 +26,12 @@ async def test_returns_200_and_creates_user(
 ) -> None:
     username = create_raw_username()
     password = create_raw_password()
-    payload = {"username": username, "password": password}
+    payload = {
+        "username": username,
+        "email": create_raw_email(),
+        "phone_number": create_raw_phone_number(),
+        "password": password,
+    }
 
     r = await it_client.post(SIGN_UP_ENDPOINT, json=payload)
 
@@ -46,7 +53,12 @@ async def test_returns_200_and_creates_user(
 async def test_returns_400_when_username_is_too_short(
     it_client: httpx2.AsyncClient,
 ) -> None:
-    payload = {"username": "x" * (Username.MIN_LEN - 1), "password": create_raw_password()}
+    payload = {
+        "username": "x" * (Username.MIN_LEN - 1),
+        "email": create_raw_email(),
+        "phone_number": create_raw_phone_number(),
+        "password": create_raw_password(),
+    }
 
     r = await it_client.post(SIGN_UP_ENDPOINT, json=payload)
 
@@ -56,7 +68,12 @@ async def test_returns_400_when_username_is_too_short(
 async def test_returns_400_when_password_is_too_short(
     it_client: httpx2.AsyncClient,
 ) -> None:
-    payload = {"username": create_raw_username(), "password": "x" * (RawPassword.MIN_LEN - 1)}
+    payload = {
+        "username": create_raw_username(),
+        "email": create_raw_email(),
+        "phone_number": create_raw_phone_number(),
+        "password": "x" * (RawPassword.MIN_LEN - 1),
+    }
 
     r = await it_client.post(SIGN_UP_ENDPOINT, json=payload)
 
@@ -72,7 +89,12 @@ async def test_returns_409_when_username_already_exists(
     user = create_user(it_user_service, raw_username=username)
     it_session.add(user)
     await it_session.commit()
-    payload = {"username": username, "password": create_raw_password()}
+    payload = {
+        "username": username,
+        "email": create_raw_email(),
+        "phone_number": create_raw_phone_number(),
+        "password": create_raw_password(),
+    }
 
     r = await it_client.post(SIGN_UP_ENDPOINT, json=payload)
 
@@ -92,7 +114,12 @@ async def test_returns_403_when_already_authenticated(
     it_session.add(user)
     await it_session.commit()
     await authenticate(it_client, user.username.value, password)
-    payload = {"username": create_raw_username(), "password": create_raw_password()}
+    payload = {
+        "username": create_raw_username(),
+        "email": create_raw_email(),
+        "phone_number": create_raw_phone_number(),
+        "password": create_raw_password(),
+    }
 
     r = await it_client.post(SIGN_UP_ENDPOINT, json=payload)
 

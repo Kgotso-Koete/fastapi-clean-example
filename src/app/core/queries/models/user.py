@@ -7,6 +7,8 @@ from uuid import UUID
 class UserQm:
     id: UUID
     username: str
+    email: str
+    phone_number: str
     role: str
     is_active: bool
     created_at: datetime

@@ -74,6 +74,8 @@ class LogIn:
         return UserQm(
             id=user.id_,
             username=user.username.value,
+            email=user.email.value,
+            phone_number=user.phone_number.value,
             role=user.role.value,
             is_active=user.is_active,
             created_at=user.created_at.value,

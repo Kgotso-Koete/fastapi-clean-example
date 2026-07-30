@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-07-30: User contact information fields
+
+### Added
+- **Domain:** Added `email` and `phone_number` fields to the `User` domain entity as mandatory parameters.
+- **Value Objects:** Added `Email` value object with regex validation and `PhoneNumber` value object for South African numbers with normalization logic.
+- **Database:** Added `email` and `phone_number` columns to the `users` table with unique constraints (`uq_users_email`, `uq_users_phone_number`).
+- **API:** Updated `CreateUserRequest` DTO to include mandatory `email` and `phone_number` fields.
+- **API:** Updated sign-up endpoint to require `email` and `phone_number` in the request payload.
+- **Query Model:** Updated `UserQm` to include `email` and `phone_number` fields for read operations.
+- **Exceptions:** Added `EmailAlreadyExistsError` and `PhoneNumberAlreadyExistsError` for uniqueness constraint violations.
+- **Adapters:** Updated `SqlaFlusher` to map new constraint violations to application exceptions.
+- **Adapters:** Updated `SqlaUserReader` to select and map `email` and `phone_number` columns.
+- **Handlers:** Updated `LogIn` handler to return `email` and `phone_number` in the response.
+- **Tests:** Updated all unit and integration tests to include `email` and `phone_number` in test payloads and assertions.
+
+### Changed
+- **Factories:** Updated test factories to generate unique phone numbers using random digit generation instead of UUID hex to ensure valid South African number format.
+
 ## [0.2.0] - 2026-07-27: Authentication API enhancements and session security patch
 
 ### Added

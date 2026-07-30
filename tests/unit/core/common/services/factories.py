@@ -1,3 +1,4 @@
+import random
 import uuid
 from datetime import UTC, datetime
 from uuid import UUID
@@ -6,6 +7,8 @@ from app.core.common.entities.types_ import UserId, UserPasswordHash, UserRole
 from app.core.common.entities.user import User
 from app.core.common.ports.password_hasher import PasswordHasher
 from app.core.common.services.user import UserService
+from app.core.common.value_objects.email import Email
+from app.core.common.value_objects.phone_number import PhoneNumber
 from app.core.common.value_objects.raw_password import RawPassword
 from app.core.common.value_objects.username import Username
 from app.core.common.value_objects.utc_datetime import UtcDatetime
@@ -19,6 +22,19 @@ def create_user_id(value: UUID | None = None) -> UserId:
 def create_username(value: str | None = None) -> Username:
     default = f"user_{uuid.uuid4().hex[:8]}"
     return Username(value if value is not None else default)
+
+
+def create_email(value: str | None = None) -> Email:
+    default = f"user_{uuid.uuid4().hex[:8]}@example.com"
+    return Email(value if value is not None else default)
+
+
+def create_phone_number(value: str | None = None) -> PhoneNumber:
+    if value is not None:
+        return PhoneNumber(value)
+    # Generate 9 random digits after country code 27
+    default = f"27{''.join(random.choices('0123456789', k=9))}"
+    return PhoneNumber(default)
 
 
 def create_raw_password(value: str | None = None) -> RawPassword:
@@ -52,6 +68,8 @@ def create_user(
     *,
     user_id: UserId | None = None,
     username: Username | None = None,
+    email: Email | None = None,
+    phone_number: PhoneNumber | None = None,
     password_hash: UserPasswordHash | None = None,
     now: UtcDatetime | None = None,
     role: UserRole | None = None,
@@ -61,6 +79,8 @@ def create_user(
     return user_service.create_user(
         user_id=user_id if user_id is not None else create_user_id(),
         username=username if username is not None else create_username(),
+        email=email if email is not None else create_email(),
+        phone_number=phone_number if phone_number is not None else create_phone_number(),
         password_hash=password_hash if password_hash is not None else create_password_hash(),
         now=now if now is not None else create_now(),
         role=role if role is not None else create_role(),
@@ -72,6 +92,8 @@ def create_super_user(
     *,
     user_id: UserId | None = None,
     username: Username | None = None,
+    email: Email | None = None,
+    phone_number: PhoneNumber | None = None,
     password_hash: UserPasswordHash | None = None,
     now: UtcDatetime | None = None,
     is_active: bool | None = None,
@@ -80,6 +102,8 @@ def create_super_user(
     return User(
         id_=user_id if user_id is not None else create_user_id(),
         username=username if username is not None else create_username(),
+        email=email if email is not None else create_email(),
+        phone_number=phone_number if phone_number is not None else create_phone_number(),
         password_hash=password_hash if password_hash is not None else create_password_hash(),
         role=UserRole.SUPER_ADMIN,
         is_active=is_active if is_active is not None else create_is_active(),
