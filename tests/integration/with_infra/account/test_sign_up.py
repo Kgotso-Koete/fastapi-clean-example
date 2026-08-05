@@ -1,9 +1,15 @@
+import asyncio
+from collections.abc import Sequence
+
 import httpx2
+import pytest
+from dishka import Provider, Scope
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.common.entities.types_ import UserRole
 from app.core.common.entities.user import User
+from app.core.common.ports.email_sender import EmailSender
 from app.core.common.services.user import UserService
 from app.core.common.value_objects.raw_password import RawPassword
 from app.core.common.value_objects.username import Username
@@ -18,11 +24,25 @@ from tests.integration.with_infra.factories import (
     create_user,
     create_user_with_password,
 )
+from tests.integration.with_infra.spy_email_sender import SpyEmailSender
+
+
+@pytest.fixture
+def it_spy_email_sender() -> SpyEmailSender:
+    return SpyEmailSender()
+
+
+@pytest.fixture
+def it_di_overrides(it_spy_email_sender: SpyEmailSender) -> Sequence[Provider]:
+    provider = Provider()
+    provider.provide(lambda: it_spy_email_sender, provides=EmailSender, scope=Scope.APP)
+    return (provider,)
 
 
 async def test_returns_200_and_creates_user(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
+    it_spy_email_sender: SpyEmailSender,
 ) -> None:
     username = create_raw_username()
     password = create_raw_password()
@@ -48,6 +68,10 @@ async def test_returns_200_and_creates_user(
     assert data["is_active"] is True
     assert "id" in data
     assert "password_hash" not in data
+
+    await asyncio.sleep(0.01)
+    assert len(it_spy_email_sender.sent) == 1
+    assert it_spy_email_sender.sent[0]["to_email"] == payload["email"]
 
 
 async def test_returns_400_when_username_is_too_short(

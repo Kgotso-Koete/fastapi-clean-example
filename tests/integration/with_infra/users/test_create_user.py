@@ -1,9 +1,15 @@
+import asyncio
+from collections.abc import Sequence
+
 import httpx2
+import pytest
+from dishka import Provider, Scope
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.common.entities.types_ import UserRole
 from app.core.common.entities.user import User
+from app.core.common.ports.email_sender import EmailSender
 from app.core.common.services.user import UserService
 from app.core.common.value_objects.raw_password import RawPassword
 from app.core.common.value_objects.username import Username
@@ -16,13 +22,27 @@ from tests.integration.with_infra.factories import (
     create_user,
     create_user_with_password,
 )
+from tests.integration.with_infra.spy_email_sender import SpyEmailSender
 from tests.integration.with_infra.users.constants import USERS_ENDPOINT
+
+
+@pytest.fixture
+def it_spy_email_sender() -> SpyEmailSender:
+    return SpyEmailSender()
+
+
+@pytest.fixture
+def it_di_overrides(it_spy_email_sender: SpyEmailSender) -> Sequence[Provider]:
+    provider = Provider()
+    provider.provide(lambda: it_spy_email_sender, provides=EmailSender, scope=Scope.APP)
+    return (provider,)
 
 
 async def test_returns_201_and_creates_user(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
     it_admin: User,
+    it_spy_email_sender: SpyEmailSender,
 ) -> None:
     username = create_raw_username()
     payload = {
@@ -43,6 +63,10 @@ async def test_returns_201_and_creates_user(
     assert user.username.value == username
     assert user.role == UserRole.USER
     assert user.is_active is True
+
+    await asyncio.sleep(0.01)
+    assert len(it_spy_email_sender.sent) == 1
+    assert it_spy_email_sender.sent[0]["to_email"] == payload["email"]
 
 
 async def test_returns_201_and_super_admin_creates_admin(

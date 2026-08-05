@@ -19,6 +19,7 @@ from app.core.common.authorization.current_user_service import CurrentUserServic
 from app.core.common.authorization.permissions import CanManageRole, RoleManagementContext
 from app.core.common.entities.types_ import UserRole
 from app.core.common.factories.id_factory import create_user_id
+from app.core.common.ports.event_dispatcher import EventDispatcher
 from app.core.common.services.user import UserService
 from app.core.common.value_objects.email import Email
 from app.core.common.value_objects.phone_number import PhoneNumber
@@ -62,6 +63,7 @@ class CreateUser:
         user_tx_storage: UserTxStorage,
         flusher: Flusher,
         transaction_manager: TransactionManager,
+        event_dispatcher: EventDispatcher,
     ) -> None:
         self._current_user_service = current_user_service
         self._user_service = user_service
@@ -69,6 +71,7 @@ class CreateUser:
         self._user_tx_storage = user_tx_storage
         self._flusher = flusher
         self._transaction_manager = transaction_manager
+        self._event_dispatcher = event_dispatcher
 
     async def execute(self, request: CreateUserRequest) -> CreateUserResponse:
         logger.info("Create user: started.")
@@ -106,6 +109,7 @@ class CreateUser:
             raise
 
         await self._transaction_manager.commit()
+        await self._event_dispatcher.dispatch(user.collect_events())
 
         logger.info("Create user: done.")
         return CreateUserResponse(

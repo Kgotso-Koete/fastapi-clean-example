@@ -6,6 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from app.main.config.settings import (
     AppSettings,
     CookieSettings,
+    EmailSettings,
     JwtSettings,
     PasswordHasherSettings,
     PostgresSettings,
@@ -54,6 +55,10 @@ class CookieEnvConfig(BaseSettings, CookieSettings):
     model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="COOKIE_")
 
 
+class EmailEnvConfig(BaseSettings, EmailSettings):
+    model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="EMAIL_")
+
+
 def load_app_settings() -> AppSettings:
     return _load_settings(AppEnvConfig)
 
@@ -80,3 +85,7 @@ def load_session_settings() -> SessionSettings:
 
 def load_cookie_settings() -> CookieSettings:
     return _load_settings(CookieEnvConfig)
+
+
+def load_email_settings() -> EmailSettings:
+    return _load_settings(EmailEnvConfig)

@@ -1,6 +1,8 @@
 from collections.abc import Hashable
 from typing import Any, Self, cast
 
+from app.core.common.events.domain_event import DomainEvent
+
 
 class Entity[T: Hashable]:
     """
@@ -10,6 +12,8 @@ class Entity[T: Hashable]:
     - Entities are mutable, but are compared solely by their `id`.
     """
 
+    _events: list[DomainEvent]
+
     def __new__(cls, *_args: Any, **_kwargs: Any) -> Self:
         if cls is Entity:
             raise TypeError("Base Entity cannot be instantiated directly.")
@@ -17,6 +21,17 @@ class Entity[T: Hashable]:
 
     def __init__(self, *, id_: T) -> None:
         self.id_ = id_
+        object.__setattr__(self, "_events", [])
+
+    def record_event(self, event: DomainEvent) -> None:
+        """Record a domain event. Events are collected after the use case commits."""
+        self._events.append(event)
+
+    def collect_events(self) -> list[DomainEvent]:
+        """Return and clear all recorded events. Call after transaction commit."""
+        events = self._events.copy()
+        self._events.clear()
+        return events
 
     def __setattr__(self, name: str, value: Any) -> None:
         """

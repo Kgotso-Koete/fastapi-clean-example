@@ -11,6 +11,7 @@ from app.core.commands.ports.transaction_manager import TransactionManager
 from app.core.commands.ports.utc_timer import UtcTimer
 from app.core.common.authorization.current_user_service import CurrentUserService
 from app.core.common.factories.id_factory import create_user_id
+from app.core.common.ports.event_dispatcher import EventDispatcher
 from app.core.common.services.user import UserService
 from app.core.common.value_objects.email import Email
 from app.core.common.value_objects.phone_number import PhoneNumber
@@ -50,6 +51,7 @@ class SignUp:
         user_tx_storage: AuthSqlaUserTxStorage,
         flusher: Flusher,
         transaction_manager: TransactionManager,
+        event_dispatcher: EventDispatcher,
     ) -> None:
         self._current_user_service = current_user_service
         self._utc_timer = utc_timer
@@ -57,6 +59,7 @@ class SignUp:
         self._user_tx_storage = user_tx_storage
         self._flusher = flusher
         self._transaction_manager = transaction_manager
+        self._event_dispatcher = event_dispatcher
 
     async def execute(self, request: SignUpRequest) -> UserQm:
         logger.info("Sign up: started.")
@@ -91,6 +94,7 @@ class SignUp:
             raise
 
         await self._transaction_manager.commit()
+        await self._event_dispatcher.dispatch(user.collect_events())
 
         logger.info("Sign up: done.")
 
