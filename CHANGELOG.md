@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-08-05: Event dispatcher configuration and logging improvements
+
+### Added
+- **Configuration:** Added `EVENT_DISPATCH_MODE` environment variable to dynamically toggle between synchronous and background asyncio event dispatchers at runtime without code changes.
+- **Observability:** Replaced standard logging strings with a custom `HumanReadableFormatter`. Injects severity-based emojis (🐛, ℹ️, ⚠️, ❌, 🚨), ANSI color codes, and extra line spacing to drastically improve developer experience when reading server logs.
+- **Documentation:** Updated the `README.md` to formally adopt the GitHub CLI (`gh pr`) PR-and-squash workflow, replacing the manual local merge instructions.
+
 ## [0.4.0] - 2026-08-05: Domain events and background email dispatching
 
 ### Added

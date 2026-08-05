@@ -9,7 +9,7 @@ TODO:
 - [ ] Make template project
 - [x] Add domain events infrastructure (`DomainEvent` base class, `EventDispatcher` port, `UserRegisteredEvent`)
 - [x] Add email sender port and adapter (`EmailSender` interface with SMTP/console implementations)
-- [ ] Add event dispatcher with support for synchronous and background task execution (via FastAPI `BackgroundTasks`)
+- [x] Add event dispatcher with support for synchronous and background task execution (via FastAPI `BackgroundTasks`)
 - [x] Send welcome email on user registration as the first domain event use case
 - [ ] Increase test coverage: add unit tests for domain events and event handlers, integration tests for the full registration-to-email flow, and target comprehensive coverage across all layers
 - [ ] Add observability: structured logging, health check improvements, and metrics groundwork
@@ -94,15 +94,16 @@ git commit -m "feat(scope): brief description (vX.Y.Z)"
 
 Common prefixes: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`
 
-**3. Switch back to master and merge**
+**3. Create a Pull Request**
+Use the GitHub CLI to open a PR for review.
 ```shell
-git checkout master
-git merge feature/<short-description>
+gh pr create --title "feat(scope): brief description" --body "Detailed explanation of changes."
 ```
 
-**4. Delete the feature branch (cleanup)**
+**4. Merge and Delete Branch**
+Once approved, squash and merge the PR, and automatically delete the feature branch.
 ```shell
-git branch -d feature/<short-description>
+gh pr merge --squash --delete-branch
 ```
 
 ### Pre-commit Hooks Summary

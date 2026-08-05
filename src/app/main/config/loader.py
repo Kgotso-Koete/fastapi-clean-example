@@ -7,6 +7,7 @@ from app.main.config.settings import (
     AppSettings,
     CookieSettings,
     EmailSettings,
+    EventSettings,
     JwtSettings,
     PasswordHasherSettings,
     PostgresSettings,
@@ -59,6 +60,10 @@ class EmailEnvConfig(BaseSettings, EmailSettings):
     model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="EMAIL_")
 
 
+class EventEnvConfig(BaseSettings, EventSettings):
+    model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="EVENT_")
+
+
 def load_app_settings() -> AppSettings:
     return _load_settings(AppEnvConfig)
 
@@ -89,3 +94,7 @@ def load_cookie_settings() -> CookieSettings:
 
 def load_email_settings() -> EmailSettings:
     return _load_settings(EmailEnvConfig)
+
+
+def load_event_settings() -> EventSettings:
+    return _load_settings(EventEnvConfig)

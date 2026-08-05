@@ -765,3 +765,53 @@ uv run mypy
 3. Check the console output for the logged welcome email (from `ConsoleEmailSender`)
 4. Configure email provider settings in `.env` to test production email delivery
 5. Run `make check` to verify linting, type checking, import-linter, and unit tests all pass
+
+---
+
+# Configuration: Toggling Event Dispatcher via Env Var
+
+> **Implementation Plan v0.5.0**
+>
+> This phase adds a configuration setting that allows the application to toggle between synchronous (`SyncEventDispatcher`) and background (`BackgroundEventDispatcher`) asyncio event dispatchers at runtime without changing the core business logic.
+
+## Proposed Changes
+
+### Configuration Layer
+
+#### [MODIFY] `src/app/main/config/settings.py`
+Add the `EventSettings` model:
+- Define `EventSettings(BaseModel)` with a single field: `DISPATCH_MODE: Literal["sync", "background"] = "background"`.
+
+#### [MODIFY] `src/app/main/config/loader.py`
+Add the logic to parse environment variables (e.g., `EVENT_DISPATCH_MODE`):
+- Add `EventEnvConfig(BaseSettings, EventSettings)` with `env_prefix="EVENT_"`.
+- Add a `load_event_settings()` function.
+
+### Application Bootstrapping
+
+#### [MODIFY] `src/app/main/run.py`
+Inject the new settings into the dependency injection container context:
+- Update `make_app` signature to accept `event_settings: EventSettings | None = None`.
+- Call `load_event_settings()` if not provided.
+- Add `EventSettings: event_settings` to the context dictionary when creating the Dishka container.
+
+### Dependency Injection (IoC)
+
+#### [MODIFY] `src/app/main/ioc/core.py`
+Make the `EventDispatcher` provider dynamic based on the injected settings:
+- Replace the static `event_dispatcher = provide(...)` line.
+- Add a new `@provide(scope=Scope.REQUEST)` method `provide_event_dispatcher` that accepts `EventSettings` and the `handler_registry`.
+- Return `SyncEventDispatcher` if `settings.DISPATCH_MODE == "sync"`, otherwise return `BackgroundEventDispatcher`.
+
+### Documentation
+
+#### [MODIFY] `README.md`
+- Check the box for: "Add event dispatcher with support for synchronous and background task execution (via FastAPI `BackgroundTasks`)".
+
+## Verification Plan
+
+### Automated Tests
+- Run `make test-docker` to ensure no DI resolution errors break the test suite. All tests should pass.
+
+### Manual Verification
+- We can manually set `EVENT_DISPATCH_MODE=sync` in the `.env` file (or export it) and start the server to verify the `SyncEventDispatcher` is used during a sign-up request.

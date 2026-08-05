@@ -88,3 +88,7 @@ class EmailSettings(BaseModel):
     SMTP_USE_TLS: bool = True
     FROM_EMAIL: str = "noreply@example.com"
     FROM_NAME: str = "Clean Example"
+
+
+class EventSettings(BaseModel):
+    DISPATCH_MODE: Literal["sync", "background"] = "background"
