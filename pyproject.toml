@@ -9,6 +9,7 @@ authors = [
   { name = "Ivan Borovets", email = "ivan.r.borovets@gmail.com" },
 ]
 dependencies = [
+  "aiosmtplib>=3.0.0",
   "alembic==1.18.4",
   "bcrypt==5.0.0",
   "dishka==1.10.1",

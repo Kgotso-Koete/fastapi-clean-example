@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-08-05: Domain events and background email dispatching
+
+### Added
+- **Domain:** Introduced the `DomainEvent` base class and `UserRegisteredEvent`. Upgraded the base `Entity` class to safely record and flush transient domain events.
+- **Architecture:** Implemented the Publish-Subscribe pattern to strictly decouple secondary side-effects (like emails) from core business logic transactions.
+- **Ports:** Added `EventHandler`, `EventDispatcher`, and `EmailSender` interfaces to the application core.
+- **Adapters (Background Processing):** Created `BackgroundEventDispatcher`, which utilizes `asyncio.create_task` to fire off event handlers concurrently without blocking the main HTTP response. Added `SyncEventDispatcher` for sequential execution (ideal for testing).
+- **Adapters (Email):** Created `SmtpEmailSender` (powered by `aiosmtplib` with smart TLS/STARTTLS port negotiation) for production, and `ConsoleEmailSender` for local development.
+- **Use Cases:** The `SignUp` and `CreateUser` commands now dispatch a `UserRegisteredEvent` immediately after the primary database transaction successfully commits.
+- **Event Handlers:** Added a `SendWelcomeEmail` subscriber that listens for `UserRegisteredEvent` and dispatches an onboarding email in the background.
+- **Configuration:** Added comprehensive `EMAIL_*` environment variables. Documented and enforced the `.secrets` file orchestration for overriding local variables without committing them to version control.
+
 ## [0.3.0] - 2026-07-30: User contact information fields
 
 ### Added

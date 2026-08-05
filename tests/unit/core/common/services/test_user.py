@@ -2,6 +2,7 @@ import pytest
 
 from app.core.common.entities.types_ import UserRole
 from app.core.common.entities.user import User
+from app.core.common.events.user_registered import UserRegisteredEvent
 from app.core.common.exceptions import (
     ActivationChangeNotPermittedError,
     RoleAssignmentNotPermittedError,
@@ -59,6 +60,15 @@ async def test_creates_active_user_with_hashed_password(
     assert user.is_active is True
     assert user.created_at == created_at
     assert user.updated_at == created_at
+
+    events = user.collect_events()
+    assert len(events) == 1
+    event = events[0]
+    assert isinstance(event, UserRegisteredEvent)
+    assert event.user_id == user_id
+    assert event.username == username.value
+    assert event.email == email.value
+    assert event.occurred_at == created_at.value
 
 
 @pytest.mark.asyncio

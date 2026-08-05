@@ -4,8 +4,15 @@ Stay tuned. Refactor in progress, see [`legacy-2025`](https://github.com/ivan-bo
 
 TODO:
 - [x] Write tests
+- [x] Add `email` and `phone_number` fields to `User` entity with value object validation
 - [ ] Explain code and patterns in new README
 - [ ] Make template project
+- [x] Add domain events infrastructure (`DomainEvent` base class, `EventDispatcher` port, `UserRegisteredEvent`)
+- [x] Add email sender port and adapter (`EmailSender` interface with SMTP/console implementations)
+- [ ] Add event dispatcher with support for synchronous and background task execution (via FastAPI `BackgroundTasks`)
+- [x] Send welcome email on user registration as the first domain event use case
+- [ ] Increase test coverage: add unit tests for domain events and event handlers, integration tests for the full registration-to-email flow, and target comprehensive coverage across all layers
+- [ ] Add observability: structured logging, health check improvements, and metrics groundwork
 
 Prerequisites
 ```shell

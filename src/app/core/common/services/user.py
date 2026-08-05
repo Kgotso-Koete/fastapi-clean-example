@@ -1,5 +1,6 @@
 from app.core.common.entities.types_ import UserId, UserPasswordHash, UserRole
 from app.core.common.entities.user import User
+from app.core.common.events.user_registered import UserRegisteredEvent
 from app.core.common.exceptions import (
     ActivationChangeNotPermittedError,
     RoleAssignmentNotPermittedError,
@@ -31,7 +32,7 @@ class UserService:
     ) -> User:
         if role.is_system:
             raise RoleAssignmentNotPermittedError
-        return User(
+        user = User(
             id_=user_id,
             username=username,
             email=email,
@@ -42,6 +43,15 @@ class UserService:
             created_at=now,
             updated_at=now,
         )
+        user.record_event(
+            UserRegisteredEvent(
+                occurred_at=now.value,
+                user_id=user_id,
+                username=username.value,
+                email=email.value,
+            )
+        )
+        return user
 
     async def create_user_with_raw_password(
         self,
