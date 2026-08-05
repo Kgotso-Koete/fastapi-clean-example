@@ -10,6 +10,7 @@ from app.main.config.loader import (
     load_app_settings,
     load_cookie_settings,
     load_email_settings,
+    load_event_settings,
     load_jwt_settings,
     load_password_hasher_settings,
     load_postgres_settings,
@@ -20,6 +21,7 @@ from app.main.config.settings import (
     AppSettings,
     CookieSettings,
     EmailSettings,
+    EventSettings,
     JwtSettings,
     PasswordHasherSettings,
     PostgresSettings,
@@ -56,6 +58,7 @@ def make_app(
     session_settings: SessionSettings | None = None,
     cookie_settings: CookieSettings | None = None,
     email_settings: EmailSettings | None = None,
+    event_settings: EventSettings | None = None,
 ) -> FastAPI:
     """Pass providers to override existing ones for testing."""
     if app_settings is None:
@@ -77,6 +80,8 @@ def make_app(
         cookie_settings = load_cookie_settings()
     if email_settings is None:
         email_settings = load_email_settings()
+    if event_settings is None:
+        event_settings = load_event_settings()
 
     app = FastAPI(
         debug=app_settings.DEBUG_MODE,
@@ -98,6 +103,7 @@ def make_app(
             SessionSettings: session_settings,
             CookieSettings: cookie_settings,
             EmailSettings: email_settings,
+            EventSettings: event_settings,
         },
     )
     setup_dishka(container, app)

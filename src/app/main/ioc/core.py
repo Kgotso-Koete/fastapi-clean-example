@@ -27,7 +27,7 @@ from app.core.common.ports.password_hasher import PasswordHasher
 from app.core.common.services.user import UserService
 from app.core.queries.list_users import ListUsers
 from app.core.queries.ports.user_reader import UserReader
-from app.main.config.settings import EmailSettings, PasswordHasherSettings
+from app.main.config.settings import EmailSettings, EventSettings, PasswordHasherSettings
 from app.outbound.adapters.auth_session_access_revoker import AuthSessionAccessRevoker
 from app.outbound.adapters.auth_session_identity_provider import AuthSessionIdentityProvider
 from app.outbound.adapters.background_event_dispatcher import BackgroundEventDispatcher
@@ -42,6 +42,7 @@ from app.outbound.adapters.sqla_flusher import SqlaFlusher
 from app.outbound.adapters.sqla_transaction_manager import SqlaTransactionManager
 from app.outbound.adapters.sqla_user_reader import SqlaUserReader
 from app.outbound.adapters.sqla_user_tx_storage import SqlaUserTxStorage
+from app.outbound.adapters.sync_event_dispatcher import SyncEventDispatcher
 from app.outbound.adapters.system_utc_timer import SystemUtcTimer
 
 
@@ -96,7 +97,15 @@ class CoreProvider(Provider):
     send_welcome_email = provide(SendWelcomeEmail)
 
     # Event Ports
-    event_dispatcher = provide(BackgroundEventDispatcher, provides=EventDispatcher)
+    @provide(scope=Scope.REQUEST)
+    def provide_event_dispatcher(
+        self,
+        settings: EventSettings,
+        handler_registry: dict[type[DomainEvent], Sequence[EventHandler[Any]]],
+    ) -> EventDispatcher:
+        if settings.DISPATCH_MODE == "sync":
+            return SyncEventDispatcher(handler_registry=handler_registry)
+        return BackgroundEventDispatcher(handler_registry=handler_registry)
 
     @provide(scope=Scope.APP)
     def provide_email_sender(self, settings: EmailSettings) -> EmailSender:

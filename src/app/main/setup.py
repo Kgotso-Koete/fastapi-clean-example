@@ -7,17 +7,19 @@ from starlette.responses import JSONResponse
 
 from app.inbound.http.auth_cookie_middleware import AuthCookieMiddleware
 from app.inbound.http.errors.internal_server_error import internal_server_error
-from app.main.config.logging_ import DATEFMT, FMT, LoggingLevel
+from app.main.config.logging_ import DATEFMT, FMT, HumanReadableFormatter, LoggingLevel
 from app.main.config.settings import CookieSettings
 
 logger = logging.getLogger(__name__)
 
 
 def setup_logging(*, level: LoggingLevel = LoggingLevel.INFO) -> None:
+    handler = logging.StreamHandler()
+    handler.setFormatter(HumanReadableFormatter(fmt=FMT, datefmt=DATEFMT))
+
     logging.basicConfig(
         level=level,
-        datefmt=DATEFMT,
-        format=FMT,
+        handlers=[handler],
         force=True,
     )
     logger.info("Logging is set up")
