@@ -34,3 +34,70 @@ services:
       timeout: 2s
       retries: 5
       start_period: 1s
+
+  # vvv EVERYTHING BELOW THIS LINE IS NEW vvv
+  # --- Observability stack (all free/open-source, local-only) ---
+  # See README.md "Observability" section for access URLs and what each does.
+
+  prometheus:
+    image: prom/prometheus:v3.13.2
+    restart: unless-stopped
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      - app
+
+  grafana:
+    image: grafana/grafana:11.3.4
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+      - loki
+
+  loki:
+    image: grafana/loki:3.7.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3100:3100"
+    volumes:
+      - ./observability/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+
+  promtail:
+    image: grafana/promtail:3.6.8
+    restart: unless-stopped
+    volumes:
+      - ./observability/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+
+  adminer:
+    image: adminer:4.8.1
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      - ADMINER_DEFAULT_SERVER=db_pg
+    depends_on:
+      - db_pg
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  loki_data:

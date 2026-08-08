@@ -1,6 +1,7 @@
 import pytest
 
 from app.main.config.loader import (
+    load_alert_settings,
     load_app_settings,
     load_cookie_settings,
     load_jwt_settings,
@@ -116,3 +117,17 @@ def test_load_cookie_settings_reads_env_vars(monkeypatch: pytest.MonkeyPatch) ->
     assert sut.HTTPONLY is True
     assert sut.SECURE is False
     assert sut.SAMESITE == "strict"
+
+
+def test_load_alert_settings_reads_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ALERT_ENABLED", "true")
+    monkeypatch.setenv("ALERT_TO_EMAIL", "oncall@example.com")
+    monkeypatch.setenv("ALERT_TO_NAME", "Test On-call")
+    monkeypatch.setenv("ALERT_COOLDOWN_S", "123.5")
+
+    sut = load_alert_settings()
+
+    assert sut.ENABLED is True
+    assert sut.TO_EMAIL == "oncall@example.com"
+    assert sut.TO_NAME == "Test On-call"
+    assert sut.COOLDOWN_S == 123.5

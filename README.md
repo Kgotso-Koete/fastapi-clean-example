@@ -38,19 +38,6 @@ Full API access:
 - set its role to `super_admin` manually in DB
 - log in as super admin
 
-### Database Management (Adminer)
-
-To inspect and manage the PostgreSQL database visually, open a separate terminal and run Adminer (version 4 is recommended for network compatibility):
-```shell
-docker run --rm -p 8080:8080 --network fastapi-clean-example_default -e ADMINER_DEFAULT_SERVER=db_pg adminer:4
-```
-Access it at **http://localhost:8080** with the following credentials:
-- **System**: PostgreSQL
-- **Server**: `db_pg` (or `fastapi-clean-example-db_pg-1`)
-- **Username**: `postgres`
-- **Password**: `password`
-- **Database**: `clean-example`
-
 Stop
 ```shell
 make down
@@ -72,6 +59,23 @@ Generate a migration
 ```shell
 make migration msg=<msg>
 ```
+### Database Management (Adminer)
+
+Adminer is included in the docker-compose stack and starts automatically with `make upd`. Access it at **http://localhost:8080** with the following credentials:
+- **System**: PostgreSQL
+- **Server**: `db_pg` (or `fastapi-clean-example-db_pg-1`)
+- **Username**: `postgres`
+- **Password**: `password`
+- **Database**: `clean-example`
+
+### Observability (Prometheus, Grafana, Loki)
+
+`make upd` also starts a local, free/open-source observability stack alongside the app:
+
+- **Metrics + dashboards**: **http://localhost:9090** (Prometheus) and **http://localhost:3000** (Grafana, login `admin` / `admin`). A starter dashboard ("fastapi-clean-example: App Overview") is provisioned automatically with request rate, 5xx error rate, p50/p95/p99 latency, and unhandled exceptions by type.
+- **Raw metrics endpoint**: **http://localhost:8000/metrics** (Prometheus text format - what Prometheus itself scrapes).
+- **Logs**: also queryable from the same Grafana instance (Explore → Loki datasource, or the "Live logs" panel on the dashboard), e.g. `{compose_service="app"} | json | exception_type="ValueError"`. Set `APP_LOG_FORMAT=json` (default in `env.example`) so log lines are structured and filterable; `human` gives readable output for local terminal use instead.
+- **Critical error alerts**: set `ALERT_ENABLED=true` and `ALERT_TO_EMAIL` in `.env` to get an email (via the same `EMAIL_*` SMTP settings used for transactional email) whenever a genuine unhandled server error occurs - never for ordinary 4xx validation errors. Rate-limited per exception type via `ALERT_COOLDOWN_S` so an outage can't flood the inbox.
 
 See [Makefile](Makefile) for more commands
 
