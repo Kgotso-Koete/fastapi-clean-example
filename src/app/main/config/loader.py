@@ -4,6 +4,7 @@ from typing import Final
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.main.config.settings import (
+    AlertSettings,  # <-- NEW
     AppSettings,
     CookieSettings,
     EmailSettings,
@@ -64,6 +65,11 @@ class EventEnvConfig(BaseSettings, EventSettings):
     model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="EVENT_")
 
 
+# vvv NEW vvv
+class AlertEnvConfig(BaseSettings, AlertSettings):
+    model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="ALERT_")
+
+
 def load_app_settings() -> AppSettings:
     return _load_settings(AppEnvConfig)
 
@@ -98,3 +104,8 @@ def load_email_settings() -> EmailSettings:
 
 def load_event_settings() -> EventSettings:
     return _load_settings(EventEnvConfig)
+
+
+# vvv NEW vvv
+def load_alert_settings() -> AlertSettings:
+    return _load_settings(AlertEnvConfig)

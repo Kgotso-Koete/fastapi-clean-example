@@ -102,7 +102,7 @@ check-ci:
 	uv run coverage html
 
 # Docker compose
-.PHONY: docker-env local-env upd up upd-local up-local down stop-all
+.PHONY: docker-env local-env upd up upd-local up-local down stop-all open-dashboards
 docker-env:
 	$(DOCKER_ENV)
 
@@ -111,9 +111,21 @@ local-env:
 
 upd: docker-env
 	$(DOCKER_COMPOSE) up -d --build --force-recreate
+	$(MAKE) open-dashboards
 
 up: docker-env
 	$(DOCKER_COMPOSE) up --build --force-recreate
+
+open-dashboards:
+	@echo "Opening dashboards in browser..."
+	@sleep 2
+	@xdg-open http://127.0.0.1:8000/docs >/dev/null 2>&1 || true
+	@xdg-open http://localhost:8080 >/dev/null 2>&1 || true
+	@xdg-open http://127.0.0.1:5500/htmlcov/index.html >/dev/null 2>&1 || true
+	@xdg-open http://127.0.0.1:5500/htmlcov-docker/index.html >/dev/null 2>&1 || true
+	@xdg-open http://localhost:3000 >/dev/null 2>&1 || true
+	@xdg-open http://localhost:9090 >/dev/null 2>&1 || true
+	@xdg-open http://localhost:8000/metrics >/dev/null 2>&1 || true
 
 upd-local: local-env
 	$(DOCKER_COMPOSE) up -d --build --force-recreate $(INFRA_SERVICES) $(INFRA_INIT_SERVICES)

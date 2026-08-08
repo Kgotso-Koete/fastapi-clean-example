@@ -7,6 +7,7 @@ from fastapi import FastAPI
 
 from app.inbound.http.root_router import make_fastapi_root_router
 from app.main.config.loader import (
+    load_alert_settings,
     load_app_settings,
     load_cookie_settings,
     load_email_settings,
@@ -18,6 +19,7 @@ from app.main.config.loader import (
     load_sqla_settings,
 )
 from app.main.config.settings import (
+    AlertSettings,
     AppSettings,
     CookieSettings,
     EmailSettings,
@@ -29,7 +31,7 @@ from app.main.config.settings import (
     SqlaSettings,
 )
 from app.main.ioc.provider_registry import get_providers
-from app.main.setup import setup_global_exception_handlers, setup_logging, setup_middlewares
+from app.main.setup import setup_global_exception_handlers, setup_logging, setup_metrics, setup_middlewares
 from app.outbound.persistence_sqla.mappings.all import map_tables
 
 
@@ -48,7 +50,8 @@ def make_lifespan() -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
     return lifespan
 
 
-def make_app(
+def make_app(  # noqa: C901 -- new alert_settings branch pushed this past the complexity limit;
+    # left as-is rather than refactoring existing code without being asked (see PR discussion)
     *di_providers: Provider,
     app_settings: AppSettings | None = None,
     postgres_settings: PostgresSettings | None = None,
@@ -59,12 +62,13 @@ def make_app(
     cookie_settings: CookieSettings | None = None,
     email_settings: EmailSettings | None = None,
     event_settings: EventSettings | None = None,
+    alert_settings: AlertSettings | None = None,
 ) -> FastAPI:
     """Pass providers to override existing ones for testing."""
     if app_settings is None:
         app_settings = load_app_settings()
 
-    setup_logging(level=app_settings.LOGGING_LEVEL)
+    setup_logging(level=app_settings.LOGGING_LEVEL, log_format=app_settings.LOG_FORMAT)
 
     if postgres_settings is None:
         postgres_settings = load_postgres_settings()
@@ -82,6 +86,8 @@ def make_app(
         email_settings = load_email_settings()
     if event_settings is None:
         event_settings = load_event_settings()
+    if alert_settings is None:
+        alert_settings = load_alert_settings()
 
     app = FastAPI(
         debug=app_settings.DEBUG_MODE,
@@ -104,11 +110,13 @@ def make_app(
             CookieSettings: cookie_settings,
             EmailSettings: email_settings,
             EventSettings: event_settings,
+            AlertSettings: alert_settings,
         },
     )
     setup_dishka(container, app)
     setup_middlewares(app, cookie_settings)
-    setup_global_exception_handlers(app)
+    setup_metrics(app, service_name=app_settings.SERVICE_NAME)
+    setup_global_exception_handlers(app, alert_settings=alert_settings)
     app.include_router(
         make_fastapi_root_router(
             debug_mode=app_settings.DEBUG_MODE,

@@ -13,6 +13,7 @@ class AppSettings(BaseModel):
     ROOT_PATH: str = "/"
     DEBUG_MODE: bool = False
     LOGGING_LEVEL: LoggingLevel = LoggingLevel.INFO
+    LOG_FORMAT: Literal["human", "json"] = "human"  # <-- NEW LINE
 
 
 class PostgresSettings(BaseModel):
@@ -92,3 +93,22 @@ class EmailSettings(BaseModel):
 
 class EventSettings(BaseModel):
     DISPATCH_MODE: Literal["sync", "background"] = "background"
+
+
+# vvv ENTIRE CLASS BELOW IS NEW vvv
+class AlertSettings(BaseModel):
+    """Controls email alerts fired for unhandled (5xx-class) server errors.
+
+    Deliberately separate from EmailSettings: alerts go to operators/devs about
+    the *system*, not to end users about their *account*, so they get their own
+    toggle, recipient, and rate limit rather than piggybacking on transactional
+    email config.
+    """
+
+    ENABLED: bool = False
+    TO_EMAIL: str = ""
+    TO_NAME: str = "On-call"
+    # Minimum seconds between two alert emails for the *same* exception type,
+    # so an outage that throws thousands of the same error doesn't also flood
+    # the inbox. Different exception types are rate-limited independently.
+    COOLDOWN_S: float = 300.0
