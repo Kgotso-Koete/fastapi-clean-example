@@ -3,7 +3,7 @@ from fastapi import APIRouter
 router = APIRouter()
 
 
-@router.get("/test-error", include_in_schema=False)
+@router.get("/test-error", tags=["Debug"])
 async def test_error() -> None:
     """Temporary endpoint to trigger 500 error for testing alerting.
 

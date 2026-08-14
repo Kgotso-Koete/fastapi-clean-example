@@ -10,6 +10,13 @@ from app.core.common.ports.email_sender import EmailSender
 from app.main.config.settings import AlertSettings, AppSettings
 from app.main.run import make_app
 from tests.integration.with_infra.account.constants import SIGN_UP_ENDPOINT
+from tests.integration.with_infra.authentication import authenticate
+from tests.integration.with_infra.factories import (
+    create_raw_email,
+    create_raw_password,
+    create_raw_phone_number,
+    create_raw_username,
+)
 from tests.integration.with_infra.spy_email_sender import SpyEmailSender
 
 UNHANDLED_ERROR_ENDPOINT = "/__test_unhandled_error__"
@@ -75,15 +82,11 @@ def it_fastapi_app(it_di_overrides: Sequence[Provider]) -> FastAPI:
 
 @pytest.fixture
 async def it_client(it_fastapi_app: FastAPI) -> AsyncIterator[httpx2.AsyncClient]:
-    """
-    Overrides the shared it_client fixture to add raise_app_exceptions=False.
+    """Overrides the shared it_client fixture.
 
-    Starlette's ServerErrorMiddleware (which wraps the global Exception
-    handler under test here) always re-raises after sending its response, so
-    the caller still sees it - real ASGI servers like uvicorn just log that
-    and move on, but httpx2's ASGITransport instead re-raises it to the test
-    itself unless told not to. Without this override, every test below would
-    fail with a raw ValueError instead of exercising the 500 response.
+    ``GlobalExceptionMiddleware`` catches all unhandled exceptions and returns
+    a ``JSONResponse`` before they can propagate to the ASGI transport, so
+    ``raise_app_exceptions`` can stay at its default (``True``).
     """
     async with (
         asgi_lifespan.LifespanManager(
@@ -91,7 +94,7 @@ async def it_client(it_fastapi_app: FastAPI) -> AsyncIterator[httpx2.AsyncClient
             startup_timeout=LIFESPAN_MANAGER_STARTUP_TIMEOUT_S,
         ),
         httpx2.AsyncClient(
-            transport=httpx2.ASGITransport(app=it_fastapi_app, raise_app_exceptions=False),
+            transport=httpx2.ASGITransport(app=it_fastapi_app),
             base_url="http://test",
         ) as client,
     ):
@@ -138,6 +141,45 @@ async def test_unhandled_exception_sends_a_critical_error_alert_email(
     assert sent["to_email"] == "oncall@example.com"
     assert "ValueError" in sent["subject"]
     assert UNHANDLED_ERROR_ENDPOINT in sent["subject"]
+
+
+async def test_unhandled_exception_from_an_anonymous_request_shows_anonymous_in_the_alert(
+    it_client: httpx2.AsyncClient,
+    it_spy_email_sender: SpyEmailSender,
+) -> None:
+    """it_client has no session cookie unless a test explicitly logs in."""
+    await it_client.get(UNHANDLED_ERROR_ENDPOINT)
+
+    assert "anonymous" in it_spy_email_sender.sent[0]["html_body"]
+
+
+async def test_unhandled_exception_from_a_logged_in_user_shows_their_identity_in_the_alert(
+    it_client: httpx2.AsyncClient,
+    it_spy_email_sender: SpyEmailSender,
+) -> None:
+    username = create_raw_username()
+    password = create_raw_password()
+    email = create_raw_email()
+    phone_number = create_raw_phone_number()
+    r = await it_client.post(
+        SIGN_UP_ENDPOINT,
+        json={"username": username, "email": email, "phone_number": phone_number, "password": password},
+    )
+    assert r.status_code == 200
+    await authenticate(it_client, username, password)
+
+    await it_client.get(UNHANDLED_ERROR_ENDPOINT)
+
+    # Sign-up itself may also send its own (unrelated) welcome email through
+    # this same spy, so filter to the alert recipient specifically rather
+    # than asserting on the spy's full history.
+    alert_emails = [sent for sent in it_spy_email_sender.sent if sent["to_email"] == "oncall@example.com"]
+    assert len(alert_emails) == 1
+    html_body = alert_emails[0]["html_body"]
+    assert username in html_body
+    assert email in html_body
+    assert phone_number in html_body
+    assert "anonymous" not in html_body
 
 
 async def test_repeated_same_type_errors_are_rate_limited_to_one_alert_email(

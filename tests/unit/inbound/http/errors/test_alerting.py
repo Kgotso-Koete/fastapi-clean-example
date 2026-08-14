@@ -2,7 +2,10 @@ from typing import Any
 
 from starlette.requests import Request
 
-from app.inbound.http.errors.alerting import AlertCooldown, build_error_alert_email
+from app.inbound.http.errors.alerting import AlertCooldown, RequestUserContext, build_error_alert_email
+
+ANONYMOUS = RequestUserContext(status="anonymous")
+UNKNOWN = RequestUserContext(status="unknown")
 
 
 class _FakeClock:
@@ -78,7 +81,7 @@ def test_cooldown_tracks_each_exception_type_independently() -> None:
 def test_build_error_alert_email_includes_exception_type_and_path() -> None:
     request = _make_request(method="POST", path="/v1/users")
 
-    subject, html_body = build_error_alert_email(ValueError("boom"), request)
+    subject, html_body = build_error_alert_email(ValueError("boom"), request, ANONYMOUS)
 
     assert "ValueError" in subject
     assert "POST" in subject
@@ -91,7 +94,7 @@ def test_build_error_alert_email_includes_exception_type_and_path() -> None:
 def test_build_error_alert_email_escapes_untrusted_content() -> None:
     request = _make_request(path="/v1/<script>alert(1)</script>")
 
-    _subject, html_body = build_error_alert_email(ValueError("<b>bold</b>"), request)
+    _subject, html_body = build_error_alert_email(ValueError("<b>bold</b>"), request, ANONYMOUS)
 
     assert "<script>" not in html_body
     assert "<b>bold</b>" not in html_body
@@ -100,6 +103,81 @@ def test_build_error_alert_email_escapes_untrusted_content() -> None:
 def test_build_error_alert_email_handles_missing_client() -> None:
     request = _make_request(client_host=None)
 
-    _subject, html_body = build_error_alert_email(RuntimeError("x"), request)
+    _subject, html_body = build_error_alert_email(RuntimeError("x"), request, ANONYMOUS)
 
     assert "unknown" in html_body
+
+
+def test_build_error_alert_email_shows_anonymous_status() -> None:
+    request = _make_request()
+
+    _subject, html_body = build_error_alert_email(ValueError("x"), request, ANONYMOUS)
+
+    assert "anonymous" in html_body
+
+
+def test_build_error_alert_email_shows_unknown_status_when_session_unresolvable() -> None:
+    request = _make_request()
+
+    _subject, html_body = build_error_alert_email(ValueError("x"), request, UNKNOWN)
+
+    assert "unknown" in html_body
+
+
+def test_build_error_alert_email_shows_full_identity_when_authenticated() -> None:
+    request = _make_request()
+    user_context = RequestUserContext(
+        status="authenticated",
+        user_id="11111111-1111-1111-1111-111111111111",
+        username="kgotso",
+        email="kgotso@example.com",
+        phone_number="27831234567",
+    )
+
+    _subject, html_body = build_error_alert_email(ValueError("x"), request, user_context)
+
+    assert "kgotso" in html_body
+    assert "11111111-1111-1111-1111-111111111111" in html_body
+    assert "kgotso@example.com" in html_body
+    assert "27831234567" in html_body
+
+
+def test_build_error_alert_email_escapes_untrusted_identity_fields() -> None:
+    request = _make_request()
+    user_context = RequestUserContext(
+        status="authenticated",
+        user_id="1",
+        username="<script>alert(1)</script>",
+        email="a@b.com",
+        phone_number="27831234567",
+    )
+
+    _subject, html_body = build_error_alert_email(ValueError("x"), request, user_context)
+
+    assert "<script>" not in html_body
+
+
+def test_request_user_context_as_log_fields_omits_unset_pii_for_anonymous() -> None:
+    fields = ANONYMOUS.as_log_fields()
+
+    assert fields == {"user_status": "anonymous"}
+
+
+def test_request_user_context_as_log_fields_includes_pii_when_authenticated() -> None:
+    user_context = RequestUserContext(
+        status="authenticated",
+        user_id="1",
+        username="kgotso",
+        email="kgotso@example.com",
+        phone_number="27831234567",
+    )
+
+    fields = user_context.as_log_fields()
+
+    assert fields == {
+        "user_status": "authenticated",
+        "user_id": "1",
+        "username": "kgotso",
+        "user_email": "kgotso@example.com",
+        "user_phone_number": "27831234567",
+    }
