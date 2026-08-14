@@ -1,31 +1,15 @@
 import logging
 
 from fastapi import FastAPI
-from prometheus_client import Counter
 from prometheus_fastapi_instrumentator import Instrumentator
-from starlette import status
-from starlette.requests import Request
-from starlette.responses import JSONResponse
 
-from app.core.common.ports.email_sender import EmailSender
 from app.inbound.http.auth_cookie_middleware import AuthCookieMiddleware
-from app.inbound.http.errors.alerting import AlertCooldown, build_error_alert_email
-from app.inbound.http.errors.internal_server_error import internal_server_error
+from app.inbound.http.errors.alerting import AlertCooldown
+from app.inbound.http.errors.exception_middleware import GlobalExceptionMiddleware
 from app.main.config.logging_ import DATEFMT, FMT, HumanReadableFormatter, JsonFormatter, LoggingLevel
 from app.main.config.settings import AlertSettings, CookieSettings
 
 logger = logging.getLogger(__name__)
-
-# Counts every exception that reaches the global catch-all handler below —
-# i.e. genuine server-side failures, never the mapped business exceptions
-# that already resolve to their own 4xx responses via fastapi-error-map.
-# Scrape via /metrics; graph/alert on it in Prometheus/Grafana as
-# `rate(app_unhandled_exceptions_total[5m])` by `exception_type`.
-UNHANDLED_EXCEPTIONS_TOTAL = Counter(
-    "app_unhandled_exceptions_total",
-    "Total unhandled exceptions that reached the global exception handler.",
-    ["exception_type"],
-)
 
 
 def setup_logging(*, level: LoggingLevel = LoggingLevel.INFO, log_format: str = "human") -> None:
@@ -72,41 +56,11 @@ def setup_metrics(app: FastAPI, *, service_name: str) -> None:
 
 def setup_global_exception_handlers(app: FastAPI, *, alert_settings: AlertSettings) -> None:
     alert_cooldown = AlertCooldown(cooldown_s=alert_settings.COOLDOWN_S)
-
-    @app.exception_handler(Exception)
-    async def handle_unexpected(request: Request, exc: Exception) -> JSONResponse:
-        exception_type = type(exc).__name__
-        logger.exception(
-            "Unhandled exception",
-            extra={
-                "exception_type": exception_type,
-                "path": request.url.path,
-                "method": request.method,
-            },
-        )
-        UNHANDLED_EXCEPTIONS_TOTAL.labels(exception_type=exception_type).inc()
-
-        if alert_settings.ENABLED and alert_cooldown.should_send(exception_type):
-            await _try_send_alert_email(request, exc, alert_settings)
-
-        return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content=internal_server_error(exc),
-        )
-
+    app.add_middleware(
+        GlobalExceptionMiddleware,
+        alert_enabled=alert_settings.ENABLED,
+        alert_to_email=alert_settings.TO_EMAIL,
+        alert_to_name=alert_settings.TO_NAME,
+        alert_cooldown=alert_cooldown,
+    )
     logger.info("Global exception handlers are set up")
-
-
-async def _try_send_alert_email(request: Request, exc: Exception, alert_settings: AlertSettings) -> None:
-    """Best-effort: a broken alert channel must never break error handling itself."""
-    try:
-        email_sender = await request.state.dishka_container.get(EmailSender)
-        subject, html_body = build_error_alert_email(exc, request)
-        await email_sender.send(
-            to_email=alert_settings.TO_EMAIL,
-            to_name=alert_settings.TO_NAME,
-            subject=subject,
-            html_body=html_body,
-        )
-    except Exception:
-        logger.exception("Failed to send critical-error alert email")

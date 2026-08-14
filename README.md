@@ -70,12 +70,25 @@ Adminer is included in the docker-compose stack and starts automatically with `m
 
 ### Observability (Prometheus, Grafana, Loki)
 
-`make upd` also starts a local, free/open-source observability stack alongside the app:
+**What Each Tool Does:**
+- **Prometheus**: Time-series database that scrapes and stores metrics from the `/metrics` endpoint every 15 seconds. Provides raw metric data, query language (PromQL), and alerting capabilities.
+- **Grafana**: Visualization platform that queries Prometheus for metrics and Loki for logs, displaying them in customizable dashboards. Provides the "App Overview" dashboard with request rates, error rates, latency percentiles, and exception counts.
+- **Loki**: Log aggregation system that stores and indexes structured logs from all application containers. Enables powerful log querying and filtering via Grafana.
+- **Promtail**: Log agent that scrapes logs from Docker containers, parses them as JSON, and sends them to Loki for storage and indexing.
 
-- **Metrics + dashboards**: **http://localhost:9090** (Prometheus) and **http://localhost:3000** (Grafana, login `admin` / `admin`). A starter dashboard ("fastapi-clean-example: App Overview") is provisioned automatically with request rate, 5xx error rate, p50/p95/p99 latency, and unhandled exceptions by type.
-- **Raw metrics endpoint**: **http://localhost:8000/metrics** (Prometheus text format - what Prometheus itself scrapes).
-- **Logs**: also queryable from the same Grafana instance (Explore → Loki datasource, or the "Live logs" panel on the dashboard), e.g. `{compose_service="app"} | json | exception_type="ValueError"`. Set `APP_LOG_FORMAT=json` (default in `env.example`) so log lines are structured and filterable; `human` gives readable output for local terminal use instead.
-- **Critical error alerts**: set `ALERT_ENABLED=true` and `ALERT_TO_EMAIL` in `.env` to get an email (via the same `EMAIL_*` SMTP settings used for transactional email) whenever a genuine unhandled server error occurs - never for ordinary 4xx validation errors. Rate-limited per exception type via `ALERT_COOLDOWN_S` so an outage can't flood the inbox.
+`make upd` starts a local observability stack alongside the app and automatically opens the key dashboards in your browser:
+
+**Key URLs for Developers:**
+- **Grafana Dashboards**: **http://localhost:3000** (login: `admin` / `admin`) - Main visualization interface with pre-configured dashboards for metrics and logs
+- **Prometheus**: **http://localhost:9090** - Time-series database for raw metrics querying and alerting rules
+- **App Metrics**: **http://localhost:8000/metrics** - Raw Prometheus metrics endpoint (what Prometheus scrapes)
+- **Adminer**: **http://localhost:8080** - Database management interface (credentials below)
+
+**What's Available:**
+- **Metrics Dashboard**: Pre-configured "fastapi-clean-example: App Overview" dashboard with request rate, 5xx error rate, p50/p95/p99 latency, and unhandled exceptions by type
+- **Log Aggregation**: Query logs via Grafana (Explore → Loki datasource) using structured queries like `{compose_service="app"} | json | exception_type="ValueError"`
+- **Structured Logging**: Set `APP_LOG_FORMAT=json` (default in `env.example`) for filterable logs; `human` for readable terminal output
+- **Critical Error Alerts**: Set `ALERT_ENABLED=true` and `ALERT_TO_EMAIL` in `.env` to receive email alerts for unhandled 5xx errors (never 4xx validation errors). Rate-limited per exception type via `ALERT_COOLDOWN_S` to prevent inbox flooding during outages.
 
 See [Makefile](Makefile) for more commands
 

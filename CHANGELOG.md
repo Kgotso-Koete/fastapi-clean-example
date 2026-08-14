@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-08-14: Observability stack with metrics, logs, and alerting
+
+### Added
+- **Observability Stack:** Integrated Prometheus, Grafana, Loki, and Promtail via Docker Compose for comprehensive application monitoring and log aggregation.
+- **Metrics:** Added `/metrics` endpoint using `prometheus-fastapi-instrumentator` to expose HTTP metrics (request counts, latency histograms, error rates) and custom counters for unhandled exceptions.
+- **Structured Logging:** Implemented `JsonFormatter` for structured JSON logging output, configurable via `APP_LOG_FORMAT` environment variable (json/human). Logs include contextual fields like `exception_type`, `path`, `method`, and user information.
+- **Alerting:** Added email alerting for unhandled 5xx server errors with rate limiting per exception type via `AlertCooldown` dataclass. Alerts include user context (username, email, phone_number) when authenticated, or anonymous/unknown status otherwise.
+- **Configuration:** Added `AlertSettings` with `ALERT_ENABLED`, `ALERT_TO_EMAIL`, `ALERT_TO_NAME`, and `ALERT_COOLDOWN_S` environment variables for alert configuration.
+- **Docker Infrastructure:** Added Prometheus, Grafana, Loki, Promtail, and Adminer services to `docker-compose.yml` with automatic provisioning of datasources and dashboards.
+- **Testing:** Added comprehensive unit tests for alert cooldown logic and email building, plus integration tests for metrics endpoint, exception counting, email alerting, and rate limiting.
+- **Debug Endpoint:** Added `/debug/test-error` endpoint (tagged in Swagger UI) for manual testing of error handling and alerting functionality.
+
+### Changed
+- **Exception Handling:** Converted the global exception handler from `@app.exception_handler(Exception)` to a pure ASGI middleware (`GlobalExceptionMiddleware`). This resolves the duplicate traceback logging issue caused by Starlette's `BaseHTTPMiddleware` re-raising exceptions, and correctly integrates user context resolution via `CurrentUserService` for logs and email alerts.
+- **Docker Compose:** Modified `make upd` to automatically open observability dashboards (Grafana, Prometheus, Adminer) in the browser after startup.
+
 ## [0.5.0] - 2026-08-05: Event dispatcher configuration and logging improvements
 
 ### Added
