@@ -3,10 +3,12 @@ import pytest
 from app.main.config.loader import (
     load_alert_settings,
     load_app_settings,
+    load_celery_settings,
     load_cookie_settings,
     load_jwt_settings,
     load_password_hasher_settings,
     load_postgres_settings,
+    load_redis_settings,
     load_session_settings,
     load_sqla_settings,
 )
@@ -131,3 +133,66 @@ def test_load_alert_settings_reads_env_vars(monkeypatch: pytest.MonkeyPatch) -> 
     assert sut.TO_EMAIL == "oncall@example.com"
     assert sut.TO_NAME == "Test On-call"
     assert sut.COOLDOWN_S == 123.5
+
+
+def test_load_redis_settings_reads_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("REDIS_HOST", "test-redis-host")
+    monkeypatch.setenv("REDIS_PORT", "16379")
+    monkeypatch.setenv("REDIS_DB", "2")
+    monkeypatch.setenv("REDIS_RESULT_DB", "3")
+    monkeypatch.setenv("REDIS_PASSWORD", "test-password")
+
+    sut = load_redis_settings()
+
+    assert sut.HOST == "test-redis-host"
+    assert sut.PORT == 16379
+    assert sut.DB == 2
+    assert sut.RESULT_DB == 3
+    assert sut.PASSWORD == "test-password"
+    # .url/.result_url build the actual connection strings Celery needs --
+    # the broker (DB) and result backend (RESULT_DB) are different Redis
+    # logical databases on the same instance, so they get different URLs.
+    assert sut.url == "redis://:test-password@test-redis-host:16379/2"
+    assert sut.result_url == "redis://:test-password@test-redis-host:16379/3"
+
+
+def test_load_redis_settings_url_omits_auth_segment_without_a_password(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("REDIS_HOST", "redis")
+    monkeypatch.setenv("REDIS_PORT", "6379")
+    monkeypatch.setenv("REDIS_DB", "0")
+    monkeypatch.setenv("REDIS_RESULT_DB", "1")
+    monkeypatch.setenv("REDIS_PASSWORD", "")
+
+    sut = load_redis_settings()
+
+    # No ":@" left dangling in the URL when there's no password configured
+    # (the common case for local dev, where Redis has no auth at all).
+    assert sut.url == "redis://redis:6379/0"
+    assert sut.result_url == "redis://redis:6379/1"
+
+
+def test_load_celery_settings_reads_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CELERY_ENABLED", "false")
+    monkeypatch.setenv("CELERY_TASK_DEFAULT_QUEUE", "test-queue")
+    monkeypatch.setenv("CELERY_TASK_ACKS_LATE", "false")
+    monkeypatch.setenv("CELERY_WORKER_PREFETCH_MULTIPLIER", "7")
+    monkeypatch.setenv("CELERY_WORKER_CONCURRENCY", "3")
+
+    sut = load_celery_settings()
+
+    assert sut.ENABLED is False
+    assert sut.TASK_DEFAULT_QUEUE == "test-queue"
+    assert sut.TASK_ACKS_LATE is False
+    assert sut.WORKER_CONCURRENCY == 3
+    assert sut.WORKER_PREFETCH_MULTIPLIER == 7
+
+
+def test_load_celery_settings_enabled_defaults_to_true(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A deployment that never sets CELERY_ENABLED at all (the common case)
+    # should default to Celery being on -- disabling it is an opt-in choice
+    # for a Celery-less deployment, not the default.
+    monkeypatch.delenv("CELERY_ENABLED", raising=False)
+
+    sut = load_celery_settings()
+
+    assert sut.ENABLED is True

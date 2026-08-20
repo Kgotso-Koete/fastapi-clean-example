@@ -6,3 +6,6 @@ services:
 
   db_pg:
     ports: !reset []
+
+  redis:
+    ports: !reset []

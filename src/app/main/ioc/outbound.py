@@ -4,19 +4,25 @@ from collections.abc import AsyncIterator, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from typing import cast
 
+from celery import Celery
 from dishka import Provider, Scope, from_context, provide
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from starlette.requests import Request
 
+from app.main.celery_factory import build_celery_app
 from app.main.config.settings import (
+    AppSettings,
+    CelerySettings,
     CookieSettings,
     JwtSettings,
     PasswordHasherSettings,
     PostgresSettings,
+    RedisSettings,
     SessionSettings,
     SqlaSettings,
 )
 from app.outbound.adapters.bcrypt_password_hasher import HasherSemaphore, HasherThreadPoolExecutor
+from app.outbound.adapters.hybrid_event_dispatcher import CeleryEnabled
 from app.outbound.auth_ctx.cookie_manager import CookieManager, CookieName
 from app.outbound.auth_ctx.handlers.change_password import ChangePassword
 from app.outbound.auth_ctx.handlers.log_in import LogIn
@@ -162,6 +168,34 @@ class AuthProvider(Provider):
     log_in = provide(LogIn)
     change_password = provide(ChangePassword)
     log_out = provide(LogOut)
+
+
+class CeleryProvider(Provider):
+    scope = Scope.APP
+
+    @provide
+    def provide_celery_app(
+        self,
+        app_settings: AppSettings,
+        redis: RedisSettings,
+        celery: CelerySettings,
+    ) -> Iterator[Celery]:
+        app = build_celery_app(
+            app_name=app_settings.SERVICE_NAME,
+            broker_url=redis.url,
+            result_backend_url=redis.result_url,
+            default_queue=celery.TASK_DEFAULT_QUEUE,
+            task_acks_late=celery.TASK_ACKS_LATE,
+            worker_prefetch_multiplier=celery.WORKER_PREFETCH_MULTIPLIER,
+        )
+        yield app
+        logger.debug("Closing Celery app connections...")
+        app.close()
+        logger.debug("Celery app connections closed.")
+
+    @provide
+    def provide_celery_enabled(self, celery: CelerySettings) -> CeleryEnabled:
+        return CeleryEnabled(celery.ENABLED)
 
 
 class RequestProvider(Provider):

@@ -9,7 +9,7 @@ TODO:
 - [ ] Make template project
 - [x] Add domain events infrastructure (`DomainEvent` base class, `EventDispatcher` port, `UserRegisteredEvent`)
 - [x] Add email sender port and adapter (`EmailSender` interface with SMTP/console implementations)
-- [x] Add event dispatcher with support for synchronous and background task execution (via FastAPI `BackgroundTasks`)
+- [x] Add event dispatcher with per-handler sync/background dispatch (`EventHandler.DISPATCH_MODE`), background handlers delivered via Celery + Redis
 - [x] Send welcome email on user registration as the first domain event use case
 - [ ] Increase test coverage: add unit tests for domain events and event handlers, integration tests for the full registration-to-email flow, and target comprehensive coverage across all layers
 - [ ] Add observability: structured logging, health check improvements, and metrics groundwork
@@ -83,12 +83,25 @@ Adminer is included in the docker-compose stack and starts automatically with `m
 - **Prometheus**: **http://localhost:9090** - Time-series database for raw metrics querying and alerting rules
 - **App Metrics**: **http://localhost:8000/metrics** - Raw Prometheus metrics endpoint (what Prometheus scrapes)
 - **Adminer**: **http://localhost:8080** - Database management interface (credentials below)
+- **Flower**: **http://localhost:5555** - Celery task monitoring dashboard (see "Background Events" below)
+- **Redis Commander**: **http://localhost:8081** - browse the actual Redis keys (see "Background Events" below)
 
 **What's Available:**
 - **Metrics Dashboard**: Pre-configured "fastapi-clean-example: App Overview" dashboard with request rate, 5xx error rate, p50/p95/p99 latency, and unhandled exceptions by type
 - **Log Aggregation**: Query logs via Grafana (Explore → Loki datasource) using structured queries like `{compose_service="app"} | json | exception_type="ValueError"`
 - **Structured Logging**: Set `APP_LOG_FORMAT=json` (default in `env.example`) for filterable logs; `human` for readable terminal output
 - **Critical Error Alerts**: Set `ALERT_ENABLED=true` and `ALERT_TO_EMAIL` in `.env` to receive email alerts for unhandled 5xx errors (never 4xx validation errors). Rate-limited per exception type via `ALERT_COOLDOWN_S` to prevent inbox flooding during outages.
+
+### Background Events (Celery, Redis)
+
+Domain events are dispatched per-handler: each `EventHandler` declares its own `DISPATCH_MODE` (`"sync"` — awaited inline, blocking the response; or `"background"` — published to Celery, delivered by the `worker` service). See `docs/implementation-plans/celery-redis-events.md` for the full design.
+
+- **Flower**: **http://localhost:5555** - inspect task status, retries, and results
+- **Redis Commander**: **http://localhost:8081** - browse the raw Redis contents directly: the broker queue (`REDIS_DB`, a Celery message per queued task, gone once consumed) and the result backend (`REDIS_RESULT_DB`, one key per finished task holding its state/return value until it expires)
+- **Worker logs**: `docker compose logs -f worker` - see background handlers actually running
+- Redis serves as both the Celery broker and result backend (two separate logical databases, `REDIS_DB`/`REDIS_RESULT_DB`)
+
+**Deploying without Celery/Redis** (e.g. to save cost): set `CELERY_ENABLED=false` in `.secrets` (or your deployment's env config) and regenerate `.env` (`make docker-env`/`make local-env`). That's the only setting to change — `redis`/`worker`/`flower` are skipped automatically (`COMPOSE_PROFILES` is derived from `CELERY_ENABLED`, not something you set directly), and every `"background"`-mode handler runs inline instead — slower (it blocks the response, same as a `"sync"` handler), but still reliably runs, rather than erroring or being dropped.
 
 See [Makefile](Makefile) for more commands
 

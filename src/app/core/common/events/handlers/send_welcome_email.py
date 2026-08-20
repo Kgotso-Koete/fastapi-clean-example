@@ -1,4 +1,5 @@
 import logging
+from typing import ClassVar, Literal
 
 from app.core.common.events.user_registered import UserRegisteredEvent
 from app.core.common.ports.email_sender import EmailSender
@@ -25,7 +26,16 @@ WELCOME_EMAIL_HTML = """\
 
 
 class SendWelcomeEmail:
+    # A welcome email can safely lag behind the HTTP response -- the new
+    # user doesn't need to wait for it before their signup request
+    # completes, so this handler runs in the background (via Celery)
+    # rather than blocking the request.
+    DISPATCH_MODE: ClassVar[Literal["sync", "background"]] = "background"
+
     def __init__(self, email_sender: EmailSender) -> None:
+        # email_sender is a port (EmailSender), not a concrete adapter --
+        # this handler doesn't know or care whether emails go out via SMTP,
+        # a console logger, or anything else.
         self._email_sender = email_sender
 
     async def handle(self, event: UserRegisteredEvent) -> None:

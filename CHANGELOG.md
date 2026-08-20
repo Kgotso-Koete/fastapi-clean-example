@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-08-20: Celery + Redis background event dispatch with per-handler control
+
+### Added
+- **Domain Events:** `DomainEvent` gained `to_payload()`/`from_payload()` for JSON serialization (`datetime`, `NewType`-over-`UUID`, plain scalars), letting events cross the process boundary to a Celery worker.
+- **Ports:** `EventHandler` now declares a required `DISPATCH_MODE: ClassVar[Literal["sync", "background"]]` per handler, replacing the old single global toggle with per-handler control.
+- **Adapters:** Added `HybridEventDispatcher`, which awaits `"sync"` handlers inline and publishes `"background"` handlers to Celery by task name. Also added the `build_celery_app` factory and `event_serialization` helpers (`dotted_path`/`import_from_dotted_path`).
+- **Worker Process:** New `src/app/main/worker/` composition root for the Celery worker — `loop_runtime` (one persistent asyncio loop per worker process, avoiding "Future attached to a different loop"), `container` (a per-task Dishka `Scope.REQUEST` container over a process-lifetime `Scope.APP` container), `celery_app`, `tasks` (`app.events.dispatch_handler`), and an independent `WorkerProvider` declaring only what registered handlers actually need.
+- **Configuration:** Added `RedisSettings` and `CelerySettings` (including `CELERY_ENABLED`, for a Celery-less deployment fallback that runs every handler inline instead), replacing `EventSettings`.
+- **Infrastructure:** Added `redis`, `worker`, and `flower` (Celery task monitoring dashboard) services to `docker-compose.yml`, gated behind a `celery` Compose profile derived automatically from `CELERY_ENABLED`. Added `redis-commander` for browsing the actual Redis broker/result-backend contents directly.
+- **Testing:** Added a real-broker smoke test (`tests/smoke/test_celery_broker.py`) proving the actual producer→broker→consumer wiring end to end, on top of infra-free unit tests and eager-mode integration tests.
+- **Documentation:** Added `docs/implementation-plans/celery-redis-events.md`, documenting the full design plus every issue found and fixed during real `make test-docker`/manual verification runs.
+
+### Changed
+- **Event Dispatch:** Migrated `SendWelcomeEmail` to `DISPATCH_MODE = "background"`; it now runs in a real Celery worker process instead of via `asyncio.create_task()`, removing the prior risk of a dropped event on deploy or crash.
+- **Docker Compose:** `app` no longer strictly depends on `redis` at startup, so it stays skippable when Celery is disabled.
+
+### Removed
+- **Adapters:** Removed `SyncEventDispatcher` and `BackgroundEventDispatcher`, replaced by `HybridEventDispatcher`.
+- **Configuration:** Removed the old `EventSettings.DISPATCH_MODE` global env-var toggle.
+
 ## [0.6.0] - 2026-08-14: Observability stack with metrics, logs, and alerting
 
 ### Added

@@ -13,7 +13,7 @@ MAKEFLAGS += --no-print-directory
 # STAIRWAY_TEST: path to stairway test (empty = skip stairway step)
 # -----------------------------
 PROJECT_NAME ?= $(notdir $(abspath .))
-INFRA_SERVICES ?= db_pg
+INFRA_SERVICES ?= db_pg redis
 INFRA_INIT_SERVICES ?=
 MIGRATION_DB_SERVICE ?= db_pg
 STAIRWAY_TEST ?= tests/integration/migrations/test_stairway.py
@@ -126,6 +126,8 @@ open-dashboards:
 	@xdg-open http://localhost:3000 >/dev/null 2>&1 || true
 	@xdg-open http://localhost:9090 >/dev/null 2>&1 || true
 	@xdg-open http://localhost:8000/metrics >/dev/null 2>&1 || true
+	@xdg-open http://localhost:5555 >/dev/null 2>&1 || true
+	@xdg-open http://localhost:8081 >/dev/null 2>&1 || true
 
 upd-local: local-env
 	$(DOCKER_COMPOSE) up -d --build --force-recreate $(INFRA_SERVICES) $(INFRA_INIT_SERVICES)
@@ -157,7 +159,7 @@ test-docker-app: docker-env
 	rc=0; \
 	$(DC_TEST_DOCKER) down -v --remove-orphans >/dev/null 2>&1 || true; \
 	if [ -n "$(strip $(INFRA_SERVICES))" ]; then \
-	  $(DC_TEST_DOCKER) up -d --build --wait --wait-timeout 180 $(INFRA_SERVICES); \
+	  $(DC_TEST_DOCKER) up -d --build --wait --wait-timeout 180 $(INFRA_SERVICES) worker; \
 	  if [ -n "$(strip $(INFRA_INIT_SERVICES))" ]; then \
 	    $(DC_TEST_DOCKER) up --build $(INFRA_INIT_SERVICES) >/dev/null; \
 	  fi; \

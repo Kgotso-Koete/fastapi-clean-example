@@ -9,24 +9,26 @@ from app.inbound.http.root_router import make_fastapi_root_router
 from app.main.config.loader import (
     load_alert_settings,
     load_app_settings,
+    load_celery_settings,
     load_cookie_settings,
     load_email_settings,
-    load_event_settings,
     load_jwt_settings,
     load_password_hasher_settings,
     load_postgres_settings,
+    load_redis_settings,
     load_session_settings,
     load_sqla_settings,
 )
 from app.main.config.settings import (
     AlertSettings,
     AppSettings,
+    CelerySettings,
     CookieSettings,
     EmailSettings,
-    EventSettings,
     JwtSettings,
     PasswordHasherSettings,
     PostgresSettings,
+    RedisSettings,
     SessionSettings,
     SqlaSettings,
 )
@@ -61,7 +63,8 @@ def make_app(  # noqa: C901 -- new alert_settings branch pushed this past the co
     session_settings: SessionSettings | None = None,
     cookie_settings: CookieSettings | None = None,
     email_settings: EmailSettings | None = None,
-    event_settings: EventSettings | None = None,
+    redis_settings: RedisSettings | None = None,
+    celery_settings: CelerySettings | None = None,
     alert_settings: AlertSettings | None = None,
 ) -> FastAPI:
     """Pass providers to override existing ones for testing."""
@@ -84,8 +87,10 @@ def make_app(  # noqa: C901 -- new alert_settings branch pushed this past the co
         cookie_settings = load_cookie_settings()
     if email_settings is None:
         email_settings = load_email_settings()
-    if event_settings is None:
-        event_settings = load_event_settings()
+    if redis_settings is None:
+        redis_settings = load_redis_settings()
+    if celery_settings is None:
+        celery_settings = load_celery_settings()
     if alert_settings is None:
         alert_settings = load_alert_settings()
 
@@ -109,7 +114,8 @@ def make_app(  # noqa: C901 -- new alert_settings branch pushed this past the co
             SessionSettings: session_settings,
             CookieSettings: cookie_settings,
             EmailSettings: email_settings,
-            EventSettings: event_settings,
+            RedisSettings: redis_settings,
+            CelerySettings: celery_settings,
             AlertSettings: alert_settings,
         },
     )
