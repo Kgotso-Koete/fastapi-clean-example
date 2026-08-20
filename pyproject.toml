@@ -12,6 +12,7 @@ dependencies = [
   "aiosmtplib>=3.0.0",
   "alembic==1.18.4",
   "bcrypt==5.0.0",
+  "celery[redis]==5.6.3",
   "dishka==1.10.1",
   "fastapi==0.136.1",
   "fastapi-error-map==1.0.0",

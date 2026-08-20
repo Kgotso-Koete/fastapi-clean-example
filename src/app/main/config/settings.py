@@ -91,8 +91,59 @@ class EmailSettings(BaseModel):
     FROM_NAME: str = "Clean Example"
 
 
-class EventSettings(BaseModel):
-    DISPATCH_MODE: Literal["sync", "background"] = "background"
+class RedisSettings(BaseModel):
+    """
+    Connection details for the Redis instance used as Celery's message
+    broker. DB and RESULT_DB are two different logical databases on the
+    *same* Redis instance (Redis supports several, numbered from 0) --
+    keeping the broker's queue data and the result backend's task-outcome
+    data in separate databases avoids their keys colliding with each other.
+    """
+
+    HOST: str = "redis"
+    PORT: int = 6379
+    DB: int = 0
+    RESULT_DB: int = 1
+    PASSWORD: str = ""
+
+    @property
+    def url(self) -> str:
+        """The broker URL Celery connects to for sending/receiving tasks."""
+        return self._build_url(self.DB)
+
+    @property
+    def result_url(self) -> str:
+        """The result backend URL Celery uses to store/query task outcomes."""
+        return self._build_url(self.RESULT_DB)
+
+    def _build_url(self, db: int) -> str:
+        # Only include a ":password@" segment when a password is actually
+        # set -- otherwise the URL would have a dangling ":@" in it, which
+        # is invalid.
+        auth = f":{self.PASSWORD}@" if self.PASSWORD else ""
+        return f"redis://{auth}{self.HOST}:{self.PORT}/{db}"
+
+
+class CelerySettings(BaseModel):
+    # When False, HybridEventDispatcher runs every handler inline
+    # regardless of its own DISPATCH_MODE, instead of publishing
+    # "background" handlers to Celery -- lets a deployment skip standing
+    # up Redis/a worker entirely (e.g. to save cost) and still reliably
+    # run every handler, just without the "don't block the response"
+    # benefit for the ones declared "background".
+    ENABLED: bool = True
+    TASK_DEFAULT_QUEUE: str = "events"
+    # acks_late=True: a task is only removed from the queue after it
+    # finishes, not the moment a worker picks it up -- so a worker crash
+    # mid-task leaves the task to be retried, instead of silently lost.
+    TASK_ACKS_LATE: bool = True
+    WORKER_PREFETCH_MULTIPLIER: int = 1
+    # Celery's own default is one process per CPU core, which competes
+    # directly with everything else on the host (Postgres, Redis, the app
+    # itself) for the same cores. 2 is a deliberately modest default for
+    # this template's expected scale -- raise it if your workload and host
+    # actually justify more.
+    WORKER_CONCURRENCY: int = 2
 
 
 # vvv ENTIRE CLASS BELOW IS NEW vvv

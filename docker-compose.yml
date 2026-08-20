@@ -35,6 +35,91 @@ services:
       retries: 5
       start_period: 1s
 
+  # --- Celery broker + worker (per-handler background event dispatch) ---
+  # See docs/implementation-plans/celery-redis-events.md for the full design.
+
+  # All three behind the "celery" Compose profile, activated by default via
+  # COMPOSE_PROFILES=celery in env.example -- a deployment that sets
+  # CELERY_ENABLED=false (see EventHandler.DISPATCH_MODE fallback in
+  # HybridEventDispatcher) can also set COMPOSE_PROFILES= (empty) to skip
+  # standing up any of this infrastructure at all. `app` intentionally has
+  # no depends_on for `redis` -- it no longer strictly requires it.
+
+  redis:
+    image: redis:8-alpine
+    restart: on-failure
+    profiles: ["celery"]
+    ports:
+      - "127.0.0.1:${REDIS_PORT}:6379"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 2s
+      timeout: 2s
+      retries: 5
+      start_period: 1s
+
+  worker:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+      args:
+        - ENVIRONMENT=dev
+    restart: on-failure
+    profiles: ["celery"]
+    volumes:
+      - .:/code
+    depends_on:
+      db_pg:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    command: ["worker"]
+    healthcheck:
+      # --timeout gives Celery's own inspect command a generous reply-wait
+      # window; Docker's own `timeout:` below is set comfortably longer
+      # than that, so a slow-but-fine response isn't mistaken for a hang.
+      # start_period is set generously: `docker compose up --wait` treats
+      # the *first* "unhealthy" transition as a hard failure rather than
+      # polling through to --wait-timeout, and failing checks during
+      # start_period never count towards that transition -- this covers
+      # the CPU contention of every other service starting up alongside it
+      # (observed to fully settle well within this window; the worker
+      # itself is typically ready in ~1s once it actually gets scheduled).
+      test: ["CMD-SHELL", "celery -A app.main.worker.celery_app:celery_app inspect ping --timeout=8 | grep -q OK"]
+      interval: 5s
+      timeout: 15s
+      retries: 3
+      start_period: 45s
+
+  flower:
+    image: mher/flower:2.0
+    restart: unless-stopped
+    profiles: ["celery"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    ports:
+      - "127.0.0.1:${FLOWER_PORT}:5555"
+
+  # Redis Commander -- browse the actual Redis contents (broker queue in
+  # REDIS_DB, task results in REDIS_RESULT_DB) the way Adminer does for
+  # Postgres and Flower does for Celery's own task-level view.
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    restart: unless-stopped
+    profiles: ["celery"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - REDIS_HOSTS=broker:redis:6379:0,results:redis:6379:1
+    ports:
+      - "127.0.0.1:${REDIS_COMMANDER_PORT}:8081"
+
   # vvv EVERYTHING BELOW THIS LINE IS NEW vvv
   # --- Observability stack (all free/open-source, local-only) ---
   # See README.md "Observability" section for access URLs and what each does.

@@ -9,10 +9,23 @@ set -eu -o pipefail
   sed \
     -e 's|^EXAMPLE_SERVICE_URL=.*|EXAMPLE_SERVICE_URL=http://127.0.0.1:51999|' \
     -e 's|^POSTGRES_HOST=.*|POSTGRES_HOST=127.0.0.1|' \
+    -e 's|^REDIS_HOST=.*|REDIS_HOST=127.0.0.1|' \
     env.example
   if [ -f .secrets ]; then
     echo
     echo "# --- secrets from .secrets (not committed) ---"
     cat .secrets
+    echo # guarantee a trailing newline even if .secrets' last line lacks one
   fi
 } > .env
+
+# COMPOSE_PROFILES is derived from CELERY_ENABLED, not set independently --
+# CELERY_ENABLED is the one setting that decides whether this deployment
+# uses Celery at all. Appended last so it wins (.env parsing is
+# last-value-wins) over anything set earlier in env.example/.secrets.
+celery_enabled=$(grep -E '^CELERY_ENABLED=' .env | tail -1 | cut -d= -f2)
+if [ "$celery_enabled" = "false" ]; then
+  echo "COMPOSE_PROFILES=" >> .env
+else
+  echo "COMPOSE_PROFILES=celery" >> .env
+fi

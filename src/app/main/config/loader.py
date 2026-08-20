@@ -6,12 +6,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from app.main.config.settings import (
     AlertSettings,  # <-- NEW
     AppSettings,
+    CelerySettings,
     CookieSettings,
     EmailSettings,
-    EventSettings,
     JwtSettings,
     PasswordHasherSettings,
     PostgresSettings,
+    RedisSettings,
     SessionSettings,
     SqlaSettings,
 )
@@ -61,8 +62,12 @@ class EmailEnvConfig(BaseSettings, EmailSettings):
     model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="EMAIL_")
 
 
-class EventEnvConfig(BaseSettings, EventSettings):
-    model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="EVENT_")
+class RedisEnvConfig(BaseSettings, RedisSettings):
+    model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="REDIS_")
+
+
+class CeleryEnvConfig(BaseSettings, CelerySettings):
+    model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="CELERY_")
 
 
 # vvv NEW vvv
@@ -102,8 +107,12 @@ def load_email_settings() -> EmailSettings:
     return _load_settings(EmailEnvConfig)
 
 
-def load_event_settings() -> EventSettings:
-    return _load_settings(EventEnvConfig)
+def load_redis_settings() -> RedisSettings:
+    return _load_settings(RedisEnvConfig)
+
+
+def load_celery_settings() -> CelerySettings:
+    return _load_settings(CeleryEnvConfig)
 
 
 # vvv NEW vvv

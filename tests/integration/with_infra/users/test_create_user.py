@@ -1,4 +1,3 @@
-import asyncio
 from collections.abc import Sequence
 
 import httpx2
@@ -64,7 +63,10 @@ async def test_returns_201_and_creates_user(
     assert user.role == UserRole.USER
     assert user.is_active is True
 
-    await asyncio.sleep(0.01)
+    # Eager-mode Celery (see it_worker_runtime/_EagerCeleryProvider in
+    # conftest.py) runs the background handler synchronously as part of
+    # send_task() above, so the email is already sent by the time the
+    # response comes back -- no need to wait for anything.
     assert len(it_spy_email_sender.sent) == 1
     assert it_spy_email_sender.sent[0]["to_email"] == payload["email"]
 
