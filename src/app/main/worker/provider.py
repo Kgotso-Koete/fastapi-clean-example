@@ -8,6 +8,7 @@ from app.main.config.settings import EmailSettings
 from app.main.ioc.outbound import HasherThreadPoolProvider, PersistenceSqlaProvider
 from app.outbound.adapters.console_email_sender import ConsoleEmailSender
 from app.outbound.adapters.smtp_email_sender import SmtpEmailSender
+from app.outbound.adapters.sqla_outbox_repository import SqlaOutboxRepository
 
 
 class WorkerProvider(Provider):
@@ -49,6 +50,14 @@ class WorkerProvider(Provider):
 
     send_welcome_email = provide(SendWelcomeEmail, scope=Scope.REQUEST)
 
+    # Bound by its own concrete type, not the core OutboxRepository
+    # Protocol -- app.main.worker.outbox_drain_loop resolves it directly to
+    # call get_pending()/mark_processed()/delete()/commit(), which aren't
+    # part of that Protocol (see SqlaOutboxRepository's docstring).
+    # REQUEST-scoped because it depends on the REQUEST-scoped AsyncSession
+    # from PersistenceSqlaProvider below.
+    outbox_repository = provide(SqlaOutboxRepository, scope=Scope.REQUEST)
+
 
 def get_worker_providers() -> Iterable[Provider]:
     """
@@ -56,8 +65,8 @@ def get_worker_providers() -> Iterable[Provider]:
     HasherThreadPoolProvider/PersistenceSqlaProvider are reused as-is from
     main/ioc/outbound.py (neither needs a Request, so both validate fine
     here) -- included now so a future DB-touching background handler (see
-    the CreateInvoice illustration in docs/implementation-plans/
-    celery-redis-events.md) has what it needs without further wiring
+    the CreateInvoice illustration in docs/plans/3-celery-redis-events.md)
+    has what it needs without further wiring
     changes. AuthProvider, RequestProvider, and CeleryProvider are
     deliberately excluded: the worker has no HTTP request, and it never
     dispatches events itself -- it only executes a handler resolved

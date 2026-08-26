@@ -59,8 +59,9 @@ def setup_global_exception_handlers(app: FastAPI, *, alert_settings: AlertSettin
     app.add_middleware(
         GlobalExceptionMiddleware,
         alert_enabled=alert_settings.ENABLED,
-        alert_to_email=alert_settings.TO_EMAIL,
-        alert_to_name=alert_settings.TO_NAME,
+        alert_to_emails=alert_settings.to_emails,
+        alert_cc_emails=alert_settings.cc_emails,
+        alert_bcc_emails=alert_settings.bcc_emails,
         alert_cooldown=alert_cooldown,
     )
     logger.info("Global exception handlers are set up")

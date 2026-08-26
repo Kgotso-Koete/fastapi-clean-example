@@ -67,8 +67,7 @@ def it_fastapi_app(it_di_overrides: Sequence[Provider]) -> FastAPI:
         app_settings=AppSettings(DEBUG_MODE=False),
         alert_settings=AlertSettings(
             ENABLED=True,
-            TO_EMAIL="oncall@example.com",
-            TO_NAME="Test On-call",
+            TO_EMAILS="oncall@example.com",
             COOLDOWN_S=9999.0,
         ),
     )
@@ -138,7 +137,7 @@ async def test_unhandled_exception_sends_a_critical_error_alert_email(
 
     assert len(it_spy_email_sender.sent) == 1
     sent = it_spy_email_sender.sent[0]
-    assert sent["to_email"] == "oncall@example.com"
+    assert sent["to_emails"] == ["oncall@example.com"]
     assert "ValueError" in sent["subject"]
     assert UNHANDLED_ERROR_ENDPOINT in sent["subject"]
 
@@ -173,7 +172,7 @@ async def test_unhandled_exception_from_a_logged_in_user_shows_their_identity_in
     # Sign-up itself may also send its own (unrelated) welcome email through
     # this same spy, so filter to the alert recipient specifically rather
     # than asserting on the spy's full history.
-    alert_emails = [sent for sent in it_spy_email_sender.sent if sent["to_email"] == "oncall@example.com"]
+    alert_emails = [sent for sent in it_spy_email_sender.sent if sent["to_emails"] == ["oncall@example.com"]]
     assert len(alert_emails) == 1
     html_body = alert_emails[0]["html_body"]
     assert username in html_body

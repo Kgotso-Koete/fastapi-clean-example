@@ -1,4 +1,5 @@
 from abc import abstractmethod
+from collections.abc import Sequence
 from typing import Protocol
 
 
@@ -9,8 +10,9 @@ class EmailSender(Protocol):
     async def send(
         self,
         *,
-        to_email: str,
-        to_name: str,
+        to_emails: Sequence[str],
         subject: str,
         html_body: str,
+        cc_emails: Sequence[str] = (),
+        bcc_emails: Sequence[str] = (),
     ) -> None: ...

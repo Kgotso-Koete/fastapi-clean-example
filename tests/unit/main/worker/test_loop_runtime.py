@@ -1,3 +1,4 @@
+import asyncio
 import threading
 from collections.abc import Iterator
 
@@ -69,6 +70,55 @@ class TestStartLoop:
         loop2 = loop_runtime.start_loop()
 
         assert loop1 is loop2
+
+
+class TestSpawn:
+    def test_raises_runtime_error_before_loop_is_started(self) -> None:
+        async def _noop() -> None:
+            return None
+
+        coro = _noop()
+        try:
+            with pytest.raises(RuntimeError, match="not running"):
+                loop_runtime.spawn(coro)
+        finally:
+            coro.close()
+
+    def test_does_not_block_the_calling_thread(self) -> None:
+        # spawn()'s whole point is starting a coroutine that keeps running
+        # (e.g. a forever loop) without the caller waiting on it -- unlike
+        # run_coroutine(), calling it must return immediately even though
+        # the coroutine it schedules never finishes on its own.
+        loop_runtime.start_loop()
+        started = threading.Event()
+
+        async def _run_until_cancelled() -> None:
+            started.set()
+            await asyncio.Event().wait()
+
+        loop_runtime.spawn(_run_until_cancelled())
+
+        assert started.wait(timeout=1)
+
+    def test_cancel_stops_the_coroutine_mid_run(self) -> None:
+        loop_runtime.start_loop()
+        started = threading.Event()
+        cancelled = threading.Event()
+
+        async def _run_until_cancelled() -> None:
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
+        future = loop_runtime.spawn(_run_until_cancelled())
+        assert started.wait(timeout=1)
+
+        future.cancel()
+
+        assert cancelled.wait(timeout=1)
 
 
 class TestStopLoop:

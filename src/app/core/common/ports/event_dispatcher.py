@@ -8,4 +8,11 @@ class EventDispatcher(Protocol):
     """Dispatches domain events to their registered handlers."""
 
     @abstractmethod
-    async def dispatch(self, events: list[DomainEvent]) -> None: ...
+    async def stage(self, events: list[DomainEvent]) -> None:
+        """Call BEFORE the caller's own flush()/commit()."""
+        ...
+
+    @abstractmethod
+    async def dispatch(self, events: list[DomainEvent]) -> None:
+        """Call AFTER the caller's own commit()."""
+        ...

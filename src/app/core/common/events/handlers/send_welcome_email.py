@@ -41,8 +41,7 @@ class SendWelcomeEmail:
     async def handle(self, event: UserRegisteredEvent) -> None:
         logger.info("Sending welcome email to %s", event.email)
         await self._email_sender.send(
-            to_email=event.email,
-            to_name=event.username,
+            to_emails=[event.email],
             subject=WELCOME_EMAIL_SUBJECT,
             html_body=WELCOME_EMAIL_HTML.format(username=event.username),
         )

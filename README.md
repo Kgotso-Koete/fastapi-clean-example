@@ -8,11 +8,16 @@ TODO:
 - [ ] Explain code and patterns in new README
 - [ ] Make template project
 - [x] Add domain events infrastructure (`DomainEvent` base class, `EventDispatcher` port, `UserRegisteredEvent`)
-- [x] Add email sender port and adapter (`EmailSender` interface with SMTP/console implementations)
+- [x] Add email sender port and adapter (`EmailSender` interface with SMTP/console implementations), with multi-recipient (to/cc/bcc) support
 - [x] Add event dispatcher with per-handler sync/background dispatch (`EventHandler.DISPATCH_MODE`), background handlers delivered via Celery + Redis
 - [x] Send welcome email on user registration as the first domain event use case
-- [ ] Increase test coverage: add unit tests for domain events and event handlers, integration tests for the full registration-to-email flow, and target comprehensive coverage across all layers
-- [ ] Add observability: structured logging, health check improvements, and metrics groundwork
+- [x] Add a transactional outbox for background event delivery, so a crash between commit and Celery publish can no longer silently drop an event (see `docs/plans/4-transactional-outbox.md`)
+- [x] Add observability: structured logging, Prometheus metrics, Grafana dashboards, Loki/Promtail log aggregation, and email alerting on unhandled errors (see `docs/plans/2-observability.md`)
+- [ ] Increase test coverage: several `core/commands`/`core/queries` files still have 0% unit coverage (exercised only at the integration level) — see `docs/plans/0-production-readiness-roadmap.md`
+- [ ] Add automated coverage gating so a new, untested file/function in `core`/`inbound`/`outbound` fails CI instead of shipping unnoticed (`diff-cover`, or self-hosted SonarQube for an ongoing dashboard) — see `docs/plans/0-production-readiness-roadmap.md`
+- [ ] Move the remaining hardcoded container host ports (`prometheus`, `grafana`, `loki`, `adminer`) into `env.example`/`.secrets`, matching how the other five services already work — see `docs/plans/0-production-readiness-roadmap.md`
+- [ ] Add a self-hosted documentation wiki (MkDocs + Material, generated dependency-graph and complexity diagrams, no third party) — see `docs/plans/5-self-hosted-docs-wiki.md`
+- [ ] Harden for production use: password policy, rate limiting, secrets management, TLS, backups, a real deploy pipeline, self-service password reset, email verification, and more — full prioritized backlog in `docs/plans/0-production-readiness-roadmap.md`
 
 Prerequisites
 ```shell
@@ -90,11 +95,11 @@ Adminer is included in the docker-compose stack and starts automatically with `m
 - **Metrics Dashboard**: Pre-configured "fastapi-clean-example: App Overview" dashboard with request rate, 5xx error rate, p50/p95/p99 latency, and unhandled exceptions by type
 - **Log Aggregation**: Query logs via Grafana (Explore → Loki datasource) using structured queries like `{compose_service="app"} | json | exception_type="ValueError"`
 - **Structured Logging**: Set `APP_LOG_FORMAT=json` (default in `env.example`) for filterable logs; `human` for readable terminal output
-- **Critical Error Alerts**: Set `ALERT_ENABLED=true` and `ALERT_TO_EMAIL` in `.env` to receive email alerts for unhandled 5xx errors (never 4xx validation errors). Rate-limited per exception type via `ALERT_COOLDOWN_S` to prevent inbox flooding during outages.
+- **Critical Error Alerts**: Set `ALERT_ENABLED=true` and `ALERT_TO_EMAILS` (comma-separated; optionally `ALERT_CC_EMAILS`/`ALERT_BCC_EMAILS`) in `.env` to receive email alerts for unhandled 5xx errors (never 4xx validation errors). Rate-limited per exception type via `ALERT_COOLDOWN_S` to prevent inbox flooding during outages.
 
 ### Background Events (Celery, Redis)
 
-Domain events are dispatched per-handler: each `EventHandler` declares its own `DISPATCH_MODE` (`"sync"` — awaited inline, blocking the response; or `"background"` — published to Celery, delivered by the `worker` service). See `docs/implementation-plans/celery-redis-events.md` for the full design.
+Domain events are dispatched per-handler: each `EventHandler` declares its own `DISPATCH_MODE` (`"sync"` — awaited inline, blocking the response; or `"background"` — published to Celery, delivered by the `worker` service). See `docs/plans/3-celery-redis-events.md` for the full design.
 
 - **Flower**: **http://localhost:5555** - inspect task status, retries, and results
 - **Redis Commander**: **http://localhost:8081** - browse the raw Redis contents directly: the broker queue (`REDIS_DB`, a Celery message per queued task, gone once consumed) and the result backend (`REDIS_RESULT_DB`, one key per finished task holding its state/return value until it expires)

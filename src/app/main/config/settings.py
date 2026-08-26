@@ -144,6 +144,26 @@ class CelerySettings(BaseModel):
     # this template's expected scale -- raise it if your workload and host
     # actually justify more.
     WORKER_CONCURRENCY: int = 2
+    # Defaults to retain (not delete) a relayed row -- see
+    # docs/plans/4-transactional-outbox.md, Confirmed Decision #2. Deleting
+    # the instant a row is relayed would make the outbox invisible again,
+    # defeating the point of making it queryable via Adminer in the first
+    # place. drain_outbox always marks a relayed row processed regardless
+    # of this setting; it only additionally deletes when this is False.
+    OUTBOX_RETAIN_AFTER_RELAY: bool = True
+    # How often the worker process's own outbox drain loop ticks -- see
+    # app.main.worker.outbox_drain_loop. 3 seconds is a deliberately short
+    # default so a background handler's effect (e.g. the welcome email)
+    # shows up quickly in local dev; raise it for a deployment where that
+    # latency doesn't matter and re-scanning the table that often is
+    # wasted work.
+    DRAIN_OUTBOX_INTERVAL_SECONDS: float = 3.0
+
+
+def _split_emails(value: str) -> list[str]:
+    """Comma-separated env var -> a clean list, matching this project's flat
+    KEY=value env var style (no JSON-in-env-var needed for a list field)."""
+    return [email.strip() for email in value.split(",") if email.strip()]
 
 
 # vvv ENTIRE CLASS BELOW IS NEW vvv
@@ -152,14 +172,29 @@ class AlertSettings(BaseModel):
 
     Deliberately separate from EmailSettings: alerts go to operators/devs about
     the *system*, not to end users about their *account*, so they get their own
-    toggle, recipient, and rate limit rather than piggybacking on transactional
+    toggle, recipients, and rate limit rather than piggybacking on transactional
     email config.
     """
 
     ENABLED: bool = False
-    TO_EMAIL: str = ""
-    TO_NAME: str = "On-call"
+    # Comma-separated; use the to_emails/cc_emails/bcc_emails properties below
+    # rather than these raw fields directly.
+    TO_EMAILS: str = ""
+    CC_EMAILS: str = ""
+    BCC_EMAILS: str = ""
     # Minimum seconds between two alert emails for the *same* exception type,
     # so an outage that throws thousands of the same error doesn't also flood
     # the inbox. Different exception types are rate-limited independently.
     COOLDOWN_S: float = 300.0
+
+    @property
+    def to_emails(self) -> list[str]:
+        return _split_emails(self.TO_EMAILS)
+
+    @property
+    def cc_emails(self) -> list[str]:
+        return _split_emails(self.CC_EMAILS)
+
+    @property
+    def bcc_emails(self) -> list[str]:
+        return _split_emails(self.BCC_EMAILS)

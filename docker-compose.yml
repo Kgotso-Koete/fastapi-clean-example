@@ -36,14 +36,15 @@ services:
       start_period: 1s
 
   # --- Celery broker + worker (per-handler background event dispatch) ---
-  # See docs/implementation-plans/celery-redis-events.md for the full design.
+  # See docs/plans/celery-redis-events.md for the full design.
 
-  # All three behind the "celery" Compose profile, activated by default via
-  # COMPOSE_PROFILES=celery in env.example -- a deployment that sets
-  # CELERY_ENABLED=false (see EventHandler.DISPATCH_MODE fallback in
-  # HybridEventDispatcher) can also set COMPOSE_PROFILES= (empty) to skip
-  # standing up any of this infrastructure at all. `app` intentionally has
-  # no depends_on for `redis` -- it no longer strictly requires it.
+  # Every service below is behind the "celery" Compose profile, activated
+  # by default via COMPOSE_PROFILES=celery in env.example -- a deployment
+  # that sets CELERY_ENABLED=false (see EventHandler.DISPATCH_MODE
+  # fallback in HybridEventDispatcher) can also set COMPOSE_PROFILES=
+  # (empty) to skip standing up any of this infrastructure at all. `app`
+  # intentionally has no depends_on for `redis` -- it no longer strictly
+  # requires it.
 
   redis:
     image: redis:8-alpine
@@ -92,6 +93,15 @@ services:
       timeout: 15s
       retries: 3
       start_period: 45s
+
+  # No separate `beat` service: `worker` drains `event_outbox` itself, via
+  # a plain polling loop it starts on its own process (see
+  # src/app/main/worker/outbox_drain_loop.py) rather than a Celery Beat
+  # schedule. See docs/plans/transactional-outbox.md's "Why not a Celery
+  # Beat task" section for why -- in short, a Beat-scheduled task still
+  # shows up in Flower/Redis on every tick even when there's nothing to
+  # drain, polluting the audit trail a Celery task is otherwise meant to
+  # be for this app.
 
   flower:
     image: mher/flower:2.0

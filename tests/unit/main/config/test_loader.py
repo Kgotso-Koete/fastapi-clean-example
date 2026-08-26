@@ -1,6 +1,7 @@
 import pytest
 
 from app.main.config.loader import (
+    CeleryEnvConfig,
     load_alert_settings,
     load_app_settings,
     load_celery_settings,
@@ -123,15 +124,17 @@ def test_load_cookie_settings_reads_env_vars(monkeypatch: pytest.MonkeyPatch) ->
 
 def test_load_alert_settings_reads_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ALERT_ENABLED", "true")
-    monkeypatch.setenv("ALERT_TO_EMAIL", "oncall@example.com")
-    monkeypatch.setenv("ALERT_TO_NAME", "Test On-call")
+    monkeypatch.setenv("ALERT_TO_EMAILS", "oncall@example.com, backup@example.com")
+    monkeypatch.setenv("ALERT_CC_EMAILS", "manager@example.com")
+    monkeypatch.setenv("ALERT_BCC_EMAILS", "audit@example.com")
     monkeypatch.setenv("ALERT_COOLDOWN_S", "123.5")
 
     sut = load_alert_settings()
 
     assert sut.ENABLED is True
-    assert sut.TO_EMAIL == "oncall@example.com"
-    assert sut.TO_NAME == "Test On-call"
+    assert sut.to_emails == ["oncall@example.com", "backup@example.com"]
+    assert sut.cc_emails == ["manager@example.com"]
+    assert sut.bcc_emails == ["audit@example.com"]
     assert sut.COOLDOWN_S == 123.5
 
 
@@ -190,9 +193,14 @@ def test_load_celery_settings_reads_env_vars(monkeypatch: pytest.MonkeyPatch) ->
 def test_load_celery_settings_enabled_defaults_to_true(monkeypatch: pytest.MonkeyPatch) -> None:
     # A deployment that never sets CELERY_ENABLED at all (the common case)
     # should default to Celery being on -- disabling it is an opt-in choice
-    # for a Celery-less deployment, not the default.
+    # for a Celery-less deployment, not the default. monkeypatch.delenv only
+    # clears the process environment; load_celery_settings() (via
+    # CeleryEnvConfig's env_file=.env) would still pick up an explicit
+    # CELERY_ENABLED from .env itself if one is set (e.g. a developer's own
+    # .secrets override) -- _env_file=None here removes that second source
+    # too, so this only proves the field default, not today's local config.
     monkeypatch.delenv("CELERY_ENABLED", raising=False)
 
-    sut = load_celery_settings()
+    sut = CeleryEnvConfig(_env_file=None)
 
     assert sut.ENABLED is True

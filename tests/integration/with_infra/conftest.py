@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import app.main.worker.tasks  # noqa: F401 -- side effect: registers dispatch_event_handler_task on _worker_celery_app below
 from app.core.common.services.user import UserService
-from app.main.config.settings import AppSettings
+from app.main.config.settings import AppSettings, CelerySettings
 from app.main.run import make_app
 from app.main.worker import (
     container as worker_container,
@@ -61,6 +61,13 @@ def it_fastapi_app(it_di_overrides: Sequence[Provider]) -> FastAPI:
         _EagerCeleryProvider(),
         *it_di_overrides,
         app_settings=AppSettings(DEBUG_MODE=False),
+        # Pinned rather than left to load_celery_settings()'s ambient .env
+        # value -- _EagerCeleryProvider above already assumes the
+        # Celery-enabled (staging-to-outbox) code path, so this suite's
+        # assertions need that to hold regardless of a developer's own
+        # CELERY_ENABLED override in .secrets (e.g. to manually test the
+        # Celery-disabled inline-dispatch fallback).
+        celery_settings=CelerySettings(ENABLED=True),
     )
 
 
