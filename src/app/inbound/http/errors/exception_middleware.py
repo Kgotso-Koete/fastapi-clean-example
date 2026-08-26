@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Sequence
 
 from prometheus_client import Counter
 from starlette import status
@@ -46,14 +47,16 @@ class GlobalExceptionMiddleware:
         app: ASGIApp,
         *,
         alert_enabled: bool,
-        alert_to_email: str,
-        alert_to_name: str,
+        alert_to_emails: Sequence[str],
         alert_cooldown: AlertCooldown,
+        alert_cc_emails: Sequence[str] = (),
+        alert_bcc_emails: Sequence[str] = (),
     ) -> None:
         self.app = app
         self._alert_enabled = alert_enabled
-        self._alert_to_email = alert_to_email
-        self._alert_to_name = alert_to_name
+        self._alert_to_emails = alert_to_emails
+        self._alert_cc_emails = alert_cc_emails
+        self._alert_bcc_emails = alert_bcc_emails
         self._alert_cooldown = alert_cooldown
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
@@ -90,8 +93,9 @@ class GlobalExceptionMiddleware:
             await _try_send_alert_email(
                 request,
                 exc,
-                to_email=self._alert_to_email,
-                to_name=self._alert_to_name,
+                to_emails=self._alert_to_emails,
+                cc_emails=self._alert_cc_emails,
+                bcc_emails=self._alert_bcc_emails,
                 user_context=user_context,
             )
 
@@ -128,8 +132,9 @@ async def _try_send_alert_email(
     request: Request,
     exc: Exception,
     *,
-    to_email: str,
-    to_name: str,
+    to_emails: Sequence[str],
+    cc_emails: Sequence[str],
+    bcc_emails: Sequence[str],
     user_context: RequestUserContext,
 ) -> None:
     """Best-effort: a broken alert channel must never break error handling itself."""
@@ -137,10 +142,11 @@ async def _try_send_alert_email(
         email_sender = await request.state.dishka_container.get(EmailSender)
         subject, html_body = build_error_alert_email(exc, request, user_context)
         await email_sender.send(
-            to_email=to_email,
-            to_name=to_name,
+            to_emails=to_emails,
             subject=subject,
             html_body=html_body,
+            cc_emails=cc_emails,
+            bcc_emails=bcc_emails,
         )
     except Exception:
         logger.exception("Failed to send critical-error alert email")

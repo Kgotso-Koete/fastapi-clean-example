@@ -4,20 +4,16 @@ from collections.abc import AsyncIterator, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from typing import cast
 
-from celery import Celery
 from dishka import Provider, Scope, from_context, provide
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from starlette.requests import Request
 
-from app.main.celery_factory import build_celery_app
 from app.main.config.settings import (
-    AppSettings,
     CelerySettings,
     CookieSettings,
     JwtSettings,
     PasswordHasherSettings,
     PostgresSettings,
-    RedisSettings,
     SessionSettings,
     SqlaSettings,
 )
@@ -173,26 +169,12 @@ class AuthProvider(Provider):
 class CeleryProvider(Provider):
     scope = Scope.APP
 
-    @provide
-    def provide_celery_app(
-        self,
-        app_settings: AppSettings,
-        redis: RedisSettings,
-        celery: CelerySettings,
-    ) -> Iterator[Celery]:
-        app = build_celery_app(
-            app_name=app_settings.SERVICE_NAME,
-            broker_url=redis.url,
-            result_backend_url=redis.result_url,
-            default_queue=celery.TASK_DEFAULT_QUEUE,
-            task_acks_late=celery.TASK_ACKS_LATE,
-            worker_prefetch_multiplier=celery.WORKER_PREFETCH_MULTIPLIER,
-        )
-        yield app
-        logger.debug("Closing Celery app connections...")
-        app.close()
-        logger.debug("Celery app connections closed.")
-
+    # The web process no longer needs a real Celery connection at all:
+    # HybridEventDispatcher stages "background" handlers into the
+    # transactional outbox instead of publishing to Celery directly (see
+    # docs/plans/4-transactional-outbox.md) -- only app.main.worker's own
+    # celery_app (built independently via the same build_celery_app
+    # factory) ever calls send_task()/apply_async() now.
     @provide
     def provide_celery_enabled(self, celery: CelerySettings) -> CeleryEnabled:
         return CeleryEnabled(celery.ENABLED)

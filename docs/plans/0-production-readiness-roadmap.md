@@ -1,0 +1,111 @@
+# Production Readiness Roadmap
+
+> **Roadmap, not an implementation plan.**
+>
+> This is a prioritized backlog of gaps between this template's current state and what a real production deployment (self-hosted or cloud) would need, written down so the list survives across sessions instead of living only in chat history. It is deliberately generic — this repo is a general-purpose DDD/Clean Architecture/TDD reference, and this doc doesn't assume any particular business domain, deployment target, or fork's use case.
+>
+> Each item below is a candidate for its own dedicated implementation plan (following the structure in `docs/plans/1-events.md`/`docs/plans/4-transactional-outbox.md`: numbered steps, test file before production file per step, a File Summary table, a Verification Plan) once it's actually prioritized — this doc intentionally stops short of that level of detail for anything not yet started. As the overarching roadmap, this doc is numbered `0-`; each implementation plan below it is numbered in the sequence it was actually implemented in this codebase.
+
+---
+
+## Checklist (summary)
+
+**Already implemented**
+- [x] Background job processing (Celery + Redis, with a transactional outbox for reliable delivery and a `CELERY_ENABLED=false` inline fallback for Celery-less deployments)
+- [x] Observability stack (Prometheus metrics, Grafana dashboards, Loki/Promtail structured log aggregation, email alerting on unhandled errors)
+- [x] Core user contact fields (`email`, `phone_number` on the `User` entity, validated value objects, uniqueness constraints)
+
+**P0 — floor for any real deployment**
+- [ ] Stronger password policy (raise `RawPassword.MIN_LEN`, add a max-length guard, consider a breach-list check)
+- [ ] Rate limiting on `/account/login/` and `/account/signup/`
+- [ ] Move secrets out of `.env`/`.secrets` into a real secret store
+- [ ] TLS termination in front of the app
+- [ ] Documented, automated Postgres backup/restore
+- [ ] Deploy pipeline past CI (automated deploy + rollback)
+- [ ] Self-service password reset flow
+- [ ] Email verification on sign-up
+
+**P1 — conditional on how accounts get created**
+- [ ] Signup abuse protection (CAPTCHA/bot mitigation) if sign-up is public
+- [ ] Audit log for admin actions if sign-up is admin/invite-only
+- [ ] MFA/2FA
+- [ ] CORS + security headers (once a separate frontend origin exists)
+
+**Optional / scale-dependent**
+- [ ] Multi-tenancy data model (`organization_id`/`unit_id` + Postgres RLS) — only if serving multiple isolated customer orgs
+
+**Also worth a look**
+- [ ] Centralize the hardcoded app/service name behind one `APP_SERVICE_NAME` env var
+- [ ] Move the remaining hardcoded host ports (`prometheus`, `grafana`, `loki`, `adminer`) into `env.example`/`.secrets`, matching the pattern already used for `UVICORN_PORT`/`POSTGRES_PORT`/`REDIS_PORT`/`FLOWER_PORT`/`REDIS_COMMANDER_PORT`
+- [ ] Data protection compliance review (GDPR/CCPA/POPIA-style, as applicable)
+- [ ] Close unit-test coverage gaps in `core/commands`/`core/queries`
+- [ ] Add automated coverage gating so a new, untested file/function in `core`/`inbound`/`outbound` fails CI instead of silently shipping (`diff-cover` for a lightweight gate, or self-hosted SonarQube for an ongoing coverage/complexity/duplication dashboard)
+- [ ] Finish making dev-only dashboards conditional on environment (remove hardcoded `ENVIRONMENT=dev` build arg)
+- [ ] Self-hosted documentation wiki (MkDocs + Material, generated dependency-graph and complexity diagrams) — fully scoped in `docs/plans/5-self-hosted-docs-wiki.md`
+
+---
+
+## How to use this doc
+
+Pick items based on your fork's actual deployment shape, not top-to-bottom. A single-user side project and a multi-team cloud deployment need very different subsets of this list. The **P0** tier is the closest thing to a universal floor — everything in it is either a security gap that's cheap to close or a genuine "you will regret not having this" operational gap once real data is at stake. Everything past P0 is genuinely conditional on what you're building.
+
+---
+
+## Already implemented
+
+- **Background job processing.** Celery + Redis power `"background"`-mode event handlers, with a transactional outbox (`OutboxRepository`/`SqlaOutboxRepository`, the `event_outbox` table) so a handler's dispatch is written atomically with the domain change that triggered it — a crash between commit and Celery publish can no longer silently drop it. `app.main.worker.outbox_drain_loop` relays pending rows on a configurable interval (`CELERY_DRAIN_OUTBOX_INTERVAL_SECONDS`), optionally retaining processed rows (`CELERY_OUTBOX_RETAIN_AFTER_RELAY`). A `CELERY_ENABLED=false` deployment runs every handler inline instead, with no Redis/worker needed at all. See `docs/plans/4-transactional-outbox.md` and `docs/plans/3-celery-redis-events.md` for the full design.
+- **Observability stack.** Prometheus scrapes `/metrics` (HTTP request counts/latency, a custom `app_unhandled_exceptions_total` counter by exception type); Grafana ships with provisioned dashboards; Loki/Promtail aggregate structured JSON logs from every container. Unhandled 5xx-class errors also trigger a rate-limited (`ALERT_COOLDOWN_S`) email alert to `ALERT_TO_EMAILS`/`ALERT_CC_EMAILS`/`ALERT_BCC_EMAILS`, with the request's user context (authenticated/anonymous/unknown) attached. See `docs/plans/2-observability.md`.
+- **Core user contact fields.** `User` requires validated `email` and `phone_number` value objects (with uniqueness constraints at the database level), not just a username — the minimum a real account system needs before email verification or password-reset flows (both still open, see P0) can be built on top.
+
+## P0 — floor for any real deployment with real user data
+
+- **Password policy is too weak for production.** `RawPassword.MIN_LEN = 6` (`src/app/core/common/value_objects/raw_password.py:11`) has no complexity or breach-list check, and no upper bound — bcrypt silently truncates input past 72 bytes, so an unbounded max length is a latent correctness bug, not just a security one. Raise the minimum (NIST 800-63B: length matters more than forced complexity rules — 12+ is a reasonable floor), add a max-length guard, and consider checking new passwords against a known-breached-password list (e.g. the HaveIBeenPwned k-anonymity API) rather than inventing complexity rules.
+- **No rate limiting on authentication endpoints.** `/api/v1/account/login/` and `/api/v1/account/signup/` currently have no throttling — nothing stops credential-stuffing against login or automated fake-account creation against signup. This is cheap to add (a per-IP/per-account limiter in front of these two routes) and is the single highest-leverage security gap right now.
+- **Secrets live in flat `.env`/`.secrets` files.** Fine for one developer's machine; a cloud deployment needs these in an actual secret store (cloud provider's secrets manager, Vault, etc.) injected at runtime, never baked into an image or committed anywhere.
+- **No TLS termination anywhere in the stack.** Every port in `docker-compose.yml` binds to `127.0.0.1` only; there's no HTTPS setup, not even a reverse-proxy config as a starting point. Usually solved at a load balancer in front of the app rather than in the app itself, but has to be deliberately set up per deployment target, not assumed.
+- **No documented Postgres backup/restore process.** A `postgres_data`-equivalent volume with no backup job and no tested restore runbook means data loss is a "when," not an "if," once this is running anything real.
+- **No deploy pipeline past CI.** `.github/workflows/ci.yaml` lints, type-checks, and runs the full test suite on every push, but there's no automated path from a green build to a running deployment, and no rollback mechanism. Doesn't need to be elaborate, but "someone manually runs docker commands on a server" doesn't survive more than one person touching deploys.
+- **Self-service password reset is missing.** Only an admin-driven `set_user_password` (an authenticated admin resetting someone else's password) and a logged-in user's `change_password` exist — there's no "I forgot my password" flow for a locked-out user. Tolerable for a small, fully admin-provisioned user base; a real gap the moment self-service sign-up is in play (see below).
+- **No email verification on sign-up.** `POST /account/signup/` currently creates a fully usable account with an unverified email address. Matters much more for a deployment that allows public self-service sign-up than one where every account is admin-provisioned — but it's cheap to add either way and closes a real spam/impersonation vector.
+
+## P1 — important, but conditional on how accounts get created
+
+Whether these matter depends entirely on whether your fork allows public self-service sign-up, or every account is created by an admin/invite flow:
+
+- If sign-up is public: email verification and rate limiting (both above) become non-negotiable, not optional, and adding CAPTCHA/bot-mitigation on the signup endpoint is worth considering too.
+- If sign-up is admin/invite-only: the priority shifts instead toward an **audit log** for admin actions (grant/revoke admin, deactivate user, password resets performed by an admin on someone else's behalf) — "who did what, when" becomes the more valuable thing to have recorded than sign-up abuse protection.
+- **MFA/2FA** is worth having either way once the app holds anything sensitive, but is reasonable to defer past initial launch.
+- **CORS + security headers** (CSP, `X-Frame-Options`, HSTS, etc.) matter once a separate frontend exists on its own origin talking to this API; not urgent for a same-origin or API-only deployment.
+
+## Optional, and genuinely scale-dependent: multi-tenancy
+
+This template currently has no concept of "organization" — just a flat `user` table with `user`/`admin` roles. Whether you need more than that depends entirely on your fork's shape:
+
+**You probably don't need it if:** every user in the system belongs to the same single organization running the deployment (an internal tool, a single-company app). Normal role-based authorization (which this template already has the shape for) is enough.
+
+**You probably do need some form of it if:** your fork will serve multiple distinct customer organizations through the same deployment, especially if those organizations must never see each other's data, and/or each organization has its own internal sub-structure (departments, teams, branches) that needs its own scoped view of aggregate data (e.g. per-organization analytics rolled up across its own sub-units).
+
+If you do need it, the recommended approach is **not** the heavyweight version:
+
+- Prefer a **shared schema** with an `organization_id` (and, if sub-structure matters, a further `unit_id`/`branch_id`) column on the relevant tables, over separate databases or schemas per tenant. Database/schema-per-tenant is usually only justified by a hard compliance requirement for physical isolation, or wildly different scale between tenants — both add real migration and connection-pooling complexity that isn't worth carrying speculatively.
+- Enforce tenant scoping at the application/authorization layer (extending the existing role-check pattern to also check organization membership), and consider **Postgres Row-Level Security (RLS)** as defense-in-depth on top — so a missed `WHERE organization_id = ...` in one query doesn't silently become a cross-tenant data leak. For multi-tenant data, that failure mode is a serious incident, not a bug ticket, so a second enforcement layer at the database level is worth the extra setup cost.
+- This is a real domain-modeling exercise (new `Organization`/`Unit` entities, a new role shape for an org-scoped admin, updated authorization checks throughout), not a config toggle — size it as its own implementation plan rather than folding it into something else.
+
+## Also worth a look before going live
+
+- **The app/service name is hardcoded in too many independent places for a template meant to be forked.** `pyproject.toml:2` (`name = "fastapi-clean-example"`), `observability/prometheus/prometheus.yml:6` (`job_name`), `observability/grafana/provisioning/dashboards/dashboards.yml:4`, and `observability/promtail/promtail-config.yml:31` (a Docker label filter, `com.docker.compose.project=fastapi-clean-example`) all hardcode the same literal string independently, with no shared source of truth — rename the repo today and every one of these silently goes stale. Container names (e.g. `fastapi-clean-example-redis-1`) come from a separate mechanism, Compose's project name, which `Makefile:15` (`PROJECT_NAME ?= $(notdir $(abspath .))`) already derives from the directory name rather than hardcoding it — but that's still not the same variable as any of the four files above, and isn't read from `.env`/`.secrets` the way every other piece of config in this project is.
+
+  There's already an `AppSettings.SERVICE_NAME` field (`src/app/main/config/settings.py:11`, default `"clean-example"`) used for the FastAPI title, the Prometheus metrics service name, and the Celery app name — but it has no corresponding `APP_SERVICE_NAME=` line in `env.example` at all, so it's silently relying on a field default that doesn't even match the repo's own name. The fix: add `APP_SERVICE_NAME` to `env.example` with an obviously-generic template value, let a fork's `.secrets` override it with their real name, and thread that *same* value through Compose's project name (so `PROJECT_NAME` in the `Makefile` reads it from `.env` instead of the directory name), the Prometheus `job_name`, the Grafana provisioning name, and the Promtail label filter — one variable, one place to set it, instead of five independent hardcoded strings.
+
+  `pyproject.toml`'s `name` is a partial exception worth calling out separately: Python packaging metadata is static and read at build/install time, not at runtime, so it can't be templated from a `.env` value the way the others can — that one has to stay a manual one-time rename step for a fork (worth documenting explicitly, e.g. in a "How to fork this" section of the README), not something this fix can automate away.
+
+- **Some container host ports are hardcoded instead of reading from `.env`, inconsistent with the rest of this project's config style.** `app`, `db_pg`, `redis`, `flower`, and `redis-commander` already map their host port from an env var (`${UVICORN_PORT}`, `${POSTGRES_PORT}`, `${REDIS_PORT}`, `${FLOWER_PORT}`, `${REDIS_COMMANDER_PORT}`) sourced from `env.example`/`.secrets`, same as every other piece of config in this repo. But `prometheus` (`docker-compose.yml:144`, `9090`), `grafana` (`:152`, `3000`), `loki` (`:168`, `3100`), and `adminer` (`:189`, `8080`) hardcode their host port as a literal instead. The fix mirrors the existing five: add `PROMETHEUS_PORT`/`GRAFANA_PORT`/`LOKI_PORT`/`ADMINER_PORT` to `env.example` with template defaults matching today's values, and swap the four literals for `${VAR}`. Only the host-side port (the number a browser connects to) should move — the container-side port stays fixed, since it's set by the image itself (e.g. Grafana always listens on `3000` inside its own container regardless of what host port it's mapped to), exactly like the five ports that already follow this pattern.
+
+- **Data protection compliance.** If the deployment collects personal data from individuals (not just admin-provisioned business users), check which regime applies to you — GDPR, CCPA, POPIA, or your local equivalent — for consent capture at sign-up, a documented lawful basis for processing, and a data subject access/deletion process. This is genuinely deployment- and jurisdiction-specific; treat this line as a prompt to get a real legal review, not as compliance advice in itself.
+- **Unit test coverage gaps** in `core/commands` (`activate_user.py`, `deactivate_user.py`, `grant_admin.py`, `revoke_admin.py`, `set_user_password.py`, `core/queries/list_users.py` all show 0% unit coverage as of this writing — they're currently exercised only at the integration level). Worth closing before this backlog gets much longer, so regressions in this thin-but-security-relevant orchestration code get caught fast.
+- **Nothing automatically catches the next version of that same gap.** The coverage gap above wasn't caught by any tooling — it was found by manually reading a coverage report. Nothing today stops a new file being added to `src/app/core`, `src/app/inbound`, or `src/app/outbound` with zero unit or integration tests covering it: the aggregate coverage % just quietly drops, CI stays green, and it ships. Given this project's own standing rule that production code shouldn't be written before its test (TDD, red-green-refactor), that's a real gap between the stated practice and what's actually enforced. Two options, differing mainly in how much infrastructure they cost:
+  - **`diff-cover`** — a lightweight, self-hosted (no server, no account, no third party) CLI tool. Reads the coverage report `pytest-cov` already produces plus the git diff, and fails CI if any new/changed line lacks coverage. No new container, no dashboard — just a pass/fail gate plus a local HTML report, added as one CI step.
+  - **Self-hosted SonarQube (Community Edition)** — a bigger commitment: its own Docker container, its own Postgres database, and a real memory footprint (bundles Elasticsearch, which needs `vm.max_map_count=262144` set on the host to even start). In exchange, it gives an ongoing local dashboard — coverage trends, code duplication, complexity, security smells — not just a merge-time gate, which is worth it specifically for someone who wants a visual, at-a-glance way to understand a codebase's health and how its pieces relate, the same reason this repo already runs self-hosted Grafana instead of a hosted APM tool. Its "Coverage on New Code" Quality Gate is a free Community Edition feature, not paywalled.
+
+  Either way, this only works cleanly once `core`'s unit coverage and `inbound`/`outbound`'s integration coverage are read together — right now `make check` and `make test-docker` write two separate, never-merged coverage files (`.coverage` / `.coverage.docker`), which would need a `coverage combine` step first so a correctly-integration-tested adapter file doesn't get flagged as "untested" just because it has no *unit* test.
+- **`docker-compose.yml` still hardcodes `ENVIRONMENT=dev`** as a build arg for `app`/`worker` (lines 7 and 67) — a leftover from an earlier, not-yet-finished pass at making the dev-only dashboards (`grafana`, `flower`, `redis-commander`, `adminer`) conditional on environment. Worth finishing so a "prod" compose run doesn't also stand up dev tooling by default.

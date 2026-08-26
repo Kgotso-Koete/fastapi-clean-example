@@ -8,10 +8,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.common.entities.types_ import UserRole
 from app.core.common.entities.user import User
+from app.core.common.events.handlers.send_welcome_email import SendWelcomeEmail
+from app.core.common.events.user_registered import UserRegisteredEvent
 from app.core.common.ports.email_sender import EmailSender
 from app.core.common.services.user import UserService
 from app.core.common.value_objects.raw_password import RawPassword
 from app.core.common.value_objects.username import Username
+from app.outbound.adapters.event_serialization import dotted_path
+from app.outbound.adapters.outbox_message import OutboxMessage
+from app.outbound.persistence_sqla.mappings.outbox_message import event_outbox_table
 from app.outbound.persistence_sqla.mappings.user import users_table
 from tests.integration.with_infra.account.constants import SIGN_UP_ENDPOINT
 from tests.integration.with_infra.authentication import authenticate
@@ -68,12 +73,21 @@ async def test_returns_200_and_creates_user(
     assert "id" in data
     assert "password_hash" not in data
 
-    # Eager-mode Celery (see it_worker_runtime/_EagerCeleryProvider in
-    # conftest.py) runs the background handler synchronously as part of
-    # send_task() above, so the email is already sent by the time the
-    # response comes back -- no need to wait for anything.
-    assert len(it_spy_email_sender.sent) == 1
-    assert it_spy_email_sender.sent[0]["to_email"] == payload["email"]
+    # SendWelcomeEmail is "background"-mode, so HybridEventDispatcher.stage()
+    # -- called before commit -- writes its outbox row transactionally with
+    # the new user, instead of relaying it to Celery (and sending the email)
+    # by response time. Nothing has drained the outbox yet, so the row is
+    # still pending and no email has gone out; app.main.worker's outbox
+    # drain loop (Step 4) is what will eventually relay it.
+    outbox_stmt = select(OutboxMessage).where(
+        event_outbox_table.c.event_type == dotted_path(UserRegisteredEvent),
+        event_outbox_table.c.handler_type == dotted_path(SendWelcomeEmail),
+    )
+    outbox_message = await it_session.scalar(outbox_stmt)
+    assert isinstance(outbox_message, OutboxMessage)
+    assert outbox_message.processed_at is None
+    assert outbox_message.payload["email"] == payload["email"]
+    assert len(it_spy_email_sender.sent) == 0
 
 
 async def test_returns_400_when_username_is_too_short(

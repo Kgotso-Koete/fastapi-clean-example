@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-08-26: Transactional outbox for background event dispatch
+
+### Added
+- **Transactional Outbox:** Added `OutboxRepository` port and `SqlaOutboxRepository`/`OutboxMessage` adapters, backed by a new `event_outbox` table (migration `2026-08-21_151755_add_event_outbox_table.py`). `HybridEventDispatcher.stage()` now writes one outbox row per (event, `"background"` handler) pair in the *same* database transaction as the domain change, before commit — closing the dual-write gap where a crash between commit and Celery publish could silently drop an event. A new `app.main.worker.outbox_drain_loop` polls for pending rows on a configurable interval (`CELERY_DRAIN_OUTBOX_INTERVAL_SECONDS`) and relays them to Celery, optionally retaining processed rows (`CELERY_OUTBOX_RETAIN_AFTER_RELAY`). Documented in `docs/plans/4-transactional-outbox.md`.
+- **Multi-recipient email:** `EmailSender.send()` now takes `to_emails: Sequence[str]` plus optional `cc_emails`/`bcc_emails`, replacing the old single `to_email`/`to_name` pair. `ALERT_TO_EMAILS`/`ALERT_CC_EMAILS`/`ALERT_BCC_EMAILS` (comma-separated) replace `ALERT_TO_EMAIL`/`ALERT_TO_NAME`.
+- **Testing:** `tests/smoke/test_celery_broker.py` gained `test_outbox_row_gets_drained_by_the_real_workers_own_loop`, proving a real, separately-running worker container's own drain loop (not just a producer publishing directly) notices and relays a pending row end-to-end, including verifying it lands correctly in Postgres afterward.
+- **Documentation:** Added `docs/plans/0-production-readiness-roadmap.md`, a prioritized backlog of gaps between this template's current state and a real production deployment (auth hardening, secrets/TLS/backups, multi-tenancy considerations, the hardcoded app-name cleanup below, etc.).
+
+### Changed
+- **Documentation:** Renamed `docs/implementation-plans/` to `docs/plans/` for a simpler path.
+
+### Fixed
+- **Event Dispatch:** `CreateUser`/`SignUp` each called `user.collect_events()` twice — once for `stage()`, once for `dispatch()` — but `collect_events()` drains the entity's event list on every call, so `dispatch()` always received an empty list. This was invisible with `CELERY_ENABLED=true` (`dispatch()` only runs `"sync"`-mode handlers there, and none are registered), but silently broke the `CELERY_ENABLED=false` inline-fallback path: `"background"`-mode handlers like `SendWelcomeEmail` never ran at all, so no email was sent with Celery disabled. Both commands now collect events once and reuse the same list for both calls.
+- **API Docs:** `/debug/test-error` had its Swagger tag set both via `include_router(..., tags=["debug"])` and again on the route decorator (`tags=["Debug"]`); FastAPI concatenates rather than overrides tags from the two sources, so the operation carried both and appeared twice in the docs UI. The tag now lives in exactly one place.
+- **Test Isolation:** A unit test asserting `CELERY_ENABLED`'s default only cleared the process environment variable, not the `.env` file `load_celery_settings()` also reads directly, so it silently depended on `.env` coincidentally matching the field default. The integration test suite's shared app fixture likewise never pinned `CELERY_ENABLED`, so its outbox-staging assertions silently depended on the ambient `.env`/`.secrets` value rather than the Celery-enabled code path they exist to test. Both are now isolated from ambient configuration explicitly. The real-worker smoke test's wait budget and outcome assertion similarly now derive from the actually configured `CELERY_DRAIN_OUTBOX_INTERVAL_SECONDS`/`CELERY_OUTBOX_RETAIN_AFTER_RELAY` instead of assuming their defaults.
+
 ## [0.7.0] - 2026-08-20: Celery + Redis background event dispatch with per-handler control
 
 ### Added

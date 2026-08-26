@@ -9,6 +9,11 @@ case "$1" in
         exec uvicorn app.main.run:make_app --factory --host 0.0.0.0 --port "$PORT" --reload
         ;;
     worker)
+        # No separate `beat` command: the worker process starts its own
+        # outbox-draining loop itself (see
+        # src/app/main/worker/outbox_drain_loop.py, wired into
+        # worker_process_init in celery_app.py) instead of a Celery Beat
+        # schedule.
         exec celery -A app.main.worker.celery_app:celery_app worker \
             --loglevel=INFO \
             --queues="${CELERY_TASK_DEFAULT_QUEUE:-events}" \

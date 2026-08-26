@@ -8,6 +8,7 @@ from app.core.commands.create_user import CreateUser
 from app.core.commands.deactivate_user import DeactivateUser
 from app.core.commands.grant_admin import GrantAdmin
 from app.core.commands.ports.flusher import Flusher
+from app.core.commands.ports.outbox_repository import OutboxRepository
 from app.core.commands.ports.transaction_manager import TransactionManager
 from app.core.commands.ports.user_tx_storage import UserTxStorage
 from app.core.commands.ports.utc_timer import UtcTimer
@@ -39,6 +40,7 @@ from app.outbound.adapters.console_email_sender import ConsoleEmailSender
 from app.outbound.adapters.hybrid_event_dispatcher import HybridEventDispatcher
 from app.outbound.adapters.smtp_email_sender import SmtpEmailSender
 from app.outbound.adapters.sqla_flusher import SqlaFlusher
+from app.outbound.adapters.sqla_outbox_repository import SqlaOutboxRepository
 from app.outbound.adapters.sqla_transaction_manager import SqlaTransactionManager
 from app.outbound.adapters.sqla_user_reader import SqlaUserReader
 from app.outbound.adapters.sqla_user_tx_storage import SqlaUserTxStorage
@@ -77,6 +79,7 @@ class CoreProvider(Provider):
     user_tx_storage = provide(SqlaUserTxStorage, provides=UserTxStorage)
     flusher = provide(SqlaFlusher, provides=Flusher)
     tx_manager = provide(SqlaTransactionManager, provides=TransactionManager)
+    outbox_repository = provide(SqlaOutboxRepository, provides=OutboxRepository)
 
     # Commands
     create_user = provide(CreateUser)
@@ -100,8 +103,11 @@ class CoreProvider(Provider):
     # EventHandler port) rather than a single app-wide setting -- so unlike
     # the old provide_event_dispatcher, there's no branching here: Dishka
     # resolves HybridEventDispatcher's constructor args (handler_registry
-    # below, and the Celery app from CeleryProvider in main/ioc/outbound.py)
-    # by type on its own.
+    # below, outbox_repository above, and CeleryEnabled from CeleryProvider
+    # in main/ioc/outbound.py) by type on its own. It no longer needs the
+    # Celery app object itself -- see docs/plans/4-transactional-outbox.md --
+    # since it stages background handlers into the outbox instead of
+    # publishing to Celery directly.
     event_dispatcher = provide(HybridEventDispatcher, provides=EventDispatcher)
 
     @provide(scope=Scope.APP)

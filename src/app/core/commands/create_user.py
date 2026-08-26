@@ -99,6 +99,8 @@ class CreateUser:
             role=role,
         )
         self._user_tx_storage.add(user)
+        events = user.collect_events()
+        await self._event_dispatcher.stage(events)
         try:
             await self._flusher.flush()
         except UsernameAlreadyExistsError:
@@ -109,7 +111,7 @@ class CreateUser:
             raise
 
         await self._transaction_manager.commit()
-        await self._event_dispatcher.dispatch(user.collect_events())
+        await self._event_dispatcher.dispatch(events)
 
         logger.info("Create user: done.")
         return CreateUserResponse(

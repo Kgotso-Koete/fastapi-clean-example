@@ -35,8 +35,7 @@ class TestSendWelcomeEmail:
         await handler.handle(event)
 
         email_sender.send.assert_called_once_with(
-            to_email="alice@example.com",
-            to_name="Alice",
+            to_emails=["alice@example.com"],
             subject=ANY,
             html_body=ANY,
         )

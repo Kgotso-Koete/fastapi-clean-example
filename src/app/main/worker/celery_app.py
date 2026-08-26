@@ -28,17 +28,26 @@ from celery.signals import worker_process_init, worker_process_shutdown  # noqa:
 
 from app.main.worker.container import build_worker_container, close_worker_container  # noqa: E402
 from app.main.worker.loop_runtime import run_coroutine, start_loop, stop_loop  # noqa: E402
+from app.outbound.persistence_sqla.mappings.all import map_tables  # noqa: E402
 
 
 @worker_process_init.connect  # type: ignore[untyped-decorator]  # celery.signals ships without full type stubs
 def _on_worker_process_init(**_kwargs: object) -> None:
     """
     Fires once when a Celery worker process starts, before it begins
-    consuming any tasks. Starts this process's one persistent event loop
-    and builds its one Dishka container on that same loop.
+    consuming any tasks. Mirrors what app.main.run's lifespan does for the
+    web process: map_tables() must run before anything queries a mapped
+    class like OutboxMessage, since imperative mappings (see
+    outbound/persistence_sqla/mappings) are only wired up by that call, not
+    merely by importing the class. Starts this process's one persistent
+    event loop, builds its one Dishka container on that same loop, then
+    starts the outbox drain loop on that same loop too -- there is no
+    separate `beat` process; see outbox_drain_loop's own docstring for why.
     """
+    map_tables()
     start_loop()
     run_coroutine(_async_init())
+    outbox_drain_loop.start()
 
 
 async def _async_init() -> None:
@@ -47,13 +56,20 @@ async def _async_init() -> None:
 
 @worker_process_shutdown.connect  # type: ignore[untyped-decorator]  # celery.signals ships without full type stubs
 def _on_worker_process_shutdown(**_kwargs: object) -> None:
-    """Fires once when a Celery worker process is shutting down. Disposes the container, then stops the loop."""
+    """
+    Fires once when a Celery worker process is shutting down. Stops the
+    drain loop, disposes the container, then stops the event loop.
+    """
+    outbox_drain_loop.stop()
     run_coroutine(close_worker_container())
     stop_loop()
 
 
-# Imported purely for its side effect: registers @celery_app.task(...) on
-# the `celery_app` object above. Must stay the LAST line in this module --
-# tasks.py imports celery_app back from here, which only resolves once the
-# assignment above has already run.
+# Imported purely for their side effects: tasks.py registers
+# @celery_app.task(...) on the `celery_app` object above; outbox_drain_loop
+# needs `celery_app` itself (to call send_task on) so it's imported here
+# too rather than at the top of this file. Must stay the LAST lines in
+# this module -- both modules import celery_app back from here, which
+# only resolves once the assignment above has already run.
+import app.main.worker.outbox_drain_loop as outbox_drain_loop  # noqa: E402
 import app.main.worker.tasks  # noqa: E402,F401

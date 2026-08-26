@@ -1,6 +1,7 @@
 import asyncio
 import threading
 from collections.abc import Coroutine
+from concurrent.futures import Future
 from typing import Any, TypeVar
 
 T = TypeVar("T")
@@ -70,3 +71,24 @@ def run_coroutine[T](coro: Coroutine[Any, Any, T]) -> T:
     # running on a different thread) and gives back a concurrent.futures
     # Future; .result() blocks this (calling) thread until it's done.
     return asyncio.run_coroutine_threadsafe(coro, loop).result()
+
+
+def spawn(coro: Coroutine[Any, Any, None]) -> Future[None]:
+    """
+    Schedules `coro` on the persistent worker loop WITHOUT blocking the
+    calling thread for it to finish -- unlike run_coroutine(), which
+    blocks until the coroutine completes and hands back its result. For a
+    coroutine meant to keep running for the life of the process (e.g. the
+    outbox drain loop in app.main.worker.outbox_drain_loop) rather than
+    one a caller needs a result from before it can proceed.
+
+    The returned Future's .cancel() reliably cancels the coroutine even
+    mid-run (not just before it starts) -- asyncio chains it to the
+    underlying Task, so cancelling it raises CancelledError at the
+    coroutine's next await point. Use this to stop a spawned loop on
+    worker_process_shutdown.
+    """
+    loop = _loop
+    if loop is None:
+        raise RuntimeError("Worker event loop is not running. Call start_loop() first.")
+    return asyncio.run_coroutine_threadsafe(coro, loop)

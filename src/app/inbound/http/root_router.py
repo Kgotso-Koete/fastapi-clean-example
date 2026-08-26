@@ -20,6 +20,6 @@ def make_fastapi_root_router(*, debug_mode: bool, cookie_name: str) -> APIRouter
     router.include_router(make_v1_router(cookie_name=cookie_name))
 
     # Include test error endpoint for testing alerting (remove after testing)
-    router.include_router(test_error_router, prefix="/debug", tags=["debug"])
+    router.include_router(test_error_router, prefix="/debug", tags=["Debug"])
 
     return router

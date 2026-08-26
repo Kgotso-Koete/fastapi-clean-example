@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Sequence
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -33,17 +34,41 @@ class SmtpEmailSender:
         self._from_name = from_name
         self._use_tls = use_tls
 
-    async def send(self, *, to_email: str, to_name: str, subject: str, html_body: str) -> None:
+    async def send(
+        self,
+        *,
+        to_emails: Sequence[str],
+        subject: str,
+        html_body: str,
+        cc_emails: Sequence[str] = (),
+        bcc_emails: Sequence[str] = (),
+    ) -> None:
         message = MIMEMultipart("alternative")
         message["From"] = f"{self._from_name} <{self._from_email}>"
-        message["To"] = f"{to_name} <{to_email}>"
+        message["To"] = ", ".join(to_emails)
+        if cc_emails:
+            message["Cc"] = ", ".join(cc_emails)
         message["Subject"] = subject
         message.attach(MIMEText(html_body, "html"))
 
-        logger.info("Sending email via SMTP to=%s subject=%s host=%s", to_email, subject, self._host)
+        # bcc_emails are passed only via the SMTP envelope (aiosmtplib's
+        # `recipients`), never added as a message header -- a "Bcc" header
+        # would defeat the whole point by showing every bcc'd address to
+        # every other recipient.
+        recipients = [*to_emails, *cc_emails, *bcc_emails]
+
+        logger.info(
+            "Sending email via SMTP to=%s cc=%s bcc_count=%d subject=%s host=%s",
+            to_emails,
+            cc_emails,
+            len(bcc_emails),
+            subject,
+            self._host,
+        )
 
         await aiosmtplib.send(
             message,
+            recipients=recipients,
             hostname=self._host,
             port=self._port,
             username=self._username,
@@ -52,4 +77,4 @@ class SmtpEmailSender:
             start_tls=self._use_tls if self._port != 465 else False,
         )
 
-        logger.info("Email sent via SMTP to=%s", to_email)
+        logger.info("Email sent via SMTP to=%s", to_emails)

@@ -13,6 +13,22 @@ scrape_configs:
     docker_sd_configs:
       - host: unix:///var/run/docker.sock
         refresh_interval: 5s
+        # Without this, docker_sd_configs discovers every container on the
+        # host's Docker socket -- including ones started by a completely
+        # unrelated project/repo also running on this machine, not just
+        # this Compose project's own services. `filters` asks the Docker
+        # daemon itself to only return containers labeled with THIS
+        # project's Compose project name, so nothing outside this repo
+        # ever reaches Loki/Grafana in the first place.
+        #
+        # Compose sets this label to the project name, which defaults to
+        # the repo's directory name (here, "fastapi-clean-example") unless
+        # overridden via COMPOSE_PROJECT_NAME or `docker compose -p`. If
+        # you rename the checked-out folder, or set COMPOSE_PROJECT_NAME
+        # yourself, update the value below to match.
+        filters:
+          - name: label
+            values: ["com.docker.compose.project=fastapi-clean-example"]
     relabel_configs:
       - source_labels: ["__meta_docker_container_name"]
         regex: "/(.*)"
