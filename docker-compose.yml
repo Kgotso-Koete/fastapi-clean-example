@@ -4,12 +4,12 @@ services:
       context: .
       dockerfile: ./Dockerfile
       args:
-        - ENVIRONMENT=dev
+        - ENVIRONMENT=${ENVIRONMENT:-development}
     restart: on-failure
     volumes:
       - .:/code
     ports:
-      - "127.0.0.1:${UVICORN_PORT}:8000"
+      - "127.0.0.1:${UVICORN_PORT:-8000}:8000"
     depends_on:
       db_pg:
         condition: service_healthy
@@ -23,7 +23,7 @@ services:
     image: postgres:18-alpine
     shm_size: 128mb
     ports:
-      - "127.0.0.1:${POSTGRES_PORT}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     environment:
       POSTGRES_DB: ${POSTGRES_DB?POSTGRES_DB is required}
       POSTGRES_USER: ${POSTGRES_USER?POSTGRES_USER is required}
@@ -36,7 +36,7 @@ services:
       start_period: 1s
 
   # --- Celery broker + worker (per-handler background event dispatch) ---
-  # See docs/plans/celery-redis-events.md for the full design.
+  # See docs/plans/3-celery-redis-events.md for the full design.
 
   # Every service below is behind the "celery" Compose profile, activated
   # by default via COMPOSE_PROFILES=celery in env.example -- a deployment
@@ -51,7 +51,7 @@ services:
     restart: on-failure
     profiles: ["celery"]
     ports:
-      - "127.0.0.1:${REDIS_PORT}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
       interval: 2s
@@ -64,7 +64,7 @@ services:
       context: .
       dockerfile: ./Dockerfile
       args:
-        - ENVIRONMENT=dev
+        - ENVIRONMENT=${ENVIRONMENT:-development}
     restart: on-failure
     profiles: ["celery"]
     volumes:
@@ -103,53 +103,65 @@ services:
   # drain, polluting the audit trail a Celery task is otherwise meant to
   # be for this app.
 
+  # Dev-only (a monitoring dashboard, not infrastructure the app itself
+  # needs): "celery-development" requires both CELERY_ENABLED=true and
+  # ENVIRONMENT=development, unlike `redis`/`worker` above which only need
+  # the former. See scripts/makefile/*_env.sh for how COMPOSE_PROFILES is derived.
   flower:
     image: mher/flower:2.0
     restart: unless-stopped
-    profiles: ["celery"]
+    profiles: ["celery-development"]
     depends_on:
       redis:
         condition: service_healthy
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
     ports:
-      - "127.0.0.1:${FLOWER_PORT}:5555"
+      - "127.0.0.1:${FLOWER_PORT:-5555}:5555"
 
   # Redis Commander -- browse the actual Redis contents (broker queue in
   # REDIS_DB, task results in REDIS_RESULT_DB) the way Adminer does for
   # Postgres and Flower does for Celery's own task-level view.
+  # Also dev-only, same "celery-development" reasoning as `flower` above.
   redis-commander:
     image: rediscommander/redis-commander:latest
     restart: unless-stopped
-    profiles: ["celery"]
+    profiles: ["celery-development"]
     depends_on:
       redis:
         condition: service_healthy
     environment:
       - REDIS_HOSTS=broker:redis:6379:0,results:redis:6379:1
     ports:
-      - "127.0.0.1:${REDIS_COMMANDER_PORT}:8081"
+      - "127.0.0.1:${REDIS_COMMANDER_PORT:-8081}:8081"
 
   # vvv EVERYTHING BELOW THIS LINE IS NEW vvv
   # --- Observability stack (all free/open-source, local-only) ---
   # See README.md "Observability" section for access URLs and what each does.
 
+  # Dev-only: neither Prometheus nor Loki has built-in authentication, so an
+  # unauthenticated instance -- even bound to 127.0.0.1 only -- isn't safe to
+  # run unattended in production. A real deployment's metrics/log collection
+  # is a separate, deliberately-secured decision, not this local stack.
   prometheus:
     image: prom/prometheus:v3.13.2
     restart: unless-stopped
+    profiles: ["development"]
     volumes:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     ports:
-      - "127.0.0.1:9090:9090"
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
     depends_on:
       - app
 
+  # Dev-only, same "development" profile as `adminer` below and `prometheus` above.
   grafana:
     image: grafana/grafana:11.3.4
     restart: unless-stopped
+    profiles: ["development"]
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
@@ -161,32 +173,43 @@ services:
       - prometheus
       - loki
 
+  # Dev-only, same reasoning as `prometheus` above.
   loki:
     image: grafana/loki:3.7.0
     restart: unless-stopped
+    profiles: ["development"]
     ports:
-      - "127.0.0.1:3100:3100"
+      - "127.0.0.1:${LOKI_PORT:-3100}:3100"
     volumes:
       - ./observability/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
       - loki_data:/loki
     command: -config.file=/etc/loki/local-config.yaml
 
+  # Dev-only: exists only to ship logs into `loki`, so it's pointless (and
+  # would just retry forever) without it.
   promtail:
     image: grafana/promtail:3.6.8
     restart: unless-stopped
+    profiles: ["development"]
+    env_file:
+      - .env
     volumes:
       - ./observability/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    command: -config.file=/etc/promtail/config.yml
+    # -config.expand-env lets promtail-config.yml reference ${APP_SERVICE_NAME}
+    # (from env_file above) instead of hardcoding this project's name.
+    command: -config.file=/etc/promtail/config.yml -config.expand-env=true
     depends_on:
       - loki
 
+  # Dev-only, same reasoning as `grafana` above.
   adminer:
     image: adminer:4.8.1
     restart: unless-stopped
+    profiles: ["development"]
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:${ADMINER_PORT:-8080}:8080"
     environment:
       - ADMINER_DEFAULT_SERVER=db_pg
     depends_on:

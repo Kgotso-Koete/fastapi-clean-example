@@ -15,8 +15,12 @@ TODO:
 - [x] Add observability: structured logging, Prometheus metrics, Grafana dashboards, Loki/Promtail log aggregation, and email alerting on unhandled errors (see `docs/plans/2-observability.md`)
 - [ ] Increase test coverage: several `core/commands`/`core/queries` files still have 0% unit coverage (exercised only at the integration level) — see `docs/plans/0-production-readiness-roadmap.md`
 - [ ] Add automated coverage gating so a new, untested file/function in `core`/`inbound`/`outbound` fails CI instead of shipping unnoticed (`diff-cover`, or self-hosted SonarQube for an ongoing dashboard) — see `docs/plans/0-production-readiness-roadmap.md`
-- [ ] Move the remaining hardcoded container host ports (`prometheus`, `grafana`, `loki`, `adminer`) into `env.example`/`.secrets`, matching how the other five services already work — see `docs/plans/0-production-readiness-roadmap.md`
+- [x] Move the remaining hardcoded container host ports (`prometheus`, `grafana`, `loki`, `adminer`) into `env.example`/`.secrets`, matching how the other five services already work
+- [x] Make dev-only tooling (`grafana`, `prometheus`, `loki`, `promtail`, `adminer`, and — when Celery is enabled — `flower`, `redis-commander`) conditional on `ENVIRONMENT` (must be exactly `development` or `production`, validated), and stop hardcoding `ENVIRONMENT=development` as a Docker build arg
+- [x] Gate Swagger UI (`/docs`, `/redoc`) behind `ENVIRONMENT=development`; `/openapi.json` stays reachable in both, e.g. for importing the schema into Postman/Insomnia
+- [x] Centralize the app/service name behind `APP_SERVICE_NAME` for the Compose project/container names, Promtail's log filter, and Prometheus/Grafana's own config (`pyproject.toml`'s name is a documented manual exception — see `docs/plans/0-production-readiness-roadmap.md`)
 - [ ] Add a self-hosted documentation wiki (MkDocs + Material, generated dependency-graph and complexity diagrams, no third party) — see `docs/plans/5-self-hosted-docs-wiki.md`
+- [ ] Add an inbound CLI (`src/app/inbound/cli/`, sibling to `src/app/inbound/http/`) so core commands/queries can be invoked directly from a terminal script for cron jobs, data seeding, and admin/ops actions, bypassing HTTP entirely — see `docs/plans/0-production-readiness-roadmap.md`
 - [ ] Harden for production use: password policy, rate limiting, secrets management, TLS, backups, a real deploy pipeline, self-service password reset, email verification, and more — full prioritized backlog in `docs/plans/0-production-readiness-roadmap.md`
 
 Prerequisites
@@ -25,6 +29,12 @@ uv sync
 source .venv/bin/activate
 pre-commit install --hook-type pre-commit --hook-type pre-push
 ```
+
+Generate `JWT_SECRET` and `PASSWORD_PEPPER` for `.secrets` (don't reuse the same value for both, and don't commit `env.example`'s `REPLACE_THIS_WITH_...` placeholders as real values):
+```shell
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+Run it twice, once per value. `secrets.token_urlsafe(32)` (stdlib, not the `random` module) generates a cryptographically secure, URL-safe string comfortably over both settings' `min_length=32` requirement.
 
 Start in Docker
 ```shell
@@ -66,6 +76,8 @@ make migration msg=<msg>
 ```
 ### Database Management (Adminer)
 
+**Requires `ENVIRONMENT=development`** — Adminer doesn't start at all in `production`; it's dev-only tooling, not meant to be reachable on a real deployment.
+
 Adminer is included in the docker-compose stack and starts automatically with `make upd`. Access it at **http://localhost:8080** with the following credentials:
 - **System**: PostgreSQL
 - **Server**: `db_pg` (or `fastapi-clean-example-db_pg-1`)
@@ -74,6 +86,8 @@ Adminer is included in the docker-compose stack and starts automatically with `m
 - **Database**: `clean-example`
 
 ### Observability (Prometheus, Grafana, Loki)
+
+**Requires `ENVIRONMENT=development`** — none of Prometheus, Grafana, Loki, or Promtail start in `production`; neither Prometheus nor Loki has built-in authentication, so this stack isn't meant to run unattended on a real deployment. The app's own `/metrics` endpoint stays reachable regardless of `ENVIRONMENT` — it's just that nothing here is running to scrape/store/visualize it in `production`.
 
 **What Each Tool Does:**
 - **Prometheus**: Time-series database that scrapes and stores metrics from the `/metrics` endpoint every 15 seconds. Provides raw metric data, query language (PromQL), and alerting capabilities.
@@ -101,12 +115,14 @@ Adminer is included in the docker-compose stack and starts automatically with `m
 
 Domain events are dispatched per-handler: each `EventHandler` declares its own `DISPATCH_MODE` (`"sync"` — awaited inline, blocking the response; or `"background"` — published to Celery, delivered by the `worker` service). See `docs/plans/3-celery-redis-events.md` for the full design.
 
+**Flower/Redis Commander require `ENVIRONMENT=development`** (on top of `CELERY_ENABLED=true`) — they're monitoring dashboards, not infrastructure the app itself needs, so neither starts in `production`. `redis`/`worker` themselves are unaffected by `ENVIRONMENT` and run in both.
+
 - **Flower**: **http://localhost:5555** - inspect task status, retries, and results
 - **Redis Commander**: **http://localhost:8081** - browse the raw Redis contents directly: the broker queue (`REDIS_DB`, a Celery message per queued task, gone once consumed) and the result backend (`REDIS_RESULT_DB`, one key per finished task holding its state/return value until it expires)
 - **Worker logs**: `docker compose logs -f worker` - see background handlers actually running
 - Redis serves as both the Celery broker and result backend (two separate logical databases, `REDIS_DB`/`REDIS_RESULT_DB`)
 
-**Deploying without Celery/Redis** (e.g. to save cost): set `CELERY_ENABLED=false` in `.secrets` (or your deployment's env config) and regenerate `.env` (`make docker-env`/`make local-env`). That's the only setting to change — `redis`/`worker`/`flower` are skipped automatically (`COMPOSE_PROFILES` is derived from `CELERY_ENABLED`, not something you set directly), and every `"background"`-mode handler runs inline instead — slower (it blocks the response, same as a `"sync"` handler), but still reliably runs, rather than erroring or being dropped.
+**Deploying without Celery/Redis** (e.g. to save cost): set `CELERY_ENABLED=false` in `.secrets` (or your deployment's env config) and regenerate `.env` (`make docker-env`/`make local-env`). That's the only setting to change — `redis`/`worker`/`flower` are skipped automatically (`COMPOSE_PROFILES` is derived from `CELERY_ENABLED` and `ENVIRONMENT` together, not something you set directly), and every `"background"`-mode handler runs inline instead — slower (it blocks the response, same as a `"sync"` handler), but still reliably runs, rather than erroring or being dropped.
 
 See [Makefile](Makefile) for more commands
 

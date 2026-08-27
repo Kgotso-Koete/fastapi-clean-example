@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-08-27: Environment-aware deployment gating and service-name centralization
+
+### Added
+- **Environment setting:** Added `ENVIRONMENT` (`development`/`production`), replacing a build arg that was previously hardcoded to always install dev dependencies. Strictly validated — `scripts/makefile/docker_env.sh`/`local_env.sh` and the `Dockerfile` all hard-error on anything other than exactly `development` or `production`, rather than silently treating a typo as one or the other.
+- **Service name setting:** Added `APP_SERVICE_NAME`, now driving the Compose project name (and therefore every container name), Promtail's own-project log filter (via its native `-config.expand-env`), and — via a new template-and-generate mechanism (`prometheus.yml.template`, `dashboards.yml.template`, `app-overview.json.template`, generated into real, gitignored files by the same scripts that generate `.env`) — Prometheus's `job_name`, Grafana's provisioning display name, and the `app-overview.json` dashboard's title, tags, and PromQL queries.
+- **Dev-only tooling gating:** `grafana`, `prometheus`, `loki`, `promtail`, and `adminer` now require `ENVIRONMENT=development` to start at all (a new `development` Compose profile); `flower`/`redis-commander` require both that and `CELERY_ENABLED=true` (a new `celery-development` profile). Neither Prometheus nor Loki has built-in authentication, so this closes an exposure that previously existed even on a production deployment. `make upd`'s auto-opening of dashboard tabs in the browser is likewise skipped outside `development`.
+- **Swagger UI gating:** Added `AppSettings.ENVIRONMENT` (read via `validation_alias`, bypassing the `APP_`-prefix convention every other setting uses, since this is the same bare variable Compose/Make/Docker already read). `/docs` and `/redoc` are only reachable when `ENVIRONMENT=development`; `/openapi.json` stays reachable in both, so the schema can still be imported into an API client for testing without exposing the interactive browser UI.
+- **Ports:** Added `PROMETHEUS_PORT`/`GRAFANA_PORT`/`LOKI_PORT`/`ADMINER_PORT`, and gave every Compose port mapping (including the five that already existed) a `${VAR:-default}` fallback, so a missing or malformed `.env` value degrades to the original working port instead of producing an invalid mapping.
+- **Documentation:** Added `docs/plans/0-production-readiness-roadmap.md` (a prioritized backlog for taking this template to production) and `docs/plans/5-self-hosted-docs-wiki.md` (a fully scoped plan for a self-hosted, no-third-party documentation site). Added `README.md` instructions for generating `JWT_SECRET`/`PASSWORD_PEPPER` via Python's `secrets` module.
+
+### Changed
+- **Documentation:** Renumbered `docs/plans/*.md` `0-` through `5-` (the roadmap as the overarching `0-`, each implementation plan numbered by the order it was actually built), with every cross-reference across the codebase updated to match.
+
+### Fixed
+- **Docker build:** `docker-compose.yml`'s `app`/`worker` build args were hardcoded to always install dev dependencies regardless of deployment target — now read `${ENVIRONMENT:-development}`.
+- **Test stack:** `make test-docker` broke (`pytest: not found`) whenever `.secrets` had `ENVIRONMENT=production` set for testing production-gating behavior manually, since the test runner's own image inherited that and was built without dev dependencies. `docker-compose.test.yml` now forces `ENVIRONMENT=development` for the test stack's own `app`/`worker` build, independent of `.secrets`.
+- **Observability dashboard:** Introducing `APP_SERVICE_NAME` would have silently broken `app-overview.json`'s PromQL queries the moment it diverged from the app's old hardcoded metric-namespace default, since `main/setup.py`'s `Instrumentator(metric_namespace=...)` derives the real metric prefix from the same setting. Caught before release and fixed with a separately-normalized (hyphens → underscores) template placeholder for the queries, distinct from the raw value used for the dashboard's title/tags.
+
 ## [0.8.0] - 2026-08-26: Transactional outbox for background event dispatch
 
 ### Added

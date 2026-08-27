@@ -21,14 +21,13 @@ scrape_configs:
         # project's Compose project name, so nothing outside this repo
         # ever reaches Loki/Grafana in the first place.
         #
-        # Compose sets this label to the project name, which defaults to
-        # the repo's directory name (here, "fastapi-clean-example") unless
-        # overridden via COMPOSE_PROJECT_NAME or `docker compose -p`. If
-        # you rename the checked-out folder, or set COMPOSE_PROJECT_NAME
-        # yourself, update the value below to match.
+        # Compose sets this label to the project name, which the Makefile
+        # derives from APP_SERVICE_NAME (see env.example) via `docker
+        # compose -p`. ${APP_SERVICE_NAME} below (see docker-compose.yml's
+        # promtail service, -config.expand-env) tracks that automatically.
         filters:
           - name: label
-            values: ["com.docker.compose.project=fastapi-clean-example"]
+            values: ["com.docker.compose.project=${APP_SERVICE_NAME:-fastapi-clean-example}"]
     relabel_configs:
       - source_labels: ["__meta_docker_container_name"]
         regex: "/(.*)"

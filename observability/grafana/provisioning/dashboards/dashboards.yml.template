@@ -1,0 +1,17 @@
+# Template: the real dashboards.yml is generated from this file by
+# scripts/makefile/docker_env.sh/local_env.sh (same mechanism that
+# generates .env from env.example/.secrets), substituting ${APP_SERVICE_NAME}.
+# Edit this template, not the generated dashboards.yml directly -- it's
+# gitignored and gets overwritten on the next `make up`/`upd`.
+apiVersion: 1
+
+providers:
+  - name: "${APP_SERVICE_NAME}"
+    orgId: 1
+    folder: ""
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

@@ -12,7 +12,13 @@ MAKEFLAGS += --no-print-directory
 # MIGRATION_DB_SERVICE: transactional db service used by alembic (empty = no migrations)
 # STAIRWAY_TEST: path to stairway test (empty = skip stairway step)
 # -----------------------------
-PROJECT_NAME ?= $(notdir $(abspath .))
+# Reads APP_SERVICE_NAME from env.example/.secrets directly (not .env,
+# which may not exist yet on a first run) -- falls back to the directory
+# name, the original default, if it's not set in either file.
+PROJECT_NAME ?= $(or $(shell grep -h '^APP_SERVICE_NAME=' env.example .secrets 2>/dev/null | tail -1 | cut -d= -f2),$(notdir $(abspath .)))
+# Same read pattern as PROJECT_NAME above -- used to skip open-dashboards
+# (see `upd` below) when this isn't a dev deployment.
+ENVIRONMENT ?= $(or $(shell grep -h '^ENVIRONMENT=' env.example .secrets 2>/dev/null | tail -1 | cut -d= -f2),development)
 INFRA_SERVICES ?= db_pg redis
 INFRA_INIT_SERVICES ?=
 MIGRATION_DB_SERVICE ?= db_pg
@@ -111,7 +117,7 @@ local-env:
 
 upd: docker-env
 	$(DOCKER_COMPOSE) up -d --build --force-recreate
-	$(MAKE) open-dashboards
+	if [ "$(ENVIRONMENT)" = "development" ]; then $(MAKE) open-dashboards; fi
 
 up: docker-env
 	$(DOCKER_COMPOSE) up --build --force-recreate
