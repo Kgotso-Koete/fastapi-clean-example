@@ -94,6 +94,9 @@ def make_app(  # noqa: C901 -- new alert_settings branch pushed this past the co
     if alert_settings is None:
         alert_settings = load_alert_settings()
 
+    # /openapi.json stays reachable regardless (e.g. to import the schema
+    # into Postman/Insomnia) -- only the interactive HTML pages are dev-only.
+    docs_reachable = app_settings.ENVIRONMENT == "development"
     app = FastAPI(
         debug=app_settings.DEBUG_MODE,
         title=app_settings.SERVICE_NAME,
@@ -101,6 +104,8 @@ def make_app(  # noqa: C901 -- new alert_settings branch pushed this past the co
         summary=f"OpenAPI schema for {app_settings.SERVICE_NAME}",
         lifespan=make_lifespan(),
         root_path=app_settings.ROOT_PATH.rstrip("/"),
+        docs_url="/docs" if docs_reachable else None,
+        redoc_url="/redoc" if docs_reachable else None,
     )
     container = make_async_container(
         *get_providers(),

@@ -2,7 +2,12 @@ ARG PYTHON_VERSION=3.13
 FROM ghcr.io/astral-sh/uv:python${PYTHON_VERSION}-trixie-slim
 
 ARG APP_VERSION=develop
-ARG ENVIRONMENT="prod"
+ARG ENVIRONMENT="production"
+
+RUN if [ "${ENVIRONMENT}" != "development" ] && [ "${ENVIRONMENT}" != "production" ]; then \
+      echo "ERROR: ENVIRONMENT must be exactly 'development' or 'production' (got: '${ENVIRONMENT}')" >&2; \
+      exit 1; \
+    fi
 
 ENV APP_VERSION=${APP_VERSION}
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -15,7 +20,7 @@ WORKDIR /code
 
 COPY pyproject.toml uv.lock README.md ./
 
-RUN if [ "${ENVIRONMENT}" = "prod" ]; then \
+RUN if [ "${ENVIRONMENT}" = "production" ]; then \
       uv sync --frozen --no-cache --no-dev --no-install-project; \
     else \
       uv sync --frozen --no-cache --dev --no-install-project; \
@@ -23,7 +28,7 @@ RUN if [ "${ENVIRONMENT}" = "prod" ]; then \
 
 COPY . .
 
-RUN if [ "${ENVIRONMENT}" = "prod" ]; then \
+RUN if [ "${ENVIRONMENT}" = "production" ]; then \
       uv sync --frozen --no-cache --no-dev; \
     else \
       uv sync --frozen --no-cache --dev; \

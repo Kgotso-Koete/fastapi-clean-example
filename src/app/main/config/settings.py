@@ -14,6 +14,13 @@ class AppSettings(BaseModel):
     DEBUG_MODE: bool = False
     LOGGING_LEVEL: LoggingLevel = LoggingLevel.INFO
     LOG_FORMAT: Literal["human", "json"] = "human"  # <-- NEW LINE
+    # Bare ENVIRONMENT (no APP_ prefix, unlike every other field here) --
+    # the same variable docker-compose.yml/Makefile/Dockerfile already
+    # read, via validation_alias rather than AppEnvConfig's env_prefix.
+    # "development" reachable Swagger UI (/docs, /redoc); "production"
+    # disables both (/openapi.json stays reachable either way -- see
+    # setup_docs_url() in run.py).
+    ENVIRONMENT: Literal["development", "production"] = Field(default="development", validation_alias="ENVIRONMENT")
 
 
 class PostgresSettings(BaseModel):

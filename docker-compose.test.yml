@@ -1,8 +1,19 @@
 services:
+  # The test image needs dev dependencies (pytest, etc.) to run at all,
+  # regardless of whatever ENVIRONMENT is set to in .secrets for testing
+  # the app's own production-gating behavior elsewhere.
   app:
     ports: !reset []
+    build:
+      args:
+        - ENVIRONMENT=development
     environment:
       ALLOW_DESTRUCTIVE_TEST_CLEANUP: "1"
+
+  worker:
+    build:
+      args:
+        - ENVIRONMENT=development
 
   db_pg:
     ports: !reset []

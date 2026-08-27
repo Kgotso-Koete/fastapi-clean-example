@@ -1,0 +1,14 @@
+# Template: the real prometheus.yml is generated from this file by
+# scripts/makefile/docker_env.sh/local_env.sh (same mechanism that
+# generates .env from env.example/.secrets), substituting ${APP_SERVICE_NAME}.
+# Edit this template, not the generated prometheus.yml directly -- it's
+# gitignored and gets overwritten on the next `make up`/`upd`.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "${APP_SERVICE_NAME}"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["app:8000"]

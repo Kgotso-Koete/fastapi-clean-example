@@ -121,6 +121,11 @@ celerybeat.pid
 
 # Environments
 .env
+# Generated from the .template files alongside them (see
+# scripts/makefile/docker_env.sh/local_env.sh) -- not the source of truth.
+observability/prometheus/prometheus.yml
+observability/grafana/provisioning/dashboards/dashboards.yml
+observability/grafana/provisioning/dashboards/app-overview.json
 .venv
 env/
 venv/
