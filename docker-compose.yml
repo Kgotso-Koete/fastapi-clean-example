@@ -203,6 +203,28 @@ services:
     depends_on:
       - loki
 
+  # Dev-only, same "development" profile as the rest of this stack -- a
+  # live-reloading docs server has no place running unattended in
+  # production. Reuses the same Dockerfile as `app`/`worker` (mkdocs and
+  # its plugins are already part of the `dev` uv dependency group, so any
+  # ENVIRONMENT=development image build already has them installed) and
+  # the same repo bind-mount, so editing docs/wiki/*.md live-reloads here
+  # exactly like `make wiki` does outside Docker. See
+  # docs/plans/5-self-hosted-docs-wiki.md.
+  wiki:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+      args:
+        - ENVIRONMENT=${ENVIRONMENT:-development}
+    restart: unless-stopped
+    profiles: ["development"]
+    volumes:
+      - .:/code
+    ports:
+      - "127.0.0.1:${WIKI_PORT:-8001}:8000"
+    command: ["mkdocs", "serve", "--dev-addr", "0.0.0.0:8000"]
+
   # Dev-only, same reasoning as `grafana` above.
   adminer:
     image: adminer:4.8.1

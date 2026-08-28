@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-08-28: Self-hosted documentation wiki
+
+### Added
+- **Wiki:** Added a self-hosted MkDocs + Material documentation site (`docs/wiki/`, `mkdocs.yml` at the repo root). `docs_dir` splits content from style/config: `content/` holds every section page, `images/`/`stylesheets/`/`overrides/` sit alongside it — except `index.md`, which stays directly under `docs/wiki/` since MkDocs only maps a page to the site root (`/`) when its source file sits at the top of `docs_dir`. `overrides/partials/nav.html` is a `theme.custom_dir` override of Material's own template (copied verbatim, one line changed) so the primary sidebar's title reads "Table of Contents" instead of the site name. Two pages are written so far — Overview (architecture, a capability table, and a Mermaid container-topology diagram) and Getting Started → Quick Start with Docker / Quick Start Locally — the rest of the ~48-page structure exists as scaffolded placeholders.
+- **Wiki tooling:** Added `make wiki` (`mkdocs serve`, live-reload, on `WIKI_PORT`) and `make wiki-build` (one-shot static build to `site/`, now gitignored). Added a dev-only `wiki` Compose service (`development` profile, same gating as `grafana`/`adminer`) that serves the same live wiki inside `make upd`, reusing the existing `app`/`worker` Dockerfile rather than a new image.
+- **Pre-commit:** Added a `wiki-build` hook that fails the commit if the wiki doesn't build cleanly — the same "catch it on the host, before it ships" role `code-check`/`pip-audit` already play, rather than tying a wiki build to `make upd`'s startup path.
+- **Dependencies:** Added `mkdocs`, `mkdocs-material`, `mkdocs-mermaid2-plugin`, `mkdocs-include-markdown-plugin`, and `radon` to the `dev` dependency group (`radon` for a planned future complexity-report generator, not yet built).
+
+### Changed
+- **Documentation:** `env.example` now documents, right at `POSTGRES_HOST`/`REDIS_HOST`, why those two settings must never also be set in `.secrets` — found and reproduced while writing the wiki's "Quick Start Locally" page: `.secrets` is appended after `scripts/makefile/local_env.sh` rewrites these two values to `127.0.0.1` for the local (non-Docker) path, so a stale `.secrets` copy of either silently undoes that rewrite, and `alembic`/the app fail to resolve `db_pg` even though `make upd-local` itself reports success.
+- **Documentation:** `docs/plans/0-production-readiness-roadmap.md`/`README.md` gained a new, more concrete tracked issue: `docker compose down`/`stop` can fail to remove `worker`/`redis` entirely, not just occasionally need a second run — confirmed via `make test-docker`'s own teardown leaving both containers running 12+ minutes later, recoverable only with `docker kill`. Not fixed yet; logged with full diagnostic detail (matching labels, clean exit code, no restart-loop) for whoever picks it up.
+
 ## [0.9.0] - 2026-08-27: Environment-aware deployment gating and service-name centralization
 
 ### Added

@@ -1,0 +1,155 @@
+/* Mermaid diagrams render at a fixed natural pixel width (useMaxWidth:
+   false in each diagram's own %%{init}%% directive -- see the plan doc's
+   Step 4 conventions for why that's required), so a wide diagram can
+   exceed the content column and visually spill under the right-hand
+   table-of-contents sidebar. Clipping the .mermaid container to the
+   content area's own width and scrolling horizontally inside it keeps
+   the diagram at full calibrated size without overflowing into either
+   sidebar. */
+.mermaid {
+  max-width: 100%;
+  overflow-x: auto;
+  /* Centers a diagram narrower than its box (fit-content never forces one
+     wider than it already is, so a diagram that needs the horizontal
+     scroll above still gets it, unaffected). */
+  width: fit-content;
+  margin: 0 auto;
+}
+
+/* Mermaid arrowheads: the <marker> element Mermaid draws them with has a
+   fixed absolute size that doesn't scale with the diagram's fontSize/line
+   thickness -- at this diagram's scale that leaves an all-but-invisible
+   arrowhead on an otherwise-thick, visible line, which loses the sense of
+   direction the arrow exists to show. This is a plain transform, not the
+   stroke-width/color properties Mermaid's own per-diagram <style> block
+   already claims, so it isn't fighting that same specificity battle. */
+.mermaid marker path,
+.mermaid marker polygon {
+  transform: scale(2.2);
+  transform-origin: center;
+}
+
+/* Navigation sidebar: Material's defaults read small and cramped for a
+   deep, nested nav tree like this one. */
+
+/* Bigger nav text overall */
+.md-nav__link {
+  font-size: 0.85rem;
+}
+
+.md-nav__title {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+/* Top-level section titles (e.g. "Architecture", "Core Patterns") slightly
+   larger than the pages nested underneath them, so the hierarchy reads at
+   a glance without needing to rely on indentation alone -- not bold, since
+   that read as visually wrong against the rest of the nav. */
+.md-nav--primary > .md-nav__list > .md-nav__item > .md-nav__link {
+  font-size: 0.9rem;
+  font-weight: 400;
+}
+
+/* Clear left margin for nested items, so a subsection is visually offset
+   from its parent section rather than sitting in the same vertical line. */
+.md-nav__item .md-nav__item {
+  padding-left: 0.6rem;
+}
+
+/* Exactly four text sizes for wiki page content (not the nav above, which
+   has its own deliberate hierarchy) -- the page title (h1), section
+   headings (h2-h6), body content, and notes/citations, and nothing in
+   between. Every other override in this file reuses these variables
+   rather than picking its own size. */
+.md-typeset {
+  --wiki-title-size: 2rem;
+  --wiki-heading-size: 1.5rem;
+  --wiki-content-size: 0.8rem;
+  --wiki-note-size: 0.68rem;
+}
+
+.md-typeset h1 {
+  font-size: var(--wiki-title-size);
+  padding-bottom: 0.5rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 2px solid var(--md-default-fg-color--lighter);
+}
+
+.md-typeset h2,
+.md-typeset h3,
+.md-typeset h4,
+.md-typeset h5,
+.md-typeset h6 {
+  font-size: var(--wiki-heading-size);
+}
+
+.md-typeset p,
+.md-typeset li,
+.md-typeset td,
+.md-typeset th {
+  font-size: var(--wiki-content-size);
+}
+
+/* Notes/citations: blockquotes are the standard way to mark an aside as
+   this tier -- e.g. the "these links only resolve in an IDE" note under
+   Relevant Source Files/Folders. */
+.md-typeset blockquote,
+.md-typeset blockquote p {
+  font-size: var(--wiki-note-size);
+}
+
+/* Tables (e.g. the Overview's capability table): Material's default only
+   draws horizontal rules, which reads as loose/hard-to-scan for anything
+   with more than two columns -- add vertical column separators and a
+   light grey header row so it reads as a proper grid. */
+.md-typeset table:not([class]) {
+  border: 1px solid var(--md-default-fg-color--lighter);
+}
+
+.md-typeset table:not([class]) th,
+.md-typeset table:not([class]) td {
+  border-left: 1px solid var(--md-default-fg-color--lighter);
+}
+
+.md-typeset table:not([class]) th:first-child,
+.md-typeset table:not([class]) td:first-child {
+  border-left: none;
+}
+
+.md-typeset table:not([class]) th {
+  background-color: rgba(158, 158, 158, 0.15);
+}
+
+/* Custom grey admonitions shared by every wiki page:
+     !!! sourcefiles "Relevant Source Files/Folders" -- the file/folder list
+     !!! figure "..."                                -- a boxed diagram/image
+   Material shrinks admonition body text to 0.64rem by default -- overridden
+   back to the content tier here, for both. */
+.md-typeset .admonition.sourcefiles,
+.md-typeset details.sourcefiles,
+.md-typeset .admonition.figure,
+.md-typeset details.figure {
+  border-color: #9e9e9e;
+  font-size: var(--wiki-content-size);
+}
+
+.md-typeset .sourcefiles > .admonition-title,
+.md-typeset .sourcefiles > summary,
+.md-typeset .figure > .admonition-title,
+.md-typeset .figure > summary {
+  background-color: rgba(158, 158, 158, 0.12);
+}
+
+.md-typeset .sourcefiles > .admonition-title::before,
+.md-typeset .sourcefiles > summary::before,
+.md-typeset .figure > .admonition-title::before,
+.md-typeset .figure > summary::before {
+  background-color: #9e9e9e;
+}
+
+/* "figure" boxes center their content (an image) rather than left-aligning
+   list text like "sourcefiles" does. */
+.md-typeset .admonition.figure p {
+  text-align: center;
+}

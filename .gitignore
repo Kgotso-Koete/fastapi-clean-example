@@ -36,6 +36,10 @@ MANIFEST
 pip-log.txt
 pip-delete-this-directory.txt
 
+# mkdocs build output (see docs/plans/5-self-hosted-docs-wiki.md) -- built
+# from docs/wiki/, not itself the source of truth.
+site/
+
 # Unit test / coverage reports
 htmlcov/
 .tox/

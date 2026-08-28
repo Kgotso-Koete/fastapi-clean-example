@@ -1,0 +1,103 @@
+site_name: fastapi-clean-example Wiki
+site_description: DDD / Clean Architecture / TDD reference — architecture, development guide, and reference material
+docs_dir: docs/wiki
+
+theme:
+  name: material
+  custom_dir: docs/wiki/overrides
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.top
+    - toc.follow
+    - content.code.copy
+    - search.suggest
+
+extra_css:
+  - stylesheets/extra.css
+
+plugins:
+  - search
+  - mermaid2
+  - include-markdown
+
+markdown_extensions:
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:mermaid2.fence_mermaid_custom
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+      title: Sections
+
+nav:
+  - Overview: index.md
+  - Getting Started:
+      - Quick Start with Docker: content/getting-started/quick-start-docker.md
+      - Quick Start Locally: content/getting-started/quick-start-local.md
+  - Architecture:
+      - Layer Dependencies & Import Rules: content/architecture/layer-dependencies.md
+      - Core Layer (Domain & Business Rules): content/architecture/core-layer.md
+      - Outbound Layer (Infrastructure Adapters): content/architecture/outbound-layer.md
+      - Inbound Layer (HTTP / Presentation): content/architecture/inbound-layer.md
+      - Main (Composition Root): content/architecture/main-composition-root.md
+  - Core Patterns:
+      - Ports and Adapters (Repository Pattern): content/core-patterns/ports-and-adapters.md
+      - Dependency Injection with Dishka: content/core-patterns/dependency-injection.md
+      - Transaction Management (Unit of Work-style): content/core-patterns/transaction-management.md
+      - Domain Events & the Transactional Outbox: content/core-patterns/domain-events-outbox.md
+  - API Reference: content/api-reference.md
+  - Data Models:
+      - Domain Entities & Value Objects: content/data-models/domain-entities.md
+      - Query Models (DTOs): content/data-models/query-models.md
+      - Database Models (SQLAlchemy Mappings): content/data-models/database-models.md
+  - Infrastructure Services:
+      - Database (Postgres): content/infrastructure-services/database.md
+      - Background Jobs (Celery / Redis): content/infrastructure-services/background-jobs.md
+      - Observability (Prometheus, Grafana, Loki): content/infrastructure-services/observability.md
+      - Email (SMTP): content/infrastructure-services/email.md
+  - Configuration:
+      - Settings System (pydantic-settings): content/configuration/settings-system.md
+      - Environment Variables (.env / .secrets): content/configuration/environment-variables.md
+      - Deployment Environments (development vs production): content/configuration/deployment-environments.md
+  - Testing:
+      - TDD (Red-Green-Refactor): content/testing/tdd.md
+      - Test Infrastructure & Fixtures: content/testing/test-infrastructure.md
+      - Test Factories: content/testing/test-factories.md
+      - Running Tests: content/testing/running-tests.md
+      - Code Quality Tools: content/testing/code-quality-tools.md
+  - Development Guide:
+      - Docker Development Environment: content/development-guide/docker-development.md
+      - Makefile Commands Reference: content/development-guide/makefile-commands.md
+      - Database Migrations (Alembic): content/development-guide/database-migrations.md
+  - Docker and Deployment:
+      - Docker Containers: content/docker-deployment/docker-containers.md
+      - Multi-Stage Docker Build: content/docker-deployment/multi-stage-build.md
+      - Container Orchestration & Profiles: content/docker-deployment/container-orchestration.md
+      - Production Deployment: content/docker-deployment/production-deployment.md
+  - Use Case Examples:
+      - Adding a New Use Case (Command): content/use-case-examples/adding-a-use-case.md
+      - Adding a New REST Endpoint: content/use-case-examples/adding-a-rest-endpoint.md
+      - "Account: Sign Up": content/use-case-examples/account-sign-up.md
+      - "Account: Log In": content/use-case-examples/account-log-in.md
+      - "Account: Log Out": content/use-case-examples/account-log-out.md
+      - "Account: Change Password": content/use-case-examples/account-change-password.md
+      - "Users: Create User": content/use-case-examples/users-create-user.md
+      - "Users: Activate User": content/use-case-examples/users-activate-user.md
+      - "Users: Deactivate User": content/use-case-examples/users-deactivate-user.md
+      - "Users: Grant Admin": content/use-case-examples/users-grant-admin.md
+      - "Users: Revoke Admin": content/use-case-examples/users-revoke-admin.md
+      - "Users: Set User Password": content/use-case-examples/users-set-user-password.md
+      - "Users: List Users": content/use-case-examples/users-list-users.md

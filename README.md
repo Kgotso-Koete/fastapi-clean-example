@@ -21,6 +21,7 @@ TODO:
 - [x] Centralize the app/service name behind `APP_SERVICE_NAME` for the Compose project/container names, Promtail's log filter, and Prometheus/Grafana's own config (`pyproject.toml`'s name is a documented manual exception — see `docs/plans/0-production-readiness-roadmap.md`)
 - [ ] Add a self-hosted documentation wiki (MkDocs + Material, generated dependency-graph and complexity diagrams, no third party) — see `docs/plans/5-self-hosted-docs-wiki.md`
 - [ ] Add an inbound CLI (`src/app/inbound/cli/`, sibling to `src/app/inbound/http/`) so core commands/queries can be invoked directly from a terminal script for cron jobs, data seeding, and admin/ops actions, bypassing HTTP entirely — see `docs/plans/0-production-readiness-roadmap.md`
+- [ ] Investigate why `docker compose down`/`stop` can fail to remove `worker`/`redis` at all (confirmed in `make test-docker`'s teardown, only `docker kill` recovers it) — see `docs/plans/0-production-readiness-roadmap.md`
 - [ ] Harden for production use: password policy, rate limiting, secrets management, TLS, backups, a real deploy pipeline, self-service password reset, email verification, and more — full prioritized backlog in `docs/plans/0-production-readiness-roadmap.md`
 
 Prerequisites
@@ -163,6 +164,7 @@ gh pr merge --squash --delete-branch
 |------|-------|-------------|
 | `code-check` | pre-commit | Runs linter, formatter, and type checker (`make check`) |
 | `pip-audit` | pre-commit | Scans dependencies for known security vulnerabilities |
+| `wiki-build` | pre-commit | Fails if the wiki (`docs/wiki/`) doesn't build cleanly (`make wiki-build`) |
 | `test-docker` | pre-push | Runs the full integration test suite before pushing |
 | `no-commit-to-branch` | pre-commit | Blocks direct commits to `main` / `master` |
 | `typos` | pre-commit | Catches common spelling mistakes in code and docs |
