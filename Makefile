@@ -19,6 +19,11 @@ PROJECT_NAME ?= $(or $(shell grep -h '^APP_SERVICE_NAME=' env.example .secrets 2
 # Same read pattern as PROJECT_NAME above -- used to skip open-dashboards
 # (see `upd` below) when this isn't a dev deployment.
 ENVIRONMENT ?= $(or $(shell grep -h '^ENVIRONMENT=' env.example .secrets 2>/dev/null | tail -1 | cut -d= -f2),development)
+# Same read pattern again -- so `make wiki` (plain `mkdocs serve`, no Docker)
+# serves on the same port as the `wiki` Compose service, instead of
+# mkdocs' own default (8000, which collides with `app`'s host port during
+# `make upd`, which is why the Compose service uses this port instead).
+WIKI_PORT ?= $(or $(shell grep -h '^WIKI_PORT=' env.example .secrets 2>/dev/null | tail -1 | cut -d= -f2),8001)
 INFRA_SERVICES ?= db_pg redis
 INFRA_INIT_SERVICES ?=
 MIGRATION_DB_SERVICE ?= db_pg
@@ -107,6 +112,14 @@ check-ci:
 	$(MAKE) test
 	uv run coverage html
 
+# Self-hosted docs wiki (see docs/plans/5-self-hosted-docs-wiki.md)
+.PHONY: wiki wiki-build
+wiki:
+	uv run mkdocs serve --dev-addr 127.0.0.1:$(WIKI_PORT)
+
+wiki-build:
+	uv run mkdocs build
+
 # Docker compose
 .PHONY: docker-env local-env upd up upd-local up-local down stop-all open-dashboards
 docker-env:
@@ -134,6 +147,7 @@ open-dashboards:
 	@xdg-open http://localhost:8000/metrics >/dev/null 2>&1 || true
 	@xdg-open http://localhost:5555 >/dev/null 2>&1 || true
 	@xdg-open http://localhost:8081 >/dev/null 2>&1 || true
+	@xdg-open http://localhost:8001 >/dev/null 2>&1 || true
 
 upd-local: local-env
 	$(DOCKER_COMPOSE) up -d --build --force-recreate $(INFRA_SERVICES) $(INFRA_INIT_SERVICES)

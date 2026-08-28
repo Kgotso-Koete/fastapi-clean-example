@@ -17,7 +17,7 @@ This plan doesn't propose writing new architectural knowledge — it proposes ma
 This matters especially for pair-programming with an agentic AI, not just human readers: the content must be readable — by a person in an editor, by GitHub's default renderer, or by an AI reading the file directly — with **zero dependency on `mkdocs serve` running**. MkDocs/Material is purely a rendering layer added on top (navigation, search, live Mermaid) for a nicer browsing experience; it is never a requirement to access the content itself, exactly like `docs/plans/*.md` already works today with no tooling at all. Concretely, this means:
 
 - All wiki content lives as plain `.md` files under `docs/wiki/` (sibling to the existing `docs/plans/`), never generated-only or served-only content with no readable source.
-- Nothing in this plan touches `src/app/` at all. `docs/wiki/` and the generator scripts (`scripts/docs/`) are both dev-time/documentation trees, entirely outside the tree `import-linter`'s layering rules govern, that gets built into the Docker image, or that the application imports at runtime. The wiki has no dependency on, and no participation in, the app's own Clean Architecture boundaries — it's pure sibling tooling, the same category as `scripts/makefile/*.sh` already is.
+- Nothing in this plan touches `src/app/` at all. `docs/wiki/` and the generator scripts (`scripts/wiki/`) are both dev-time/documentation trees, entirely outside the tree `import-linter`'s layering rules govern, that gets built into the Docker image, or that the application imports at runtime. The wiki has no dependency on, and no participation in, the app's own Clean Architecture boundaries — it's pure sibling tooling, the same category as `scripts/makefile/*.sh` already is.
 - The two generated files (`docs/wiki/_generated/dependency-graph.md`, `docs/wiki/_generated/complexity.md`) are themselves committed, readable plain markdown once generated — not build artifacts hidden behind a server. Regenerating them is a `make` target (Step 1/2/3), not a requirement for reading them.
 
 ## Why the diagrams should be generated, not hand-drawn
@@ -40,8 +40,8 @@ The wiki documents internal architecture, the real dependency graph, and (via th
 
 Two ways to run it locally, not mutually exclusive, both dev-only:
 
-1. **`make docs`** (new Makefile target) — runs `uv run mkdocs serve` directly on the host, no container. Simplest path for local iteration while writing pages. Since `mkdocs` itself would only ever be installed as a `dev` dependency group member (Step 1), it's already absent from a production install by construction — there's nothing to gate here beyond that.
-2. **An optional `docs` Compose service** — `mkdocs serve --dev-addr 0.0.0.0:${DOCS_PORT:-8001}` inside the existing `app` image (already has the full `uv` environment) or a minimal dedicated image, mapped to `127.0.0.1:${DOCS_PORT:-8001}`, following the exact `${VAR:-default}`-from-`.env` port pattern already used by every other service. This service **must** be on the existing `dev` Compose profile (see Step 6) — not a new, separate gating mechanism invented for itself.
+1. **`make wiki`** (new Makefile target) — runs `uv run mkdocs serve` directly on the host, no container. Simplest path for local iteration while writing pages. Since `mkdocs` itself would only ever be installed as a `dev` dependency group member (Step 1), it's already absent from a production install by construction — there's nothing to gate here beyond that.
+2. **An optional `wiki` Compose service** — `mkdocs serve --dev-addr 0.0.0.0:${WIKI_PORT:-8001}` inside the existing `app` image (already has the full `uv` environment) or a minimal dedicated image, mapped to `127.0.0.1:${WIKI_PORT:-8001}`, following the exact `${VAR:-default}`-from-`.env` port pattern already used by every other service. This service **must** be on the existing `dev` Compose profile (see Step 6) — not a new, separate gating mechanism invented for itself.
 
 ---
 
@@ -53,32 +53,58 @@ Two ways to run it locally, not mutually exclusive, both dev-only:
 
 - **[MODIFY]** `pyproject.toml` — add `mkdocs`, `mkdocs-material`, `mkdocs-mermaid2-plugin`, `mkdocs-include-markdown-plugin`, and `radon` to the `dev` dependency group.
 - **[NEW]** `mkdocs.yml` at repo root — site config, Material theme config, plugin list, and the `nav:` tree mapping to the pages in Step 4.
-- **[MODIFY]** `Makefile` — add a `docs` target (`uv run mkdocs serve`) and a `docs-build` target (`uv run mkdocs build`, for a static-output sanity check in CI).
-- **[MODIFY]** `env.example` — add `DOCS_PORT=8001` (or similar), if the optional Compose service (Step 6) is included.
+- **[MODIFY]** `Makefile` — add a `wiki` target (`uv run mkdocs serve`) and a `wiki-build` target (`uv run mkdocs build`, for a static-output sanity check in CI).
+- **[MODIFY]** `env.example` — add `WIKI_PORT=8001` (or similar), if the optional Compose service (Step 6) is included.
 
 ### Step 2 — Dependency-graph generator (`grimp` → Mermaid)
 
-**TDD order:** write `tests/unit/main/docs_tools/test_dependency_graph.py` (given a small fixture import graph, or by asserting real known edges/non-edges in `app`'s actual graph — e.g. "an edge from `core` to `outbound` must not exist" — mirrors what `import-linter`'s own contract already guarantees, so this test is partly a second, independent check on the same invariant) → RED → write the generator → GREEN.
+**TDD order:** write `tests/unit/main/wiki_tools/test_dependency_graph.py` (given a small fixture import graph, or by asserting real known edges/non-edges in `app`'s actual graph — e.g. "an edge from `core` to `outbound` must not exist" — mirrors what `import-linter`'s own contract already guarantees, so this test is partly a second, independent check on the same invariant) → RED → write the generator → GREEN.
 
-- **[NEW]** `scripts/docs/generate_dependency_graph.py` — uses `grimp.build_graph("app")` to walk the real import graph, groups modules by top-level layer (`main`/`inbound`/`outbound`/`core`), and emits a Mermaid `graph TD` block (layer-to-layer edges, deduplicated) to `docs/wiki/_generated/dependency-graph.md`.
-- **[MODIFY]** `Makefile`'s `docs-build`/`docs` targets — regenerate this file before serving/building, so it's always current, never manually maintained.
+- **[NEW]** `scripts/wiki/generate_dependency_graph.py` — uses `grimp.build_graph("app")` to walk the real import graph, groups modules by top-level layer (`main`/`inbound`/`outbound`/`core`), and emits a Mermaid `graph TD` block (layer-to-layer edges, deduplicated) to `docs/wiki/_generated/dependency-graph.md`.
+- **[MODIFY]** `Makefile`'s `wiki-build`/`wiki` targets — regenerate this file before serving/building, so it's always current, never manually maintained.
 
 ### Step 3 — Complexity report generator (`radon` → a page)
 
-**TDD order:** write `tests/unit/main/docs_tools/test_complexity_report.py` (given a small fixture module with known-obvious complexity, asserts the generator's parsing of `radon`'s JSON output produces the expected summary structure) → RED → write the generator → GREEN.
+**TDD order:** write `tests/unit/main/wiki_tools/test_complexity_report.py` (given a small fixture module with known-obvious complexity, asserts the generator's parsing of `radon`'s JSON output produces the expected summary structure) → RED → write the generator → GREEN.
 
-- **[NEW]** `scripts/docs/generate_complexity_report.py` — runs `radon cc src/app -j` and `radon mi src/app -j` (via `radon`'s Python API, not shelling out, so the test above can call it directly with a fixture path), and emits a markdown table (worst-N files by cyclomatic complexity, maintainability index distribution) plus a Mermaid `pie` or `xychart-beta` block summarizing the distribution, to `docs/wiki/_generated/complexity.md`.
-- **[MODIFY]** `Makefile`'s `docs-build`/`docs` targets — regenerate this alongside the dependency graph.
+- **[NEW]** `scripts/wiki/generate_complexity_report.py` — runs `radon cc src/app -j` and `radon mi src/app -j` (via `radon`'s Python API, not shelling out, so the test above can call it directly with a fixture path), and emits a markdown table (worst-N files by cyclomatic complexity, maintainability index distribution) plus a Mermaid `pie` or `xychart-beta` block summarizing the distribution, to `docs/wiki/_generated/complexity.md`.
+- **[MODIFY]** `Makefile`'s `wiki-build`/`wiki` targets — regenerate this alongside the dependency graph.
 
 ### Step 4 — Content pages
 
-**No TDD step** — prose content, not logic. Each page is new:
+**No TDD step** — prose content, not logic.
+
+**The nav structure was substantially expanded during scoping**, well beyond the flat 9-page list originally sketched here — 12 sections, ~50 pages, adapted from the depth/categorization of `https://deepwiki.com/Peopl3s/clean-architecture-fastapi-project-template`'s own nav (drawing correspondences where real, dropping what doesn't apply to this codebase — no caching layer, no Identity Map, no swappable "technology options" — and adding what does that their reference doesn't have, like the transactional outbox). `mkdocs.yml`'s `nav:` is the current source of truth for the exact page list and ordering, not the bullet list originally drafted below — re-deriving that list here every time it changes isn't worth the duplication.
+
+**Standing conventions for every page, established while writing the Overview page first:**
+
+- **A "## Relevant Source Files" section right after the H1**, before any other content — the real files/folders that page discusses, as clickable links. Modeled on the same DeepWiki reference's own pattern of leading each page with precise source citations.
+- **`docs/wiki/` splits content from style/config, each a direct sibling of `docs_dir` (`docs/wiki/` itself, unchanged so `extra_css`/`theme.custom_dir` keep resolving):** `content/` holds every *section* page, `stylesheets/`/`overrides/` hold theme assets — but `index.md` and `images/` stay **outside** `content/`, as direct children of `docs/wiki/` itself, alongside it. `index.md` has to: MkDocs only maps a page to the site root URL (`/`) when its source file sits directly at the top of `docs_dir` — moving it into `content/` silently breaks the home page (a real 404 caught after the fact, not anticipated up front) since it'd then map to `/content/` instead. `images/` follows the same top-level placement for consistency with `index.md`, and because shared assets sitting apart from the page tree is the common frontend convention anyway. This means **every section page's real path is one level deeper than its `nav:` label alone would suggest** (`content/architecture/layer-dependencies.md`, etc.) while `index.md`'s is not — so a link from `index.md` into any section page needs a `content/` prefix, and a link from a section page back to `index.md` needs one extra `../`, on top of whatever plain nav-mirroring depth you'd otherwise expect.
+- **Every reference to a specific source file or folder is a real markdown link with a correct relative path back to it** (e.g. `../../src/app/main/run.py` from `index.md`, `../../../../src/app/...` from a page inside a `content/<section>/` folder), not just a backtick-formatted path. This is deliberate: it makes the reference actually clickable when reading the raw `.md` file in VS Code (cmd/ctrl-click follows it straight to the file), which matters given this project's own "the plain files are the source of truth" principle — reading the wiki in an editor should be a first-class experience, not just reading it rendered. The link still displays as normal styled text in the rendered MkDocs site; it just won't resolve there (harmless — a 404 on a link nobody was going to click from a browser anyway, since the *rendered* page already has the information inline).
+- **Every diagram — Mermaid or hand-authored SVG — sits inside a `!!! figure "..."` admonition** (the same grey-boxed style as `!!! sourcefiles`, defined in `extra.css`), with a short caption distinct from the section's own `##` heading. This applies to Mermaid diagrams too, not just static images: indent the whole ` ```mermaid ` fence block by 4 spaces as the admonition's content, same as any other admonition body.
+- **Visual-first**: diagrams before paragraphs of explanation wherever a diagram can carry the point — Mermaid for anything that benefits from being regenerable/text-sourced (flows, container topology, sequence-style walkthroughs), a hand-authored SVG under `docs/wiki/images/` for anything meant to be reused verbatim across multiple pages (e.g. `clean-architecture-layers.svg`, the concentric-rings diagram). Diagrams should be big, high-contrast, and light on embedded text — put explanation in a caption below the diagram, not crammed into node/subgraph labels themselves (a real bug caught on the Overview page: long Mermaid subgraph titles collided visually; the fix was shorter labels plus an explanatory caption underneath).
+- **Every Mermaid diagram gets the same sizing directive as its first line, copied verbatim** — the `mkdocs.yml`-level global `mermaid2` plugin `arguments:` config was tried twice for this (once as the very first pass, once after backing out an unrelated CSS attempt) and both times produced a *smaller* result than the per-diagram directive — it's not a reliable mechanism here, despite being the "correct," less-repetitive way to do this in principle. The per-diagram directive is what's actually confirmed working, so it's what to keep using, copy-pasted, even though that means repeating it:
+  ```
+  %%{init: {"theme": "default", "themeVariables": {"fontSize": "14px"}, "flowchart": {"nodeSpacing": 20, "rankSpacing": 16, "padding": 10, "subGraphTitleMargin": {"top": 5, "bottom": 12}, "useMaxWidth": false}}}%%
+  ```
+  as the line immediately after the opening ` ```mermaid ` fence, before the diagram's own first real line (e.g. `flowchart TB`). If a future page's diagram still needs to be bigger, bump these same numbers (in this same copied line) rather than reaching for the global config again. **`useMaxWidth: false` is required, not optional**: Mermaid's default (`true`) scales the whole SVG down to fit the page's content width, so any change that makes the diagram's natural size bigger (more spacing, bigger fontSize) can paradoxically render *smaller* on the page — it just gets squeezed harder to fit the same fixed width. This was the actual, previously-undiagnosed cause of "increasing the size setting made it smaller" happening more than once earlier in this project; `useMaxWidth: false` renders the diagram at its true calibrated size and lets the page scroll horizontally instead, which is what every size bump on this page was actually trying to achieve.
+- **Every diagram gets its "what does this mean" spelled out explicitly** — e.g. the Overview's container diagram states plainly that arrows are `depends_on` relationships from `docker-compose.yml`, not assumed obvious from the picture alone.
+- **Prefer `flowchart LR` over `flowchart TB` once a diagram has several independent/parallel branches** (e.g. multiple subgraphs, or nodes with no dependency between them) — Mermaid's rank axis and the "same-rank" axis are swapped between the two: in `TB`, same-rank nodes spread out horizontally, growing the diagram *wide*; in `LR`, same-rank nodes stack vertically instead, growing the diagram *tall*. Since `useMaxWidth: false` means an overly wide diagram needs horizontal scrolling — a less natural motion on a web page than vertical scrolling — `LR` is the better default as soon as a diagram has more than one independent branch. This is exactly what fixed the Overview's container diagram once it had three parallel subgraph groups.
+- **Mermaid edge (arrow) thickness and subgraph/cluster border styling must be set inside the diagram source itself, via `linkStyle`/`style` — not from `extra.css` and not via JS.** Mermaid injects its own `<style>` block per diagram, scoped to that diagram's auto-generated id (e.g. `#__mermaid_0 .flowchart-link`), which beats any external class-based override in `extra.css` on specificity even with `!important` on both sides — this was tried twice with progressively broader selectors (confirmed matching the real class names off the rendered SVG) and didn't work. A JS-based fix (`element.style.setProperty(prop, value, "important")` applied after render) was tried as a third attempt and also didn't visibly work, for a reason never diagnosed, and was reverted. The actual fix: Mermaid's own `linkStyle`/`style` statements, added as extra lines in the diagram source after the edges, which apply as inline styles Mermaid itself writes onto those exact elements — nothing to fight. Add both to every new diagram with edges/subgraphs:
+  ```
+  linkStyle default stroke-width:6px,stroke:#333333
+  style <subgraphId> stroke-width:4px,stroke:#333333
+  ```
+  one `style` line per subgraph id used in that diagram (see the Overview page's container diagram for a working example with four subgraphs). Bump the pixel values if a future page needs them bigger, same as the sizing directive above.
+- **Internal cross-references between wiki pages are real links too** (e.g. `[Architecture → Layer Dependencies & Import Rules](architecture/layer-dependencies.md)`), not bolded plain text — every "see the X page" mention should be directly clickable in the rendered site.
+
+Each page is new unless noted otherwise:
 
 - `docs/wiki/index.md` — Overview: what this project is, the DDD/Clean Architecture/TDD pitch, a capability table (domain events, transactional outbox, Celery/Redis background dispatch, observability stack, RBAC, etc. — what's actually implemented, not aspirational), and a map of the rest of the wiki.
 - `docs/wiki/api-reference.md` — not a separately-generated API doc; a thin page linking to this app's own FastAPI-generated interactive docs (`/docs`, `/redoc`), which already correctly reflect the real routes/schemas. Building a second API reference generator would just be another thing that can drift from the real one FastAPI already provides for free.
 - `docs/wiki/getting-started.md` — condensed from `README.md`'s existing Prerequisites/Start/Stop/Test sections, with working code blocks (not just linked — Material renders these with copy buttons).
 - `docs/wiki/architecture-containers.md` — a Mermaid diagram of every `docker-compose.yml` service and its dependencies/profiles (`app`, `db_pg`, the `celery`-profiled group, the observability group), generated by hand once (the compose topology changes rarely enough that auto-generation isn't worth building) but kept in a single small, easily-updated file.
-- `docs/wiki/architecture-ddd-clean.md` — the `main`/`inbound`/`outbound`/`core` layering, `import-linter`'s enforced contract, and domain concepts (`Entity`, `DomainEvent`, ports/adapters), embedding Step 2's generated dependency graph and linking out to specific files/lines (e.g. `src/app/core/common/entities/base.py:30` for `collect_events()`) the way the existing plan docs already cite code.
+- `docs/wiki/architecture-ddd-clean.md` — the `main`/`inbound`/`outbound`/`core` layering, `import-linter`'s enforced contract, and domain concepts (`Entity`, `DomainEvent`, ports/adapters), embedding Step 2's generated dependency graph and linking out to specific files/lines (e.g. `src/app/core/common/entities/base.py:30` for `collect_events()`) the way the existing plan docs already cite code. Explain the layering the way it was explained in conversation when this plan was being scoped, not just as a rule to follow: state the one-directional rule plainly (`main → inbound → outbound → core`, imports only ever point right), name what each layer actually is in plain language (core = business rules that don't know how they're triggered or where data lives; outbound = the concrete "how do we talk to the outside world" adapters; inbound = the concrete "how does the outside world reach us" adapters; main = the composition root wiring a concrete adapter into what core asked for), then explain *why* via Dependency Inversion/Ports-and-Adapters (core defines a port, e.g. "I need something that can `get_user_by_id`"; outbound provides the answer) and what it actually buys you (swap infrastructure without touching business rules; add a second way in, like the CLI item on the roadmap, calling the same rules HTTP does; unit-test business rules with zero database/web server). Also worth a short callout on what the linter *doesn't* catch — e.g. `src/app/inbound/http/health/checks.py` reaching directly for `sqlalchemy.ext.asyncio.AsyncSession` instead of a port isn't flagged, since the contract only polices imports between `app.main`/`app.inbound`/`app.outbound`/`app.core`, not which third-party libraries a layer reaches for directly — a good concrete example of the rule's actual boundary, not just its intent.
 - `docs/wiki/tdd.md` — the red-green-refactor convention this project's plans already follow, with a real before/after example pulled from one of the existing plan docs' "TDD order" step descriptions.
 - `docs/wiki/development-guide.md` — day-to-day workflow: `make check`, `make test-docker`, the commit protocol from `README.md`'s "How to Commit" section, and this project's git-history convention for numbering `docs/plans/` files sequentially.
 - `docs/wiki/changelog.md` — a thin wrapper page using `mkdocs-include-markdown-plugin` to include `CHANGELOG.md` verbatim.
@@ -91,11 +117,11 @@ Two ways to run it locally, not mutually exclusive, both dev-only:
 
 - **[MODIFY]** `docs/wiki/architecture-ddd-clean.md` — includes `docs/wiki/_generated/dependency-graph.md` via the same include plugin used for Changelog/Roadmap.
 
-### Step 6 — Optional Compose service, dev-only
+### Step 6 — Optional Compose service, dev-only — done
 
 **No TDD step.**
 
-- **[MODIFY]** `docker-compose.yml` — an optional `docs` service (see "Serving it" above), on the existing `development` profile (the same one `grafana`/`adminer` already use), so it only starts when `ENVIRONMENT=development`.
+- **[MODIFY]** `docker-compose.yml` — an optional `wiki` service (see "Serving it" above), on the existing `development` profile (the same one `grafana`/`adminer` already use), so it only starts when `ENVIRONMENT=development`. Reuses the same Dockerfile/build args as `app`/`worker` (no new image), bind-mounts the repo the same way, and runs `mkdocs serve --dev-addr 0.0.0.0:8000` as its `command` — the plain `docker-entrypoint.sh` default case (`exec "$@"`) already handles an arbitrary command with no changes needed to that shared script. Host port via `WIKI_PORT` (`env.example`, default `8001`), added to `make upd`'s `open-dashboards` alongside the rest of the dev-only stack.
 - **Now unblocked.** The roadmap's "finish making dev-only dashboards conditional on `ENVIRONMENT`" item is done: `scripts/makefile/*_env.sh` computes `COMPOSE_PROFILES` from both `CELERY_ENABLED` and `ENVIRONMENT` (which must be exactly `development` or `production`, validated), with `development` gating `grafana`/`prometheus`/`loki`/`promtail`/`adminer` and `celery-development` gating `flower`/`redis-commander`. This service should reuse the existing `development` profile rather than inventing a separate mechanism for itself.
 
 ---
@@ -106,28 +132,29 @@ Two ways to run it locally, not mutually exclusive, both dev-only:
 |---|---|---|
 | MODIFY | `pyproject.toml` | add `mkdocs`, `mkdocs-material`, `mkdocs-mermaid2-plugin`, `mkdocs-include-markdown-plugin`, `radon` to `dev` group |
 | NEW | `mkdocs.yml` | site config, theme, plugins, nav |
-| MODIFY | `Makefile` | `docs`, `docs-build` targets |
-| MODIFY | `env.example` | `DOCS_PORT` (if Step 6 included) |
-| NEW | `scripts/docs/generate_dependency_graph.py` | `grimp` → Mermaid |
-| NEW | `scripts/docs/generate_complexity_report.py` | `radon` → markdown + Mermaid |
-| NEW | `tests/unit/main/docs_tools/test_dependency_graph.py` | unit test for the graph generator |
-| NEW | `tests/unit/main/docs_tools/test_complexity_report.py` | unit test for the complexity generator |
+| NEW | `docs/wiki/overrides/partials/nav.html` | `theme.custom_dir` override of Material's own `partials/nav.html` — only change is the primary sidebar's title text (`site_name` → literal "Table of Contents"); everything else copied verbatim from the installed theme so the logo link, repo link, and nav tree behave identically to Material's default |
+| MODIFY | `Makefile` | `wiki`, `wiki-build` targets |
+| MODIFY | `env.example` | `WIKI_PORT` |
+| NEW | `scripts/wiki/generate_dependency_graph.py` | `grimp` → Mermaid |
+| NEW | `scripts/wiki/generate_complexity_report.py` | `radon` → markdown + Mermaid |
+| NEW | `tests/unit/main/wiki_tools/test_dependency_graph.py` | unit test for the graph generator |
+| NEW | `tests/unit/main/wiki_tools/test_complexity_report.py` | unit test for the complexity generator |
 | NEW | `docs/wiki/index.md`, `getting-started.md`, `architecture-containers.md`, `architecture-ddd-clean.md`, `tdd.md`, `development-guide.md`, `api-reference.md`, `changelog.md`, `roadmap.md`, `complexity.md` | wiki content pages |
-| MODIFY | `docker-compose.yml` | optional `docs` service (Step 6) |
+| MODIFY | `docker-compose.yml` | optional `wiki` service, `development` profile (Step 6) — done |
 
 ## Verification Plan
 
 **Automated:**
 ```bash
-uv run pytest tests/unit/main/docs_tools -v
-make docs-build
+uv run pytest tests/unit/main/wiki_tools -v
+make wiki-build
 uv run lint-imports
 uv run mypy
 ```
 
 **Manual:**
-1. `make docs` — confirm the site serves locally and reload-on-save works while editing a page.
+1. `make wiki` — confirm the site serves locally and reload-on-save works while editing a page.
 2. Open the Architecture (DDD/Clean Architecture) page — confirm the Mermaid dependency graph renders and its edges match what `lint-imports` actually enforces (no `core → outbound` edge, etc.).
 3. Open the Complexity page — confirm the table/chart reflects real current file complexity (spot-check one known-simple file and one known-more-complex one, e.g. `src/app/main/run.py`'s `# noqa: C901` function, against the numbers shown).
-4. Edit `CHANGELOG.md`, rerun `make docs-build`, confirm the wiki's Changelog page picks up the change with no manual copy step.
-5. If Step 6 is included: `make upd` with `ENVIRONMENT=development` (the default), confirm the wiki is reachable at `127.0.0.1:${DOCS_PORT:-8001}` alongside the rest of the stack; then confirm it does **not** start with `ENVIRONMENT=production`.
+4. Edit `CHANGELOG.md`, rerun `make wiki-build`, confirm the wiki's Changelog page picks up the change with no manual copy step.
+5. If Step 6 is included: `make upd` with `ENVIRONMENT=development` (the default), confirm the wiki is reachable at `127.0.0.1:${WIKI_PORT:-8001}` alongside the rest of the stack; then confirm it does **not** start with `ENVIRONMENT=production`.
