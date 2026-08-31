@@ -113,12 +113,24 @@ check-ci:
 	uv run coverage html
 
 # Self-hosted docs wiki (see docs/plans/5-self-hosted-docs-wiki.md)
-.PHONY: wiki wiki-build
-wiki:
+.PHONY: wiki wiki-build wiki-generate wiki-full
+wiki-generate:
+	uv run python scripts/wiki/dependency_graph.py
+	uv run python scripts/wiki/complexity_report.py
+
+wiki: wiki-generate
 	uv run mkdocs serve --dev-addr 127.0.0.1:$(WIKI_PORT)
 
-wiki-build:
+wiki-build: wiki-generate
 	uv run mkdocs build
+
+# One-shot pipeline: full integration tests, then regenerate the
+# dependency-graph/complexity pages from current code, build the wiki
+# to confirm it's clean, then serve it for review -- avoids running
+# test-docker/wiki-generate/wiki-build/wiki as separate one-off commands.
+wiki-full: test-docker wiki-generate
+	uv run mkdocs build
+	uv run mkdocs serve --dev-addr 127.0.0.1:$(WIKI_PORT)
 
 # Docker compose
 .PHONY: docker-env local-env upd up upd-local up-local down stop-all open-dashboards

@@ -11,11 +11,13 @@
 ## Checklist (summary)
 
 **Already implemented**
+
 - [x] Background job processing (Celery + Redis, with a transactional outbox for reliable delivery and a `CELERY_ENABLED=false` inline fallback for Celery-less deployments)
 - [x] Observability stack (Prometheus metrics, Grafana dashboards, Loki/Promtail structured log aggregation, email alerting on unhandled errors)
 - [x] Core user contact fields (`email`, `phone_number` on the `User` entity, validated value objects, uniqueness constraints)
 
 **P0 — floor for any real deployment**
+
 - [ ] Stronger password policy (raise `RawPassword.MIN_LEN`, add a max-length guard, consider a breach-list check)
 - [ ] Rate limiting on `/account/login/` and `/account/signup/`
 - [ ] Move secrets out of `.env`/`.secrets` into a real secret store
@@ -27,15 +29,18 @@
 - [ ] Bump dependencies with known vulnerabilities flagged by `pip-audit` (`cryptography`, `msgpack`, `pip`, `pydantic-settings`, `pyjwt`, `starlette`)
 
 **P1 — conditional on how accounts get created**
+
 - [ ] Signup abuse protection (CAPTCHA/bot mitigation) if sign-up is public
 - [ ] Audit log for admin actions if sign-up is admin/invite-only
 - [ ] MFA/2FA
 - [ ] CORS + security headers (once a separate frontend origin exists)
 
 **Optional / scale-dependent**
+
 - [ ] Multi-tenancy data model (`organization_id`/`unit_id` + Postgres RLS) — only if serving multiple isolated customer orgs
 
 **Also worth a look**
+
 - [x] Centralize the hardcoded app/service name behind one `APP_SERVICE_NAME` env var (`pyproject.toml`'s name remains a documented manual exception -- static packaging metadata, can't be env-driven)
 - [x] Move the remaining hardcoded host ports (`prometheus`, `grafana`, `loki`, `adminer`) into `env.example`/`.secrets`, matching the pattern already used for `UVICORN_PORT`/`POSTGRES_PORT`/`REDIS_PORT`/`FLOWER_PORT`/`REDIS_COMMANDER_PORT`
 - [ ] Data protection compliance review (GDPR/CCPA/POPIA-style, as applicable)
@@ -44,7 +49,8 @@
 - [x] Finish making dev-only dashboards conditional on environment (remove hardcoded `ENVIRONMENT=development` build arg); also extended to `prometheus`/`loki`/`promtail` (neither Prometheus nor Loki has built-in auth) and to gating Swagger UI (`/docs`/`/redoc`, but not `/openapi.json`)
 - [ ] Support logging in via email, not just username (`LogIn` currently only calls `AuthSqlaUserTxStorage.get_by_username`)
 - [ ] Public-facing API with API-key authentication (username/password-generated keys, with expiry), mirroring the existing account use cases minus self-registration — needs its own dedicated implementation plan
-- [ ] Self-hosted documentation wiki (MkDocs + Material, generated dependency-graph and complexity diagrams) — fully scoped in `docs/plans/5-self-hosted-docs-wiki.md`
+- [x] Self-hosted documentation wiki (MkDocs + Material, ~50 hand-written content pages covering architecture/patterns/use cases) — fully scoped in `docs/plans/5-self-hosted-docs-wiki.md`
+- [x] Wiki: generate the dependency-graph and complexity diagrams from real code (`grimp`/`radon`) instead of hand-drawing them, so they can't drift stale — Steps 2/3/5 of `docs/plans/5-self-hosted-docs-wiki.md`
 - [ ] Add an inbound CLI (`src/app/inbound/cli/`, sibling to the existing `src/app/inbound/http/`) so core commands/queries can be invoked directly from a terminal script, bypassing HTTP entirely
 - [ ] `docker compose down`/`stop` can fail to remove `worker`/`redis` at all (not just "needs a second run") — confirmed with real evidence in `make test-docker`'s teardown; `make down` sometimes needs to be run twice on the main stack (same suspected cause, unconfirmed there)
 

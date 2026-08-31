@@ -40,6 +40,15 @@ pip-delete-this-directory.txt
 # from docs/wiki/, not itself the source of truth.
 site/
 
+# Symlinks (not real copies) into the real htmlcov/htmlcov-docker below, so
+# the wiki's coverage-report pages can embed them -- MkDocs can only serve
+# files inside docs_dir, so this is the only way to reach a repo-root
+# directory from there. The symlinks themselves carry no content worth
+# tracking; docs/wiki/generated/*.md (the actually-generated pages) stay
+# committed as normal.
+docs/wiki/generated/htmlcov
+docs/wiki/generated/htmlcov-docker
+
 # Unit test / coverage reports
 htmlcov/
 .tox/

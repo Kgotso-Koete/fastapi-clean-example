@@ -1,3 +1,17 @@
+/* Embedded coverage.py HTML reports (Testing -> Unit/Integration Test
+   Coverage Report) -- an <iframe> pointing at a symlinked, gitignored
+   htmlcov/htmlcov-docker directory under docs/wiki/_generated/. Full
+   column width, a fixed tall-enough height with its own scrollbar (the
+   embedded report is coverage.py's own multi-page app, not sized to this
+   page), and a plain border since it's an embedded foreign document, not
+   one of this wiki's own boxes. */
+.coverage-report-frame {
+  width: 100%;
+  height: 80vh;
+  border: 1px solid var(--md-default-fg-color--lighter);
+  border-radius: 0.1rem;
+}
+
 /* Mermaid diagrams render at a fixed natural pixel width (useMaxWidth:
    false in each diagram's own %%{init}%% directive -- see the plan doc's
    Step 4 conventions for why that's required), so a wide diagram can
@@ -91,12 +105,23 @@
   font-size: var(--wiki-content-size);
 }
 
-/* Notes/citations: blockquotes are the standard way to mark an aside as
-   this tier -- e.g. the "these links only resolve in an IDE" note under
-   Relevant Source Files/Folders. */
-.md-typeset blockquote,
+/* Notes/citations: the ONE note style used everywhere in this wiki -- a
+   real blockquote, nested INSIDE whatever admonition/table it's captioning
+   (e.g. sourcefiles' own "these links resolve in an IDE" aside), never a
+   separate bordered box of its own. Muted grey text plus a thin grey
+   left accent line is the whole visual: small, present, deliberately not
+   prominent. */
+.md-typeset blockquote {
+  font-size: var(--wiki-note-size);
+  color: #757575;
+  border-left: 2px solid #9e9e9e;
+  padding-left: 0.6rem;
+  margin-left: 0;
+}
+
 .md-typeset blockquote p {
   font-size: var(--wiki-note-size);
+  color: #757575;
 }
 
 /* Tables (e.g. the Overview's capability table): Material's default only
@@ -153,3 +178,47 @@
 .md-typeset .admonition.figure p {
   text-align: center;
 }
+
+/* "figure-wide" is the same boxed style as "figure" (diagram admonitions
+   share both selectors below), but for a diagram too involved to read at
+   a size that fits the content column -- the request-flow sequence
+   diagrams under use-case-examples/. These are given their own, larger
+   `sequence: {...}` Mermaid config (wider actor spacing, taller message
+   spacing, bigger fonts, useMaxWidth: false so Mermaid never shrinks it
+   back down to fit) -- an earlier version of this rule instead forced
+   the rendered <svg> itself to width:100%/height:auto, which scaled a
+   tall, many-participant diagram DOWN to the column's width, the exact
+   opposite of readable. Right approach: let the diagram render at its
+   own real (larger) size, and give it a bounded, scrollable viewport --
+   full column width, capped height -- instead of letting either
+   dimension overflow the page or shrinking the diagram to avoid that. */
+.md-typeset .admonition.figure-wide,
+.md-typeset details.figure-wide {
+  border-color: #9e9e9e;
+  font-size: var(--wiki-content-size);
+}
+
+.md-typeset .figure-wide > .admonition-title,
+.md-typeset .figure-wide > summary {
+  background-color: rgba(158, 158, 158, 0.12);
+}
+
+.md-typeset .figure-wide > .admonition-title::before,
+.md-typeset .figure-wide > summary::before {
+  background-color: #9e9e9e;
+}
+
+.md-typeset .admonition.figure-wide p {
+  text-align: center;
+}
+
+.md-typeset .figure-wide .mermaid {
+  width: 100%;
+  max-width: 100%;
+  max-height: 80vh;
+  overflow: auto;
+  /* Undoes the base `.mermaid` rule's `width: fit-content` (which would
+     otherwise shrink this container back down to the diagram's own
+     size instead of the full column width the scroll viewport needs). */
+}
+

@@ -1,5 +1,7 @@
 [![Mentioned in Awesome FastAPI](https://awesome.re/mentioned-badge.svg)](https://github.com/mjhea0/awesome-fastapi?tab=readme-ov-file#best-practices)
 
+> **This README is just a quick-start summary, not the full guide.** For the complete walkthrough — the DDD/Clean Architecture explanation, every use case traced end-to-end with diagrams, configuration/deployment reference, and more — see the self-hosted documentation wiki under [`docs/wiki/`](docs/wiki/). Run `make wiki` (or `make upd`, which starts it alongside everything else) and open **http://localhost:8001** (`WIKI_PORT` in `env.example`).
+
 Stay tuned. Refactor in progress, see [`legacy-2025`](https://github.com/ivan-borovets/fastapi-clean-example/tree/legacy-2025) branch for architecture docs
 
 TODO:
@@ -19,7 +21,8 @@ TODO:
 - [x] Make dev-only tooling (`grafana`, `prometheus`, `loki`, `promtail`, `adminer`, and — when Celery is enabled — `flower`, `redis-commander`) conditional on `ENVIRONMENT` (must be exactly `development` or `production`, validated), and stop hardcoding `ENVIRONMENT=development` as a Docker build arg
 - [x] Gate Swagger UI (`/docs`, `/redoc`) behind `ENVIRONMENT=development`; `/openapi.json` stays reachable in both, e.g. for importing the schema into Postman/Insomnia
 - [x] Centralize the app/service name behind `APP_SERVICE_NAME` for the Compose project/container names, Promtail's log filter, and Prometheus/Grafana's own config (`pyproject.toml`'s name is a documented manual exception — see `docs/plans/0-production-readiness-roadmap.md`)
-- [ ] Add a self-hosted documentation wiki (MkDocs + Material, generated dependency-graph and complexity diagrams, no third party) — see `docs/plans/5-self-hosted-docs-wiki.md`
+- [x] Add a self-hosted documentation wiki (MkDocs + Material, ~50 hand-written content pages covering architecture/patterns/use cases) — see `docs/plans/5-self-hosted-docs-wiki.md`
+- [x] Wiki: generate the dependency-graph and complexity diagrams from real code (`grimp`/`radon`) instead of hand-drawing them, so they can't drift stale — see `docs/plans/5-self-hosted-docs-wiki.md`'s Steps 2/3/5
 - [ ] Add an inbound CLI (`src/app/inbound/cli/`, sibling to `src/app/inbound/http/`) so core commands/queries can be invoked directly from a terminal script for cron jobs, data seeding, and admin/ops actions, bypassing HTTP entirely — see `docs/plans/0-production-readiness-roadmap.md`
 - [ ] Investigate why `docker compose down`/`stop` can fail to remove `worker`/`redis` at all (confirmed in `make test-docker`'s teardown, only `docker kill` recovers it) — see `docs/plans/0-production-readiness-roadmap.md`
 - [ ] Harden for production use: password policy, rate limiting, secrets management, TLS, backups, a real deploy pipeline, self-service password reset, email verification, and more — full prioritized backlog in `docs/plans/0-production-readiness-roadmap.md`
@@ -70,6 +73,12 @@ Test (all paths)
 make test-docker
 ```
 *Generates full integration test coverage report. View in browser at `htmlcov-docker/index.html`*
+
+Full wiki pipeline (test, regenerate, build, serve)
+```shell
+make wiki-full
+```
+*Runs `make test-docker` (full integration suite against real Postgres/Redis), regenerates the dependency-graph/complexity pages from current code (`make wiki-generate`), builds the wiki to confirm it's clean (`mkdocs build`), then serves it live at* **http://localhost:8001** *(`WIKI_PORT` in `env.example`). One command instead of running those four separately.*
 
 Generate a migration
 ```shell

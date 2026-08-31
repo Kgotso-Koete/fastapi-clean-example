@@ -27,6 +27,8 @@ Run this twice — once per value, never reusing the same string for both. `.sec
 
 ## Starting the stack
 
+Run the `upd` target defined in [`Makefile`](../../../../Makefile):
+
 ```shell
 make upd
 ```
@@ -64,25 +66,25 @@ This single command: regenerates `.env` from `env.example` + `.secrets`, compute
         linkStyle default stroke-width:3px,stroke:#333333
     ```
 
-    `app`/`db_pg` always start, regardless of either setting. `ENVIRONMENT` is checked first — `CELERY_ENABLED` is checked again inside each branch, since `redis`/`worker` run in *either* environment on their own, while `flower`/`redis-commander` only appear once `ENVIRONMENT=development` **and** `CELERY_ENABLED=true` both hold — that's the `celery-development` profile's AND-condition, shown here by nesting rather than a separate combined check, since a single Compose service's `profiles:` list is OR-matched against `COMPOSE_PROFILES`, not AND-matched.
+    > `app`/`db_pg` always start, regardless of either setting. `ENVIRONMENT` is checked first — `CELERY_ENABLED` is checked again inside each branch, since `redis`/`worker` run in *either* environment on their own, while `flower`/`redis-commander` only appear once `ENVIRONMENT=development` **and** `CELERY_ENABLED=true` both hold — that's the `celery-development` profile's AND-condition, shown here by nesting rather than a separate combined check, since a single Compose service's `profiles:` list is OR-matched against `COMPOSE_PROFILES`, not AND-matched.
 
 `scripts/makefile/docker_env.sh` does the first three steps (`.env` generation, `COMPOSE_PROFILES`, config templates); `docker compose` itself does the build and start, respecting every `depends_on`/`healthcheck` already covered in the Overview's container diagram — a container with a failing healthcheck blocks whatever depends on it from starting, rather than starting in a broken state.
 
-| Service | URL | Notes |
+| Service | URL (Uniform Resource Locator) | Notes |
 |---|---|---|
 | App / Swagger UI | <http://localhost:8000/docs> | dev-only; `/openapi.json` stays reachable in production too |
-| Adminer (Postgres UI) | <http://localhost:8080> | dev-only; System `PostgreSQL`, Server `db_pg`, User `postgres`, Password `password`, DB `clean-example` |
+| Adminer (Postgres UI — User Interface) | <http://localhost:8080> | dev-only; System `PostgreSQL`, Server `db_pg`, User `postgres`, Password `password`, DB `clean-example` |
 | Grafana | <http://localhost:3000> | dev-only; login `admin` / `admin` |
 | Prometheus | <http://localhost:9090> | dev-only |
 | Flower (Celery tasks) | <http://localhost:5555> | dev-only, needs `CELERY_ENABLED=true` |
 | Redis Commander | <http://localhost:8081> | dev-only, needs `CELERY_ENABLED=true` |
 | This wiki | <http://localhost:8001> | dev-only |
 
-Every port and credential above is the `env.example` default (`${VAR:-default}` in `docker-compose.yml`) — override any of them in `.secrets` if a port collides with something already running on your machine, or before this ever runs somewhere real.
+> Every port and credential above is the `env.example` default (`${VAR:-default}` in `docker-compose.yml`) — override any of them in `.secrets` if a port collides with something already running on your machine, or before this ever runs somewhere real.
 
 **The wiki container runs `mkdocs serve`** (live-reloading, same as `make wiki` on the host, just containerized on `WIKI_PORT` instead of mkdocs' own default port) — that's what you browse to while it's running; `make upd` doesn't produce a separate static build, and doesn't need to. A `wiki-build` pre-commit hook (`make wiki-build`, see [`.pre-commit-config.yaml`](../../../../.pre-commit-config.yaml)) catches a broken build before it's committed instead — the same "catch it early, on the host, before it ships" role `code-check`/`pip-audit` already play for the rest of this codebase, not something tied to starting the dev stack.
 
-## Getting full API access
+## Getting full API (Application Programming Interface) access
 
 A fresh database has no users. To reach admin-only endpoints:
 
