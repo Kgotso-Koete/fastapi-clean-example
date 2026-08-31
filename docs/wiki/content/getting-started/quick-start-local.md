@@ -27,7 +27,7 @@ There's no fully-native path in this project's own tooling — nowhere does it s
 
 ## What you need installed
 
-**`uv`**, **Python 3.13**, and **Docker** (for Postgres/Redis only). Set up your host environment once:
+**`uv`**, **Python 3.13**, and **Docker** (for Postgres/Redis only). Set up your host environment once, installing the `dev` dependency group declared in [`pyproject.toml`](../../../../pyproject.toml):
 
 ```shell
 uv sync
@@ -51,24 +51,28 @@ Run this twice — once per value, never reusing the same string for both.
 
 ## Starting Postgres and Redis
 
+Run the `upd-local` target defined in [`Makefile`](../../../../Makefile):
+
 ```shell
 make upd-local
 ```
 
-This generates a **different** `.env` than the Docker path does: `scripts/makefile/local_env.sh` rewrites `POSTGRES_HOST`/`REDIS_HOST` to `127.0.0.1` instead of the Docker-internal service names `db_pg`/`redis` — since `app` runs on your host now, not inside the same Docker network as the database, it has to reach them via a real host port instead of Docker's internal DNS. It only starts `INFRA_SERVICES` (`db_pg`, `redis` — configurable at the top of the `Makefile`), nothing else: **no dev-only dashboards** (Grafana, Prometheus, Adminer, Flower, Redis Commander, this wiki) come up via this path, regardless of `ENVIRONMENT`. If you want those, use the Docker path, or start individual services yourself with plain `docker compose up -d <service>`.
+This generates a **different** `.env` than the Docker path does: `scripts/makefile/local_env.sh` rewrites `POSTGRES_HOST`/`REDIS_HOST` to `127.0.0.1` instead of the Docker-internal service names `db_pg`/`redis` — since `app` runs on your host now, not inside the same Docker network as the database, it has to reach them via a real host port instead of Docker's internal DNS (Domain Name System). It only starts `INFRA_SERVICES` (`db_pg`, `redis` — configurable at the top of the `Makefile`), nothing else: **no dev-only dashboards** (Grafana, Prometheus, Adminer, Flower, Redis Commander, this wiki) come up via this path, regardless of `ENVIRONMENT`. If you want those, use the Docker path, or start individual services yourself with plain `docker compose up -d <service>`.
 
 ## Running the app
+
+Apply migrations, then start the app via `make_app()` in [`src/app/main/run.py`](../../../../src/app/main/run.py):
 
 ```shell
 alembic upgrade head
 uvicorn app.main.run:make_app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Or run [`src/app/main/run.py`](../../../../src/app/main/run.py) directly from your IDE instead of the `uvicorn` command — same entry point, easier to attach a debugger to.
+Or run [`src/app/main/run.py`](../../../../src/app/main/run.py) directly from your IDE (Integrated Development Environment) instead of the `uvicorn` command — same entry point, easier to attach a debugger to.
 
 **No `worker` process runs via this path.** `docker-entrypoint.sh`'s `worker` case is just `celery -A app.main.worker.celery_app:celery_app worker --loglevel=INFO --queues=events --concurrency=2` — a plain command you can run yourself in a second terminal if you need to exercise `"background"`-mode event handlers locally. Simpler alternative: set `CELERY_ENABLED=false` in `.secrets` for local work, so every handler runs inline regardless of its own `DISPATCH_MODE` — no worker needed at all. See [Core Patterns → Domain Events & the Transactional Outbox](../core-patterns/domain-events-outbox.md) for what `DISPATCH_MODE` actually controls.
 
-## Getting full API access
+## Getting full API (Application Programming Interface) access
 
 Same as the Docker path, minus Adminer (not part of this workflow — connect with `psql -h 127.0.0.1 -p 5432 -U postgres clean-example`, or any Postgres client, using the `POSTGRES_*` values from `env.example`):
 
@@ -77,6 +81,8 @@ Same as the Docker path, minus Adminer (not part of this workflow — connect wi
 3. Log in via `POST /account/login/` — you now hold a full-access session cookie.
 
 ## Stopping
+
+Run the `down` target defined in [`Makefile`](../../../../Makefile):
 
 ```shell
 make down
@@ -99,4 +105,4 @@ Stops and removes every container `docker compose` knows about for this project 
 
 - **Prefer everything in Docker, including `app`?** [Quick Start with Docker](quick-start-docker.md).
 - **Want to understand what just started?** [Architecture → Layer Dependencies & Import Rules](../architecture/layer-dependencies.md).
-- **Contributing code?** See [Development Guide](../development-guide/docker-development.md) and [Testing](../testing/tdd.md) for the day-to-day workflow — linting, TDD, the commit protocol.
+- **Contributing code?** See [Development Guide](../development-guide/docker-development.md) and [Testing](../testing/tdd.md) for the day-to-day workflow — linting, TDD (Test-Driven Development), the commit protocol.

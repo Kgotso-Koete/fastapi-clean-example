@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-08-31: One-shot wiki pipeline and doc-accuracy fixes
+
+### Added
+- **Makefile:** Added `make wiki-full`, chaining `test-docker` → `wiki-generate` → `mkdocs build` → `mkdocs serve` into a single command, instead of running the full integration suite, the dependency-graph/complexity regeneration, and the wiki build/serve as separate one-off commands. Documented in `README.md` and `docs/wiki/content/development-guide/makefile-commands.md`, including the previously-undocumented `wiki-generate` target itself.
+
+### Changed
+- **Wiki:** `docs/wiki/content/development-guide/version-control.md` now quotes the four `README.md` "How to Commit" commands verbatim, each linked to its source line, instead of only showing them abbreviated inside a Mermaid diagram — the diagram had also silently added an inferred `git push` step that isn't part of the documented protocol.
+
+### Fixed
+- **Wiki tooling:** `scripts/wiki/dependency_graph.py`'s `build_app_graph()` called `grimp.build_graph()` without a `cache_dir`, so it defaulted to writing an on-disk import-scan cache under `./.grimp_cache` (relative to the current working directory). The `app`/`worker` containers bind-mount this repo over `/code` (`docker-compose.yml`), which keeps the host's file ownership instead of the image's `runner` user, so that cache write failed with `PermissionError` under `make test-docker` — breaking `tests/unit/main/wiki_tools/test_dependency_graph.py` in Docker even though it passed locally. Fixed by passing `cache_dir=None`, disabling caching for this one-shot generator/test.
+
 ## [0.10.0] - 2026-08-28: Self-hosted documentation wiki
 
 ### Added

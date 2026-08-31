@@ -58,6 +58,8 @@ nav:
       - Dependency Injection with Dishka: content/core-patterns/dependency-injection.md
       - Transaction Management (Unit of Work-style): content/core-patterns/transaction-management.md
       - Domain Events & the Transactional Outbox: content/core-patterns/domain-events-outbox.md
+      - Authorization & RBAC (Role-Based Access Control): content/core-patterns/authorization-rbac.md
+      - Error Handling (error_map Pattern): content/core-patterns/error-handling.md
   - API Reference: content/api-reference.md
   - Data Models:
       - Domain Entities & Value Objects: content/data-models/domain-entities.md
@@ -78,10 +80,13 @@ nav:
       - Test Factories: content/testing/test-factories.md
       - Running Tests: content/testing/running-tests.md
       - Code Quality Tools: content/testing/code-quality-tools.md
+      - Unit Test Coverage Report: content/testing/unit-coverage-report.md
+      - Integration Test Coverage Report: content/testing/integration-coverage-report.md
   - Development Guide:
       - Docker Development Environment: content/development-guide/docker-development.md
       - Makefile Commands Reference: content/development-guide/makefile-commands.md
       - Database Migrations (Alembic): content/development-guide/database-migrations.md
+      - Version Control (Git): content/development-guide/version-control.md
   - Docker and Deployment:
       - Docker Containers: content/docker-deployment/docker-containers.md
       - Multi-Stage Docker Build: content/docker-deployment/multi-stage-build.md
@@ -101,3 +106,6 @@ nav:
       - "Users: Revoke Admin": content/use-case-examples/users-revoke-admin.md
       - "Users: Set User Password": content/use-case-examples/users-set-user-password.md
       - "Users: List Users": content/use-case-examples/users-list-users.md
+  - Changelog: content/changelog.md
+  - Roadmap: content/roadmap.md
+  - Complexity: content/complexity.md
