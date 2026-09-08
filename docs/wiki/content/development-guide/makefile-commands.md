@@ -152,6 +152,8 @@ These sit at the top of the `Makefile` and change several targets' behavior at o
 | `make down` | `docker compose down` — stops and removes every running container for this project | `redis` occasionally needs this run twice before it's actually removed — a known, not-yet-diagnosed quirk tracked in the [production readiness roadmap](https://github.com/ivan-borovets/fastapi-clean-example/blob/master/docs/plans/0-production-readiness-roadmap.md) |
 | `make stop-all` | `docker ps -q \| xargs -r docker stop` — stops **every** running container on your machine, not just this project's | Blunt-instrument command; reach for `make down` first unless you specifically need to stop unrelated containers too |
 | `make prune` | Runs [`scripts/makefile/docker_prune.sh`](../../../../scripts/makefile/docker_prune.sh) | Cleans up dangling Docker resources (images/volumes/networks) this project has accumulated |
+| `make cli-up args="<cli args>"` | `docker compose up -d --wait` (idempotent -- a no-op if the stack's already healthy, unlike `upd`'s `--force-recreate`), then `docker compose exec app python -m app.main.cli $(args)` | `args` is required; see [CLI (Terminal Adapter)](../core-patterns/inbound-cli.md). Use this the first time, or whenever you're not sure the stack is already up |
+| `make cli args="<cli args>"` | Same `docker compose exec app python -m app.main.cli $(args)`, without the bring-up step | Faster for repeated invocations once the stack is confirmed running |
 
 ## Database
 

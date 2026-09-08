@@ -23,12 +23,12 @@
 
     > "Rank" here is `radon`'s own A-F (complexity) / A-C (maintainability index) letter grades — A is best in both cases. A file with a high complexity rank isn't automatically a problem (a router with many mapped exception types is inherently branchy) — treat this as a place to look, not an automatic verdict.
 
-!!! figure "Cyclomatic complexity rank distribution across every file in src/app (167 files)"
+!!! figure "Cyclomatic complexity rank distribution across every file in src/app (186 files)"
     ```mermaid
     %%{init: {"theme": "default", "themeVariables": {"fontSize": "14px"}, "flowchart": {"nodeSpacing": 20, "rankSpacing": 16, "padding": 10, "subGraphTitleMargin": {"top": 5, "bottom": 12}, "useMaxWidth": false}}}%%
     pie showData
         title Cyclomatic complexity rank (A best, F worst)
-        "A" : 162
+        "A" : 181
         "B" : 4
         "C" : 1
     ```

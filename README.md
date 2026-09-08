@@ -23,7 +23,7 @@ TODO:
 - [x] Centralize the app/service name behind `APP_SERVICE_NAME` for the Compose project/container names, Promtail's log filter, and Prometheus/Grafana's own config (`pyproject.toml`'s name is a documented manual exception — see `docs/plans/0-production-readiness-roadmap.md`)
 - [x] Add a self-hosted documentation wiki (MkDocs + Material, ~50 hand-written content pages covering architecture/patterns/use cases) — see `docs/plans/5-self-hosted-docs-wiki.md`
 - [x] Wiki: generate the dependency-graph and complexity diagrams from real code (`grimp`/`radon`) instead of hand-drawing them, so they can't drift stale — see `docs/plans/5-self-hosted-docs-wiki.md`'s Steps 2/3/5
-- [ ] Add an inbound CLI (`src/app/inbound/cli/`, sibling to `src/app/inbound/http/`) so core commands/queries can be invoked directly from a terminal script for cron jobs, data seeding, and admin/ops actions, bypassing HTTP entirely — see `docs/plans/0-production-readiness-roadmap.md`
+- [x] Add an inbound CLI (`src/app/main/cli/`, `python -m app.main.cli` / `make cli args="..."`) so core commands/queries can be invoked directly from a terminal script for cron jobs, data seeding, and admin/ops actions, bypassing HTTP entirely — see `docs/plans/6-inbound-cli.md`
 - [ ] Investigate why `docker compose down`/`stop` can fail to remove `worker`/`redis` at all (confirmed in `make test-docker`'s teardown, only `docker kill` recovers it) — see `docs/plans/0-production-readiness-roadmap.md`
 - [ ] Harden for production use: password policy, rate limiting, secrets management, TLS, backups, a real deploy pipeline, self-service password reset, email verification, and more — full prioritized backlog in `docs/plans/0-production-readiness-roadmap.md`
 
