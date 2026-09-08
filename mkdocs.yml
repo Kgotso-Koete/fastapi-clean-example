@@ -60,6 +60,7 @@ nav:
       - Domain Events & the Transactional Outbox: content/core-patterns/domain-events-outbox.md
       - Authorization & RBAC (Role-Based Access Control): content/core-patterns/authorization-rbac.md
       - Error Handling (error_map Pattern): content/core-patterns/error-handling.md
+      - CLI (Terminal Adapter): content/core-patterns/inbound-cli.md
   - API Reference: content/api-reference.md
   - Data Models:
       - Domain Entities & Value Objects: content/data-models/domain-entities.md

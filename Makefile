@@ -133,7 +133,7 @@ wiki-full: test-docker wiki-generate
 	uv run mkdocs serve --dev-addr 127.0.0.1:$(WIKI_PORT)
 
 # Docker compose
-.PHONY: docker-env local-env upd up upd-local up-local down stop-all open-dashboards
+.PHONY: docker-env local-env upd up upd-local up-local down stop-all open-dashboards cli-up cli
 docker-env:
 	$(DOCKER_ENV)
 
@@ -176,6 +176,28 @@ stop-all:
 .PHONY: prune
 prune:
 	$(DOCKER_PRUNE)
+
+# `app.main.cli` -- `cli-up` brings the stack up if it isn't already (a
+# plain `up --wait`, not `upd`'s `--force-recreate`: idempotent/no-op when
+# everything's already healthy, instead of tearing down and rebuilding every
+# container) before running the command; `cli` skips that and assumes the
+# stack from a prior `make upd`/`cli-up` is still up, for fast repeated
+# invocations. Both `exec` (not `run`) into the running `app` container, so
+# they share its live DB connection instead of spinning up a fresh one.
+cli-up: docker-env
+	if [ -z "$(strip $(args))" ]; then \
+	  echo 'ERROR: args is required, e.g. make cli-up args="users list"' >&2; \
+	  exit 2; \
+	fi
+	$(DOCKER_COMPOSE) up -d --build --wait
+	$(DOCKER_COMPOSE) exec app python -m app.main.cli $(args)
+
+cli:
+	if [ -z "$(strip $(args))" ]; then \
+	  echo 'ERROR: args is required, e.g. make cli args="users list"' >&2; \
+	  exit 2; \
+	fi
+	$(DOCKER_COMPOSE) exec app python -m app.main.cli $(args)
 
 # Migrations
 .PHONY: migration

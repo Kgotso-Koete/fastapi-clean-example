@@ -159,6 +159,44 @@ class AuthSqlaTransactionManager:
 
 Two differences matter: `SqlaTransactionManager` explicitly subclasses `core.commands.ports.transaction_manager.TransactionManager` (it fulfills a real `core` port, and is wired into `core.commands.*` use cases via [`main/ioc/core.py`](../../../../src/app/main/ioc/core.py)) and takes a plain `AsyncSession`. `AuthSqlaTransactionManager` subclasses nothing (there's no `core` port for it to fulfill — session management isn't a `core` concern) and takes an `AuthAsyncSession`, a `NewType`-wrapped `AsyncSession` (see [`auth_ctx/types_.py`](../../../../src/app/outbound/auth_ctx/types_.py)) that exists purely so Dishka can inject a *separate* session instance for the auth context, distinct from the primary one `core.commands` use cases share — both sessions point at the same physical database, wired up in [`main/ioc/outbound.py`](../../../../src/app/main/ioc/outbound.py)'s `provide_primary_async_session`/`provide_auth_async_session`. Same logic, deliberately duplicated rather than shared, so that `auth_ctx` stays fully independent of `core.commands.ports` and the `adapters` tree.
 
+### A sharper duplication: two ways to look up "a user"
+
+The transaction managers above are near-identical boilerplate — the more interesting case is [`adapters/sqla_user_tx_storage.py`](../../../../src/app/outbound/adapters/sqla_user_tx_storage.py) vs. [`auth_ctx/sqla_user_tx_storage.py`](../../../../src/app/outbound/auth_ctx/sqla_user_tx_storage.py), because these two classes don't just duplicate the *same* logic — they expose genuinely *different* access shapes onto the exact same `users` table, each fitted to what its own context actually needs:
+
+```python
+class SqlaUserTxStorage(UserTxStorage, AuthzUserFinder):
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def get_by_id(
+        self,
+        user_id: UserId,
+        *,
+        for_update: bool = False,
+    ) -> User | None:
+        return await self._session.get(User, user_id, with_for_update=for_update)
+```
+
+```python
+class AuthSqlaUserTxStorage:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def get_by_username(
+        self,
+        username: Username,
+        *,
+        for_update: bool = False,
+    ) -> User | None:
+        stmt = select(User).where(users_table.c.username == username.value)
+        ...
+        return result.scalar_one_or_none()
+```
+
+`core`'s RBAC operations (`GrantAdmin`, `DeactivateUser`, and the rest) always already have a `UserId` in hand — it arrived as a URL path parameter (`PUT /users/{user_id}/roles/admin/`) — so `SqlaUserTxStorage` only ever needs to look up **by ID**. `auth_ctx`'s `LogIn` flow, by contrast, only ever has the raw username someone just typed into a login form — it has no ID yet, that's the whole point of logging in — so `AuthSqlaUserTxStorage` only needs to look up **by username**. Neither class needs the other's method: `core` never looks a user up by username, and `auth_ctx` never looks one up by ID. This is the textbook Domain-Driven Design point about bounded contexts made concrete: it's not that the two contexts disagree about what "a user" *is* (they map the exact same [`users_table`](../../../../src/app/outbound/persistence_sqla/mappings/user.py) row to the exact same `User` class) — it's that each context's *model of how to reach that data* is shaped by that context's own concerns, not by some imagined one-true `UserRepository` interface trying to serve both. A single shared repository class with both methods on it would work today, but the moment `auth_ctx` graduated into a real, separately-deployable bounded context (per its own docstring above), that shared class would become the exact coupling point stopping the split — which is precisely what the `auth-ctx` import-linter contract exists to catch before it can even be written.
+
+This split gets tested for real, not just designed on paper: this repo's inbound CLI (`src/app/main/cli/` — not `src/app/inbound/cli/`, see [CLI (Terminal Adapter)](../core-patterns/inbound-cli.md)) needed its own "look a user up by username" step too, for verifying `--username`/`--password` at the command line. The obvious shortcut would have been importing `AuthSqlaUserTxStorage.get_by_username` straight from `auth_ctx` — but that's exactly the reach-across-the-seam the `auth-ctx` contract is there to prevent, so the CLI got its own small, independent port instead ([`core/common/ports/user_finder.py`](../../../../src/app/core/common/ports/user_finder.py) / [`outbound/adapters/sqla_user_finder.py`](../../../../src/app/outbound/adapters/sqla_user_finder.py)) rather than reaching into `auth_ctx`'s. Same lesson as the transaction managers, learned the same way a second time: a few duplicated lines is a small price for not welding two contexts back together.
+
 ## Persistence: imperative SQLAlchemy mappings
 
 **Declarative vs. imperative, briefly:** the general software-engineering distinction is that *declarative* code states *what* the result should be and lets something else produce it, while *imperative* code states the actual *steps* that produce it. SQLAlchemy's own two mapping styles are exactly that distinction applied to ORM mapping specifically: its more common **declarative** style has a class inherit from a `Base`/`DeclarativeBase`, with columns declared as class attributes right on that class — the mapping and the class definition are one and the same piece of code, stating what the table should look like. Its **imperative** (also called *classical*) style is the reverse: a plain `sqlalchemy.Table` and a plain Python class are defined completely separately, with no inheritance relationship between them, and a separate, explicit step maps one onto the other afterward.

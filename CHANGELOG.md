@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-09-08: Inbound CLI adapter for admin/ops user management
+
+### Added
+- **CLI:** Added `src/app/main/cli/` (`python -m app.main.cli`, or `make cli-up args="..."` / `make cli args="..."`), a terminal adapter reusing the exact same `core` interactors HTTP already calls, with no FastAPI involved — genuinely useful for cron jobs, one-off data seeding, and admin/ops actions run directly on a server. All 7 `users` subcommands are implemented: `list`, `create-user`, `set-user-password`, `grant-admin`, `revoke-admin`, `activate-user`, `deactivate-user`.
+- **CLI identity:** The CLI prompts for `--username`/`--password` (or reads `APP_CLI_USERNAME`/`APP_CLI_PASSWORD`, mirroring `psql`'s `PGPASSWORD` precedent) and verifies real credentials via a new `CliIdentityProvider` (`src/app/main/cli/identity_provider.py`), implementing the same `IdentityProvider` port HTTP's `AuthSessionIdentityProvider` implements — no new authorization logic needed, since every `core` command already calls `current_user_service.get_current_user()` → `authorize(...)` regardless of transport. Added a small, CLI-owned `UserFinder` port (`src/app/core/common/ports/user_finder.py`) and `SqlaUserFinder` adapter (`src/app/outbound/adapters/sqla_user_finder.py`), rather than reaching into `auth_ctx`'s username lookup and violating the `auth-ctx` import-linter contract.
+- **CLI DI:** Added `CliProvider` (`src/app/main/cli/provider.py`), a near-duplicate of `CoreProvider` following the exact same "independent provider set" precedent the Celery worker's `WorkerProvider` already established — neither may declare anything that transitively needs a Starlette `Request`, which Dishka validates for the whole graph at container-build time. Added `CliAccessRevoker` (`src/app/main/cli/access_revoker.py`) for the same reason, wrapping `AuthSessionSqlaTxStorage`/`AuthSqlaTransactionManager` directly instead of going through `AuthService` (which needs a `Request`).
+- **Makefile:** Added `make cli-up args="..."` (idempotent `docker compose up -d --wait`, then execs the command — safe to run any time, including the first) and `make cli args="..."` (skips the bring-up step, for fast repeated invocations once the stack's already running). Both wrap `docker compose exec app python -m app.main.cli $(args)`, keeping this project's standing convention of never invoking `docker`/`docker compose` directly outside a `make` target.
+- **Dependencies:** Added `click` (exact-pinned).
+- **Wiki:** Added `docs/wiki/content/core-patterns/inbound-cli.md`, covering invocation, the identity model, all 7 subcommands, error handling, and the CliRunner-vs-real-subprocess testing distinction.
+- **Testing:** `tests/integration/with_infra/cli/` covers every subcommand's happy path and the interactor's real exception cases via `click.testing.CliRunner`, plus a real-subprocess reproduction (`subprocess.run([sys.executable, "-m", "app.main.cli", ...])`) for `list`/`create-user` specifically, proving the actual `python -m app.main.cli` entrypoint (a genuine separate OS process, a real hidden `getpass` prompt) works end to end, not just the in-process `CliRunner` path.
+
+### Changed
+- **Documentation:** `README.md`'s TODO checklist and `docs/plans/0-production-readiness-roadmap.md`'s matching line marked done, with the path corrected to `src/app/main/cli/` (both originally said `src/app/inbound/cli/`, the path an earlier draft of the plan used before it was found to violate the `clean-architecture` import-linter contract). Added a new roadmap entry documenting, as a deliberate, not-yet-started follow-up, a composition-root pattern (`main` importing factory functions from `inbound`, rather than the reverse) that would let both the CLI and the Celery worker move under `inbound/` together.
+
+### Fixed
+- **CLI verification path:** A manual run via `uv run python -m app.main.cli` directly on the host silently produced no output at all, for both correct and incorrect credentials, while every automated `CliRunner`/real-subprocess test (run inside the `app` container's own environment) passed — almost certainly a host `.env`/DB-connectivity mismatch. `make cli-up`/`make cli` route through the already-known-good `app` container instead, closing off the untested host path entirely.
+
 ## [0.11.0] - 2026-08-31: One-shot wiki pipeline and doc-accuracy fixes
 
 ### Added
