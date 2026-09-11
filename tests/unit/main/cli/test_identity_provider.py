@@ -57,7 +57,7 @@ async def test_raises_cli_identity_error_for_wrong_password() -> None:
     user = create_user(password_hash=password_hash)
     provider = CliIdentityProvider(
         username=CliUsername(user.username.value),
-        password=CliPassword("definitely-the-wrong-one"),
+        password=CliPassword("definitely-the-wrong-one1"),
         user_finder=FakeUserFinder(user),
         user_service=create_user_service(),
     )
@@ -86,7 +86,7 @@ async def test_unknown_username_and_wrong_password_raise_the_same_message() -> N
     with pytest.raises(CliIdentityError) as wrong_password_exc:
         await CliIdentityProvider(
             username=CliUsername(user.username.value),
-            password=CliPassword("definitely-the-wrong-one"),
+            password=CliPassword("definitely-the-wrong-one1"),
             user_finder=FakeUserFinder(user),
             user_service=create_user_service(),
         ).get_current_user_id()

@@ -7,7 +7,7 @@ from app.outbound.adapters.bcrypt_password_hasher import BcryptPasswordHasher
 
 
 def profile_password_hashing(hasher: BcryptPasswordHasher) -> None:
-    raw_password = RawPassword("raw_password")
+    raw_password = RawPassword("raw_password1")
     hashed = hasher.hash_sync(raw_password)
     hasher.verify_sync(raw_password, hashed)
 

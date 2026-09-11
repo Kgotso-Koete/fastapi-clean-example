@@ -23,7 +23,7 @@ def test_returns_0_and_sets_the_password_for_a_subordinate_user(
             "--user-id",
             str(it_cli_user.id_),
         ],
-        input="a-brand-new-password\n",
+        input="a-brand-new-password1\n",
     )
 
     assert result.exit_code == 0, result.output
@@ -46,7 +46,7 @@ def test_returns_nonzero_when_the_user_is_not_found(
             "--user-id",
             str(uuid.uuid4()),
         ],
-        input="a-brand-new-password\n",
+        input="a-brand-new-password1\n",
     )
 
     assert result.exit_code != 0

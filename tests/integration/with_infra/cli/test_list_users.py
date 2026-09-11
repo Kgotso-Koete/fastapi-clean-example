@@ -33,7 +33,7 @@ def test_exits_nonzero_for_an_unknown_username() -> None:
 def test_exits_nonzero_for_the_wrong_password(it_cli_admin: User) -> None:
     result = CliRunner().invoke(
         root_group,
-        ["--username", it_cli_admin.username.value, "--password", "definitely-the-wrong-one", "users", "list"],
+        ["--username", it_cli_admin.username.value, "--password", "definitely-the-wrong-one1", "users", "list"],
     )
 
     assert result.exit_code != 0
@@ -77,7 +77,7 @@ def test_prompts_for_credentials_and_reports_an_error_for_the_wrong_password(
     result = CliRunner().invoke(
         root_group,
         ["users", "list"],
-        input=f"{it_cli_admin.username.value}\ndefinitely-the-wrong-one\n",
+        input=f"{it_cli_admin.username.value}\ndefinitely-the-wrong-one1\n",
     )
 
     assert result.exit_code != 0
@@ -110,7 +110,7 @@ def test_real_subprocess_reports_an_error_for_the_wrong_password(
 ) -> None:
     result = subprocess.run(
         [sys.executable, "-m", "app.main.cli", "users", "list"],
-        input=f"{it_cli_admin.username.value}\ndefinitely-the-wrong-one\n",
+        input=f"{it_cli_admin.username.value}\ndefinitely-the-wrong-one1\n",
         capture_output=True,
         text=True,
         timeout=30,

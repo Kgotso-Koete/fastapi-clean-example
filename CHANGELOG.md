@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-09-11: Password policy hardening, email login, and dev-only DB seeding
+
+### Added
+- **Password policy:** `RawPassword.MIN_LEN` raised from 6 to 12 (NIST 800-63B floor), a new `MAX_LEN = 128` added, and a composition rule requiring at least one letter, one digit, and one special character from an allowlist (`RawPassword.SPECIAL_CHARS`) — a deliberate choice made despite NIST/OWASP not actually recommending forced composition, since length/composition checks are pure and synchronous (no external dependency or added latency on the auth path, unlike a HaveIBeenPwned-style breach-list check, which was considered and deferred for that reason).
+- **Email login:** `LogIn` now accepts either a username or an email via a renamed `LogInRequest.identifier` field, auto-detected (`LogIn._resolve_identifier` tries `Email` first, falling back to `Username`) instead of a `LOGIN_METHOD` env var, so no deploy-time config has to stay in sync with the frontend. Added `AuthSqlaUserTxStorage.get_by_email`, a near-copy of the existing `get_by_username`. Session/token issuance is unaffected — JWT/`AuthSession` are keyed on the internal `UserId`, never on username or email.
+- **Dev-only DB seeding:** Added `scripts/seed_db.py`, seeding ~10 test user accounts (superhero civilian identities, a mix of `user`/`admin`/`super_admin` roles, each with a differently-composed valid password) when `SEED_DB_WITH_TEST_DATA=true` and `ENVIRONMENT` isn't `production`, wired into `docker-entrypoint.sh`'s `start` case right after migrations run — idempotent, so repeated `make upd` runs skip already-seeded usernames instead of erroring. Reuses `make_app()`'s dishka container for a fully-wired `UserService`/session rather than hand-rolling settings/DI, mirroring the pattern `tests/integration/with_infra/conftest.py` already uses for the same purpose. `super_admin` seeding works around the fact that no code path in the app can otherwise create one (`UserService.create_user`'s `role.is_system` guard) — the same override-the-role-after-create technique `tests/integration/with_infra/factories.py::create_super_admin_with_password` already used.
+- **Documentation:** Added `docs/plans/7-password-policy-and-email-login.md`. Added a short mention of `scripts/seed_db.py` to `docs/wiki/content/getting-started/quick-start-docker.md`.
+
+### Fixed
+- **Makefile:** `open-dashboards` had every dashboard URL hardcoded to its default port (e.g. `http://localhost:3000` for Grafana), so overriding a port like `GRAFANA_PORT` in `.secrets` correctly changed the running container's port but silently left the auto-opened browser tab pointed at the stale default. Added six new port variables (`UVICORN_PORT`, `ADMINER_PORT`, `GRAFANA_PORT`, `PROMETHEUS_PORT`, `FLOWER_PORT`, `REDIS_COMMANDER_PORT`), read from `env.example`/`.secrets` the same way `WIKI_PORT` already was, and `open-dashboards` now opens every URL using the actual configured port.
+
+### Changed
+- **Documentation:** `docs/plans/0-production-readiness-roadmap.md`'s two matching checklist lines and narrative paragraphs marked done.
+
 ## [0.12.0] - 2026-09-08: Inbound CLI adapter for admin/ops user management
 
 ### Added

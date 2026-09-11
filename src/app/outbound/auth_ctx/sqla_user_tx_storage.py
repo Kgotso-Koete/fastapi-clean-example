@@ -3,6 +3,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.common.entities.user import User
+from app.core.common.value_objects.email import Email
 from app.core.common.value_objects.username import Username
 from app.outbound.exceptions import StorageError
 from app.outbound.persistence_sqla.mappings.user import users_table
@@ -25,6 +26,21 @@ class AuthSqlaUserTxStorage:
         for_update: bool = False,
     ) -> User | None:
         stmt = select(User).where(users_table.c.username == username.value)
+        if for_update:
+            stmt = stmt.with_for_update()
+        try:
+            result = await self._session.execute(stmt)
+        except SQLAlchemyError as e:
+            raise StorageError from e
+        return result.scalar_one_or_none()
+
+    async def get_by_email(
+        self,
+        email: Email,
+        *,
+        for_update: bool = False,
+    ) -> User | None:
+        stmt = select(User).where(users_table.c.email == email.value)
         if for_update:
             stmt = stmt.with_for_update()
         try:
