@@ -3,7 +3,9 @@ from dataclasses import dataclass
 from typing import Final
 
 from app.core.common.authorization.current_user_service import CurrentUserService
+from app.core.common.exceptions import BusinessTypeError
 from app.core.common.services.user import UserService
+from app.core.common.value_objects.email import Email
 from app.core.common.value_objects.raw_password import RawPassword
 from app.core.common.value_objects.username import Username
 from app.core.queries.models.user import UserQm
@@ -21,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class LogInRequest:
-    username: str
+    identifier: str
     password: str
 
 
@@ -46,6 +48,13 @@ class LogIn:
         self._user_service = user_service
         self._auth_service = auth_service
 
+    @staticmethod
+    def _resolve_identifier(identifier: str) -> Email | Username:
+        try:
+            return Email(identifier)
+        except BusinessTypeError:
+            return Username(identifier)
+
     async def execute(self, request: LogInRequest) -> UserQm:
         logger.info("Log in: started.")
 
@@ -55,9 +64,12 @@ class LogIn:
         except AuthenticationError:
             pass
 
-        username = Username(request.username)
+        identifier = self._resolve_identifier(request.identifier)
         password = RawPassword(request.password)
-        user = await self._user_tx_storage.get_by_username(username)
+        if isinstance(identifier, Email):
+            user = await self._user_tx_storage.get_by_email(identifier)
+        else:
+            user = await self._user_tx_storage.get_by_username(identifier)
         if user is None:
             raise AuthenticationError
 

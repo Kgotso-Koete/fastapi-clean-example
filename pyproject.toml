@@ -269,6 +269,9 @@ split-on-trailing-comma = true
   "INP001",  # runnable scripts, not an importable package
   "T20",  # print is legitimate output here
 ]
+"scripts/seed_db.py" = [
+  "S105",  # hardcoded-password-string -- dev-only fixture password, not a real secret
+]
 "src/app/outbound/persistence_sqla/alembic/**" = ["ALL"]
 "tests/**" = [
   "ARG002",  # unused-method-argument

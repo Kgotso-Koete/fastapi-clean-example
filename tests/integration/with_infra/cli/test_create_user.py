@@ -56,7 +56,7 @@ def test_returns_0_and_creates_a_user_for_an_authenticated_admin(
             it_cli_raw_password,
             *_create_user_args(username=create_raw_username()),
         ],
-        input="a-brand-new-password\n",
+        input="a-brand-new-password1\n",
     )
 
     assert result.exit_code == 0, result.output
@@ -80,7 +80,7 @@ def test_returns_nonzero_when_an_admin_tries_to_create_an_admin(
             it_cli_raw_password,
             *_create_user_args(username=create_raw_username(), role="admin"),
         ],
-        input="a-brand-new-password\n",
+        input="a-brand-new-password1\n",
     )
 
     assert result.exit_code != 0
@@ -101,7 +101,7 @@ def test_returns_nonzero_when_the_username_already_exists(
             it_cli_raw_password,
             *_create_user_args(username=it_cli_existing_user),
         ],
-        input="a-brand-new-password\n",
+        input="a-brand-new-password1\n",
     )
 
     assert result.exit_code != 0

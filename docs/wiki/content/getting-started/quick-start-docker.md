@@ -35,6 +35,8 @@ make upd
 
 This single command: regenerates `.env` from `env.example` + `.secrets`, computes `COMPOSE_PROFILES` from `CELERY_ENABLED`/`ENVIRONMENT`, builds every image, and starts every container whose profile is active. See the Overview's [What actually runs](../../index.md#what-actually-runs) diagram for exactly which containers that is and why. With the defaults in `env.example` (`ENVIRONMENT=development`, `CELERY_ENABLED=true`), that's everything — app, background jobs, and every dev-only dashboard — and `make upd` opens the key ones in your browser automatically.
 
+Set `SEED_DB_WITH_TEST_DATA=true` in `.secrets` beforehand and `make upd` also seeds ~10 test user accounts (a mix of `user`/`admin`/`super_admin` roles) via [`scripts/seed_db.py`](../../../../scripts/seed_db.py), so manual testing has ready-made fixture accounts to log in as or delete without signing up from scratch each time.
+
 !!! figure "Which containers `make upd` actually starts, by CELERY_ENABLED / ENVIRONMENT"
     ```mermaid
     %%{init: {"theme": "default", "themeVariables": {"fontSize": "14px"}, "flowchart": {"nodeSpacing": 14, "rankSpacing": 5, "padding": 3, "subGraphTitleMargin": {"top": 5, "bottom": 12}, "useMaxWidth": false}}}%%

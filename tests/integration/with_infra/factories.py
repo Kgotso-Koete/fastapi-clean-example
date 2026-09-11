@@ -32,7 +32,8 @@ def create_raw_phone_number(value: str | None = None) -> str:
 
 
 def create_raw_password(value: str | None = None) -> str:
-    return value if value is not None else uuid.uuid4().hex
+    # hex already has a letter+digit; append a special char to satisfy RawPassword's complexity rule
+    return value if value is not None else f"{uuid.uuid4().hex}!"
 
 
 def create_raw_password_hash(value: bytes | None = None) -> bytes:

@@ -122,8 +122,8 @@ async def test_fails_to_create_user_with_unassignable_role() -> None:
 @pytest.mark.parametrize(
     ("password", "expected"),
     [
-        pytest.param("test-password", True, id="valid"),
-        pytest.param("wrong-password", False, id="invalid"),
+        pytest.param("test-password1", True, id="valid"),
+        pytest.param("wrong-password1", False, id="invalid"),
     ],
 )
 async def test_checks_password_authenticity(password: str, expected: bool) -> None:
@@ -133,7 +133,7 @@ async def test_checks_password_authenticity(password: str, expected: bool) -> No
         username=create_username(),
         email=create_email(),
         phone_number=create_phone_number(),
-        raw_password=create_raw_password("test-password"),
+        raw_password=create_raw_password("test-password1"),
         now=create_now(),
     )
 

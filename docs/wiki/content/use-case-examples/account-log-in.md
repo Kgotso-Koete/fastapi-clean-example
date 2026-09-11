@@ -8,11 +8,11 @@
     - [`src/app/outbound/auth_ctx/cookie_manager.py`](../../../../src/app/outbound/auth_ctx/cookie_manager.py) — `CookieManager.stage_set`
     - [`src/app/inbound/http/auth_cookie_middleware.py`](../../../../src/app/inbound/http/auth_cookie_middleware.py) — `AuthCookieMiddleware`, where the staged cookie actually gets attached to the HTTP response
     - [`src/app/outbound/auth_ctx/model.py`](../../../../src/app/outbound/auth_ctx/model.py) — `AuthSession`
-    - [`src/app/outbound/auth_ctx/sqla_user_tx_storage.py`](../../../../src/app/outbound/auth_ctx/sqla_user_tx_storage.py) — `AuthSqlaUserTxStorage.get_by_username`
+    - [`src/app/outbound/auth_ctx/sqla_user_tx_storage.py`](../../../../src/app/outbound/auth_ctx/sqla_user_tx_storage.py) — `AuthSqlaUserTxStorage.get_by_username` / `get_by_email`
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
 
-`POST /account/login/` authenticates a username/password pair and, on success, starts a server-side session — not a stateless bearer JWT (JSON Web Token). The JWT this codebase issues holds only a session ID; the session itself (its expiration, whether it's been revoked) lives in Postgres, so a session can be killed server-side at any time (see [Account: Log Out](account-log-out.md)). That distinction is the main thing worth tracing carefully here.
+`POST /account/login/` authenticates an identifier/password pair — the identifier can be either a username or an email address, auto-detected — and, on success, starts a server-side session — not a stateless bearer JWT (JSON Web Token). The JWT this codebase issues holds only a session ID; the session itself (its expiration, whether it's been revoked) lives in Postgres, so a session can be killed server-side at any time (see [Account: Log Out](account-log-out.md)). That distinction is the main thing worth tracing carefully here.
 
 ## Request flow
 
@@ -37,7 +37,8 @@
         Handler->>CUS: get_current_user()
         CUS-->>Handler: raises AuthenticationError (no session yet)
         Note over Handler: caught -- proceed as a fresh login attempt
-        Handler->>Storage: get_by_username(username)
+        Note over Handler: _resolve_identifier(identifier) -- tries Email, falls back to Username
+        Handler->>Storage: get_by_email(email) or get_by_username(username)
         Storage-->>Handler: User or None
         Handler->>US: is_password_valid(user, password)
         US-->>Handler: True / False
@@ -73,10 +74,14 @@ async def log_in(request: LogInRequest, handler: FromDishka[LogIn]) -> UserQm:
 
 ## Step 2 — The handler: credential verification
 
-[`LogIn.execute`](../../../../src/app/outbound/auth_ctx/handlers/log_in.py) rejects an already-authenticated caller the same way `SignUp` does, then looks the user up by username, checks the password, and checks the account is active — each failure path raising a distinct error so the router's `error_map` can turn it into the right status code:
+[`LogIn.execute`](../../../../src/app/outbound/auth_ctx/handlers/log_in.py) rejects an already-authenticated caller the same way `SignUp` does, then resolves the submitted identifier to either an `Email` or a `Username` value object (`_resolve_identifier` tries `Email` first, falling back to `Username` on `BusinessTypeError`), looks the user up via whichever storage method matches, checks the password, and checks the account is active — each failure path raising a distinct error so the router's `error_map` can turn it into the right status code:
 
 ```python
-user = await self._user_tx_storage.get_by_username(username)
+identifier = self._resolve_identifier(request.identifier)
+if isinstance(identifier, Email):
+    user = await self._user_tx_storage.get_by_email(identifier)
+else:
+    user = await self._user_tx_storage.get_by_username(identifier)
 if user is None:
     raise AuthenticationError
 

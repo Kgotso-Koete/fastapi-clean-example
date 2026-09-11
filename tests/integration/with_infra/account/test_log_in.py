@@ -22,7 +22,7 @@ async def test_returns_200_and_sets_cookie(
     user = await create_user_with_password(it_user_service, raw_password=password)
     it_session.add(user)
     await it_session.commit()
-    payload = {"username": user.username.value, "password": password}
+    payload = {"identifier": user.username.value, "password": password}
 
     r = await it_client.post(LOG_IN_ENDPOINT, json=payload)
 
@@ -37,10 +37,30 @@ async def test_returns_200_and_sets_cookie(
     assert "password_hash" not in data
 
 
+async def test_returns_200_and_sets_cookie_when_logging_in_with_email(
+    it_client: httpx2.AsyncClient,
+    it_session: AsyncSession,
+    it_user_service: UserService,
+) -> None:
+    password = create_raw_password()
+    user = await create_user_with_password(it_user_service, raw_password=password)
+    it_session.add(user)
+    await it_session.commit()
+    payload = {"identifier": user.email.value, "password": password}
+
+    r = await it_client.post(LOG_IN_ENDPOINT, json=payload)
+
+    assert r.status_code == 200
+    assert AUTH_COOKIE_NAME in r.cookies
+
+    data = r.json()
+    assert data["username"] == user.username.value
+
+
 async def test_returns_400_when_username_is_too_short(
     it_client: httpx2.AsyncClient,
 ) -> None:
-    payload = {"username": "x" * (Username.MIN_LEN - 1), "password": create_raw_password()}
+    payload = {"identifier": "x" * (Username.MIN_LEN - 1), "password": create_raw_password()}
 
     r = await it_client.post(LOG_IN_ENDPOINT, json=payload)
 
@@ -50,7 +70,7 @@ async def test_returns_400_when_username_is_too_short(
 async def test_returns_400_when_password_is_too_short(
     it_client: httpx2.AsyncClient,
 ) -> None:
-    payload = {"username": create_raw_username(), "password": "x" * (RawPassword.MIN_LEN - 1)}
+    payload = {"identifier": create_raw_username(), "password": "x" * (RawPassword.MIN_LEN - 1)}
 
     r = await it_client.post(LOG_IN_ENDPOINT, json=payload)
 
@@ -60,7 +80,7 @@ async def test_returns_400_when_password_is_too_short(
 async def test_returns_401_when_user_does_not_exist(
     it_client: httpx2.AsyncClient,
 ) -> None:
-    payload = {"username": create_raw_username(), "password": create_raw_password()}
+    payload = {"identifier": create_raw_username(), "password": create_raw_password()}
 
     r = await it_client.post(LOG_IN_ENDPOINT, json=payload)
 
@@ -75,7 +95,7 @@ async def test_returns_401_when_password_is_wrong(
     user = await create_user_with_password(it_user_service)
     it_session.add(user)
     await it_session.commit()
-    payload = {"username": user.username.value, "password": create_raw_password()}
+    payload = {"identifier": user.username.value, "password": create_raw_password()}
 
     r = await it_client.post(LOG_IN_ENDPOINT, json=payload)
 
@@ -91,7 +111,7 @@ async def test_returns_401_when_user_is_inactive(
     user = await create_user_with_password(it_user_service, raw_password=password, is_active=False)
     it_session.add(user)
     await it_session.commit()
-    payload = {"username": user.username.value, "password": password}
+    payload = {"identifier": user.username.value, "password": password}
 
     r = await it_client.post(LOG_IN_ENDPOINT, json=payload)
 
@@ -108,7 +128,7 @@ async def test_returns_403_when_already_authenticated(
     it_session.add(user)
     await it_session.commit()
     await authenticate(it_client, user.username.value, password)
-    payload = {"username": user.username.value, "password": password}
+    payload = {"identifier": user.username.value, "password": password}
 
     r = await it_client.post(LOG_IN_ENDPOINT, json=payload)
 

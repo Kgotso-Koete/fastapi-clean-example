@@ -38,7 +38,7 @@ def create_phone_number(value: str | None = None) -> PhoneNumber:
 
 
 def create_raw_password(value: str | None = None) -> RawPassword:
-    default = uuid.uuid4().hex
+    default = f"{uuid.uuid4().hex}!"  # hex already has a letter+digit; append a special char
     return RawPassword(value if value is not None else default)
 
 

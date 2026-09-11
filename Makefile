@@ -24,6 +24,16 @@ ENVIRONMENT ?= $(or $(shell grep -h '^ENVIRONMENT=' env.example .secrets 2>/dev/
 # mkdocs' own default (8000, which collides with `app`'s host port during
 # `make upd`, which is why the Compose service uses this port instead).
 WIKI_PORT ?= $(or $(shell grep -h '^WIKI_PORT=' env.example .secrets 2>/dev/null | tail -1 | cut -d= -f2),8001)
+# Same read pattern again, one per dashboard `open-dashboards` (see `upd`
+# below) opens -- so it always points at the actually-configured host port
+# instead of a hardcoded default that silently diverges once a port is
+# overridden in env.example/.secrets.
+UVICORN_PORT ?= $(or $(shell grep -h '^UVICORN_PORT=' env.example .secrets 2>/dev/null | tail -1 | cut -d= -f2),8000)
+ADMINER_PORT ?= $(or $(shell grep -h '^ADMINER_PORT=' env.example .secrets 2>/dev/null | tail -1 | cut -d= -f2),8080)
+GRAFANA_PORT ?= $(or $(shell grep -h '^GRAFANA_PORT=' env.example .secrets 2>/dev/null | tail -1 | cut -d= -f2),3000)
+PROMETHEUS_PORT ?= $(or $(shell grep -h '^PROMETHEUS_PORT=' env.example .secrets 2>/dev/null | tail -1 | cut -d= -f2),9090)
+FLOWER_PORT ?= $(or $(shell grep -h '^FLOWER_PORT=' env.example .secrets 2>/dev/null | tail -1 | cut -d= -f2),5555)
+REDIS_COMMANDER_PORT ?= $(or $(shell grep -h '^REDIS_COMMANDER_PORT=' env.example .secrets 2>/dev/null | tail -1 | cut -d= -f2),8081)
 INFRA_SERVICES ?= db_pg redis
 INFRA_INIT_SERVICES ?=
 MIGRATION_DB_SERVICE ?= db_pg
@@ -150,16 +160,16 @@ up: docker-env
 open-dashboards:
 	@echo "Opening dashboards in browser..."
 	@sleep 2
-	@xdg-open http://127.0.0.1:8000/docs >/dev/null 2>&1 || true
-	@xdg-open http://localhost:8080 >/dev/null 2>&1 || true
+	@xdg-open http://127.0.0.1:$(UVICORN_PORT)/docs >/dev/null 2>&1 || true
+	@xdg-open http://localhost:$(ADMINER_PORT) >/dev/null 2>&1 || true
 	@xdg-open http://127.0.0.1:5500/htmlcov/index.html >/dev/null 2>&1 || true
 	@xdg-open http://127.0.0.1:5500/htmlcov-docker/index.html >/dev/null 2>&1 || true
-	@xdg-open http://localhost:3000 >/dev/null 2>&1 || true
-	@xdg-open http://localhost:9090 >/dev/null 2>&1 || true
-	@xdg-open http://localhost:8000/metrics >/dev/null 2>&1 || true
-	@xdg-open http://localhost:5555 >/dev/null 2>&1 || true
-	@xdg-open http://localhost:8081 >/dev/null 2>&1 || true
-	@xdg-open http://localhost:8001 >/dev/null 2>&1 || true
+	@xdg-open http://localhost:$(GRAFANA_PORT) >/dev/null 2>&1 || true
+	@xdg-open http://localhost:$(PROMETHEUS_PORT) >/dev/null 2>&1 || true
+	@xdg-open http://localhost:$(UVICORN_PORT)/metrics >/dev/null 2>&1 || true
+	@xdg-open http://localhost:$(FLOWER_PORT) >/dev/null 2>&1 || true
+	@xdg-open http://localhost:$(REDIS_COMMANDER_PORT) >/dev/null 2>&1 || true
+	@xdg-open http://localhost:$(WIKI_PORT) >/dev/null 2>&1 || true
 
 upd-local: local-env
 	$(DOCKER_COMPOSE) up -d --build --force-recreate $(INFRA_SERVICES) $(INFRA_INIT_SERVICES)

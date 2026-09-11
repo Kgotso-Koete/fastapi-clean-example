@@ -6,6 +6,9 @@ PORT=${2:-8000}
 case "$1" in
     start)
         alembic upgrade head
+        if [ "${ENVIRONMENT:-development}" != "production" ] && [ "${SEED_DB_WITH_TEST_DATA:-false}" = "true" ]; then
+            python scripts/seed_db.py
+        fi
         exec uvicorn app.main.run:make_app --factory --host 0.0.0.0 --port "$PORT" --reload
         ;;
     worker)

@@ -25,8 +25,8 @@ async def test_does_not_verify_incorrect_password(
     bcrypt_password_hasher: partial[BcryptPasswordHasher],
 ) -> None:
     sut = bcrypt_password_hasher()
-    correct_pwd = create_raw_password("secure")
-    incorrect_pwd = create_raw_password("bruteforce")
+    correct_pwd = create_raw_password("secure-pass1")
+    incorrect_pwd = create_raw_password("bruteforce-1")
 
     hashed = await sut.hash(correct_pwd)
 
@@ -40,7 +40,7 @@ async def test_supports_passwords_longer_than_bcrypt_limit(
 ) -> None:
     bcrypt_limit = 72
     sut = bcrypt_password_hasher()
-    pwd = create_raw_password("x" * (bcrypt_limit + 1))
+    pwd = create_raw_password("x" * (bcrypt_limit + 1) + "1!")
 
     hashed = await sut.hash(pwd)
 

@@ -6,8 +6,8 @@ from tests.unit.core.common.services.stubs import StubPasswordHasher
 
 @pytest.mark.asyncio
 async def test_stub_password_hasher_verify_true_and_false() -> None:
-    raw_ok = create_raw_password("test-password")
-    raw_bad = create_raw_password("wrong-password")
+    raw_ok = create_raw_password("test-password1")
+    raw_bad = create_raw_password("wrong-password1")
     sut = StubPasswordHasher()
 
     hashed_ok = await sut.hash(raw_ok)
