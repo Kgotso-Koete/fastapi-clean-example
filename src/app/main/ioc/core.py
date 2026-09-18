@@ -26,6 +26,7 @@ from app.core.common.ports.event_handler import EventHandler
 from app.core.common.ports.identity_provider import IdentityProvider
 from app.core.common.ports.password_hasher import PasswordHasher
 from app.core.common.services.user import UserService
+from app.core.queries.get_own_profile import GetOwnProfile
 from app.core.queries.list_users import ListUsers
 from app.core.queries.ports.user_reader import UserReader
 from app.main.config.settings import EmailSettings, PasswordHasherSettings
@@ -94,6 +95,10 @@ class CoreProvider(Provider):
 
     # Queries
     list_users = provide(ListUsers)
+    # Entrypoint-agnostic -- also bound, unmodified, into PublicApiProvider.
+    # The concrete proof CurrentUserService abstracts over identity
+    # mechanism: same class, same logic, two transports.
+    get_own_profile = provide(GetOwnProfile)
 
     # Event Handlers (Subscribers)
     send_welcome_email = provide(SendWelcomeEmail)

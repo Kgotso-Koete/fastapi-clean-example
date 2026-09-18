@@ -9,7 +9,7 @@ case "$1" in
         if [ "${ENVIRONMENT:-development}" != "production" ] && [ "${SEED_DB_WITH_TEST_DATA:-false}" = "true" ]; then
             python scripts/seed_db.py
         fi
-        exec uvicorn app.main.run:make_app --factory --host 0.0.0.0 --port "$PORT" --reload
+        exec uvicorn app.main.run_public_api:make_app_with_public_api --factory --host 0.0.0.0 --port "$PORT" --reload
         ;;
     worker)
         # No separate `beat` command: the worker process starts its own

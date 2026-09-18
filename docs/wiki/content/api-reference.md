@@ -2,6 +2,7 @@
 
 !!! sourcefiles "Relevant Source Files/Folders"
     - [`src/app/main/run.py`](../../../src/app/main/run.py) — `make_app()`: the exact `FastAPI(...)` constructor call that sets up `docs_url`/`redoc_url`/`title`/`version`/`summary`/`root_path`
+    - [`src/app/main/run_public_api.py`](../../../src/app/main/run_public_api.py) — `make_app_with_public_api()`: mounts a second, always-docs-reachable FastAPI app at `/public` alongside `make_app()`'s own — the actual entrypoint `docker-entrypoint.sh` boots; see [Public API (Server-to-Server Clients)](core-patterns/public-api.md)
     - [`src/app/main/config/settings.py`](../../../src/app/main/config/settings.py) — `AppSettings` (`SERVICE_NAME`, `VERSION`, `ENVIRONMENT`, `ROOT_PATH`) — the values plugged into the constructor above
     - [`src/app/inbound/http/root_router.py`](../../../src/app/inbound/http/root_router.py) — mounts every router below `/`
     - [`src/app/inbound/http/api_v1_router.py`](../../../src/app/inbound/http/api_v1_router.py) — mounts `account`/`users` under `/api/v1`
@@ -55,21 +56,22 @@ app = FastAPI(
 | Path | Command that starts the app | Swagger UI URL | ReDoc URL |
 |---|---|---|---|
 | Docker ([Quick Start with Docker](getting-started/quick-start-docker.md)) | `make upd` | <http://localhost:8000/docs> | <http://localhost:8000/redoc> |
-| Local, no Docker for `app` ([Quick Start Locally](getting-started/quick-start-local.md)) | `alembic upgrade head` then `uvicorn app.main.run:make_app --host 0.0.0.0 --port 8000 --reload` | <http://localhost:8000/docs> | <http://localhost:8000/redoc> |
+| Local, no Docker for `app` ([Quick Start Locally](getting-started/quick-start-local.md)) | `alembic upgrade head` then `uvicorn app.main.run_public_api:make_app_with_public_api --host 0.0.0.0 --port 8000 --reload` | <http://localhost:8000/docs> | <http://localhost:8000/redoc> |
 
-> Both paths land on the same port (`8000`, `UVICORN_PORT` in `env.example`) because both ultimately run the same `make_app()` — the only difference is whether `uvicorn` runs inside the `app` container or directly on your host. Both require `ENVIRONMENT=development` (the `env.example` default) for `/docs`/`/redoc` to be reachable at all — see the next section.
+> Both paths land on the same port (`8000`, `UVICORN_PORT` in `env.example`) because both ultimately run the same `make_app_with_public_api()` — the only difference is whether `uvicorn` runs inside the `app` container or directly on your host. Both require `ENVIRONMENT=development` (the `env.example` default) for `/docs`/`/redoc` to be reachable at all — see the next section. `make_app_with_public_api()` mounts the exact same private app `make_app()` builds, plus a second, independent public API sub-app at `/public` — see [Public API (Server-to-Server Clients)](core-patterns/public-api.md) for what that second surface is and why it needs its own composition root.
 
 ## Reachability by environment
 
-| Environment | `/docs` (Swagger UI) | `/redoc` (ReDoc) | `/openapi.json` |
-|---|---|---|---|
-| `ENVIRONMENT=development` | Reachable | Reachable | Reachable |
-| `ENVIRONMENT=production` | Disabled (route not registered) | Disabled (route not registered) | Reachable |
+| Environment | `/docs` (Swagger UI) | `/redoc` (ReDoc) | `/openapi.json` | `/public/docs`, `/public/redoc`, `/public/openapi.json` |
+|---|---|---|---|---|
+| `ENVIRONMENT=development` | Reachable | Reachable | Reachable | Reachable |
+| `ENVIRONMENT=production` | Disabled (route not registered) | Disabled (route not registered) | Reachable | Reachable |
 
-> `/openapi.json` deliberately stays reachable even in production — e.g. to import the schema into Postman/Insomnia — while the two human-facing doc UIs are switched off, the same dev-only gating principle as Grafana/Adminer/Flower. See [Configuration → Deployment Environments](configuration/deployment-environments.md) for the general `ENVIRONMENT` mechanism, and [Core Patterns → Ports and Adapters](core-patterns/ports-and-adapters.md) for how request/response models map onto the core layer's own entities (Domain-Driven Design term for domain objects with persistent identity — see [Layer Dependencies & Import Rules](architecture/layer-dependencies.md#what-clean-architecture-and-domain-driven-design-actually-are)) and query models underneath.
+> `/openapi.json` deliberately stays reachable even in production — e.g. to import the schema into Postman/Insomnia — while the two human-facing doc UIs are switched off, the same dev-only gating principle as Grafana/Adminer/Flower. See [Configuration → Deployment Environments](configuration/deployment-environments.md) for the general `ENVIRONMENT` mechanism, and [Core Patterns → Ports and Adapters](core-patterns/ports-and-adapters.md) for how request/response models map onto the core layer's own entities (Domain-Driven Design term for domain objects with persistent identity — see [Layer Dependencies & Import Rules](architecture/layer-dependencies.md#what-clean-architecture-and-domain-driven-design-actually-are)) and query models underneath. The public API's own docs, by contrast, are **always** reachable, in every environment — see [Public API (Server-to-Server Clients)](core-patterns/public-api.md) for why that's a deliberate difference from the private app's dev-only gating, not an inconsistency.
 
 ## Where to go next
 
 - **Want the routes explained in context, not just listed?** [Use Case Examples](use-case-examples/adding-a-use-case.md) walks through each endpoint alongside the use case behind it.
 - **Curious what a request/response body actually maps to internally?** [Data Models](data-models/domain-entities.md) covers entities, query models, and database models.
 - **Need a session cookie to unlock admin-only routes in Swagger UI first?** See "Getting full API (Application Programming Interface) access" in either quick-start page.
+- **Building a server-to-server integration instead of a browser-based client?** [Public API (Server-to-Server Clients)](core-patterns/public-api.md) covers the separate, API-key-authenticated surface at `/public`.

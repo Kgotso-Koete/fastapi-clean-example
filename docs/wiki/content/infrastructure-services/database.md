@@ -69,7 +69,7 @@ Three tables exist today: `users` (with a composite `Username`/`Email`/`PhoneNum
 
         subgraph apply["Applying at container startup"]
             entrypoint["docker-entrypoint.sh\n'start' / 'pytest' case"] --> upgrade["alembic upgrade head"]
-            upgrade --> uvicorn["exec uvicorn\napp.main.run:make_app"]
+            upgrade --> uvicorn["exec uvicorn\napp.main.run_public_api:make_app_with_public_api"]
         end
 
         linkStyle default stroke-width:3px,stroke:#333333

@@ -32,21 +32,27 @@ Compose service, and never invoked by any Makefile target directly.
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import asgi_lifespan
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.core.common.entities.types_ import UserRole
+from app.core.common.entities.api_key import ApiKey
+from app.core.common.entities.types_ import UserId, UserRole
+from app.core.common.factories.api_key_id_factory import create_api_key_id
 from app.core.common.factories.id_factory import create_user_id
+from app.core.common.factories.raw_api_key_factory import generate_raw_api_key
 from app.core.common.services.user import UserService
 from app.core.common.value_objects.email import Email
 from app.core.common.value_objects.phone_number import PhoneNumber
 from app.core.common.value_objects.raw_password import RawPassword
 from app.core.common.value_objects.username import Username
 from app.core.common.value_objects.utc_datetime import UtcDatetime
+from app.main.config.settings import PasswordHasherSettings
 from app.main.run import make_app
+from app.outbound.adapters.hmac_sha256_api_key_hasher import HmacSha256ApiKeyHasher
+from app.outbound.persistence_sqla.mappings.api_key import api_keys_table
 from app.outbound.persistence_sqla.mappings.user import users_table
 
 logger = logging.getLogger(__name__)
@@ -82,6 +88,37 @@ SEED_USERS: list[SeedUser] = [
     ),
     SeedUser("luke-cage", "luke.cage@harlemheroes.com", "27821000009", "PowerMan2024!", UserRole.USER),
     SeedUser("danny-rand", "danny.rand@rand-corp.com", "27821000010", "Iron$Fist_KunLun1!", UserRole.USER),
+    # Public-API-key testing fixtures -- each of these 5 also gets a
+    # SeedApiKey below (see SEED_API_KEYS), some valid and some already
+    # expired, so manual testing of the public API has ready-made accounts
+    # for both the "key works" and "key expired" paths without having to
+    # issue a key by hand first.
+    SeedUser("peter-parker", "peter.parker@dailybugle.com", "27821000011", "SpideySense2024!", UserRole.USER),
+    SeedUser("tony-stark", "tony.stark@starkindustries.com", "27821000012", "ImIronMan#3000", UserRole.USER),
+    SeedUser("natasha-romanoff", "natasha.romanoff@shield.gov", "27821000013", "BlackWidow!!Red1", UserRole.USER),
+    SeedUser("diana-prince", "diana.prince@themyscira.org", "27821000014", "AmazonWarrior$99", UserRole.USER),
+    SeedUser("bruce-wayne", "bruce.wayne@wayneenterprises.com", "27821000015", "IAmTheNight2024!!", UserRole.USER),
+]
+
+
+@dataclass(frozen=True, slots=True)
+class SeedApiKey:
+    username: str  # must match a SeedUser.username above
+    label: str
+    is_expired: bool
+
+
+# 3 valid, 2 already expired -- exercises both the "key works" and "key
+# expired" paths in the public API without anyone having to issue a key by
+# hand first. Raw keys are shown exactly once, so they're logged below at
+# seeding time (see _seed_api_key) -- fine for dev-only fixture data, same
+# reasoning as SEED_USERS' plaintext passwords above.
+SEED_API_KEYS: list[SeedApiKey] = [
+    SeedApiKey("peter-parker", "Spider-Sense Dev Key", is_expired=False),
+    SeedApiKey("tony-stark", "Stark Industries CI Key", is_expired=False),
+    SeedApiKey("natasha-romanoff", "SHIELD Field Ops Key", is_expired=False),
+    SeedApiKey("diana-prince", "Themyscira Legacy Key", is_expired=True),
+    SeedApiKey("bruce-wayne", "Wayne Enterprises Night Key", is_expired=True),
 ]
 
 
@@ -89,13 +126,13 @@ async def _seed_one(
     session: AsyncSession,
     user_service: UserService,
     seed: SeedUser,
-) -> None:
+) -> UserId:
     already_exists = (
         await session.execute(select(users_table.c.id).where(users_table.c.username == seed.username))
     ).first()
     if already_exists is not None:
         logger.info("Seed user %s already exists, skipping.", seed.username)
-        return
+        return UserId(already_exists.id)
 
     # UserService.create_user (and create_user_with_raw_password) refuses to
     # assign a "system" role directly (role.is_system guard) -- super_admin
@@ -117,6 +154,54 @@ async def _seed_one(
         user.role = UserRole.SUPER_ADMIN
     session.add(user)
     logger.info("Seeded %s (%s)", seed.username, seed.role.value)
+    return user.id_
+
+
+async def _seed_api_key(
+    session: AsyncSession,
+    api_key_hasher: HmacSha256ApiKeyHasher,
+    user_id: UserId,
+    seed: SeedApiKey,
+) -> None:
+    already_exists = (
+        await session.execute(
+            select(api_keys_table.c.id).where(
+                api_keys_table.c.user_id == user_id,
+                api_keys_table.c.label == seed.label,
+            )
+        )
+    ).first()
+    if already_exists is not None:
+        logger.info("Seed API key %r already exists, skipping.", seed.label)
+        return
+
+    # Mirrors IssueApiKey.execute's own construction exactly (raw key ->
+    # hash + "ak_" + 8-char prefix), just without going through that
+    # command's username/password re-authentication -- this script already
+    # knows which user it's minting for.
+    now = UtcDatetime(datetime.now(UTC))
+    expires_at = UtcDatetime(now.value + timedelta(days=-1 if seed.is_expired else 30))
+    raw_key = generate_raw_api_key()
+    api_key = ApiKey(
+        id_=create_api_key_id(),
+        user_id=user_id,
+        key_hash=api_key_hasher.hash(raw_key),
+        key_prefix=raw_key[:11],
+        label=seed.label,
+        created_at=now,
+        expires_at=expires_at,
+    )
+    session.add(api_key)
+    # Raw key is shown exactly once, ever, and this script's only "once" is
+    # this log line -- fine for dev-only fixture data, same reasoning as
+    # SEED_USERS' plaintext passwords above.
+    logger.info(
+        "Seeded %s API key %r for %s: %s",
+        "expired" if seed.is_expired else "valid",
+        seed.label,
+        seed.username,
+        raw_key,
+    )
 
 
 async def main() -> None:
@@ -125,9 +210,31 @@ async def main() -> None:
         container = app.state.dishka_container
         user_service = await container.get(UserService)
         session_maker = await container.get(async_sessionmaker[AsyncSession])
+        password_hasher_settings = await container.get(PasswordHasherSettings)
+        # Constructed directly rather than resolved from the container --
+        # ApiKeyHasher is only bound in PublicApiProvider (the public API's
+        # own container, see src/app/main/ioc/public_api.py), and this
+        # script only ever builds the private app's container via
+        # make_app(). Mirrors that provider's own construction exactly.
+        api_key_hasher = HmacSha256ApiKeyHasher(pepper=password_hasher_settings.PEPPER.encode())
+
         async with session_maker() as session:
+            user_ids_by_username: dict[str, UserId] = {}
             for seed in SEED_USERS:
-                await _seed_one(session, user_service, seed)
+                user_ids_by_username[seed.username] = await _seed_one(session, user_service, seed)
+            # User and ApiKey have no SQLAlchemy relationship() between them
+            # (api_key.py maps user_id as a plain FK column, not a
+            # relationship) -- without one, the unit-of-work has no ordering
+            # dependency to enforce between the two mapped classes, so with
+            # autoflush=False (see outbound.py) a single flush at commit can
+            # emit the api_keys INSERT statements before the users INSERT
+            # statements, tripping the FK constraint. Flushing here first
+            # forces every user row to actually exist (same transaction,
+            # still uncommitted) before any api_keys row is built to
+            # reference one.
+            await session.flush()
+            for seed_key in SEED_API_KEYS:
+                await _seed_api_key(session, api_key_hasher, user_ids_by_username[seed_key.username], seed_key)
             await session.commit()
 
 

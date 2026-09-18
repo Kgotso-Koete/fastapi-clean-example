@@ -51,7 +51,7 @@ This is a **bind mount**, not a copy: the container sees the exact same files as
 
 ```shell
 alembic upgrade head
-exec uvicorn app.main.run:make_app --factory --host 0.0.0.0 --port "$PORT" --reload
+exec uvicorn app.main.run_public_api:make_app_with_public_api --factory --host 0.0.0.0 --port "$PORT" --reload
 ```
 
 the `--reload` flag makes `uvicorn` itself watch `/code` for `.py` changes and restart the ASGI (Asynchronous Server Gateway Interface — the standard interface async Python web servers like `uvicorn` use to talk to an app) app process when it sees one — entirely inside the running container, without Docker Compose ever being involved. Save a file on your host, and the reload happens within a second or two, the same experience as running `uvicorn --reload` locally (see [Quick Start Locally](../getting-started/quick-start-local.md)). The `worker` service uses the same bind mount, but Celery's own worker process does **not** auto-reload on code changes — restart it explicitly (`docker compose restart worker`) after editing anything the worker imports.

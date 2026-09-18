@@ -143,7 +143,7 @@ wiki-full: test-docker wiki-generate
 	uv run mkdocs serve --dev-addr 127.0.0.1:$(WIKI_PORT)
 
 # Docker compose
-.PHONY: docker-env local-env upd up upd-local up-local down stop-all open-dashboards cli-up cli
+.PHONY: docker-env local-env upd up upd-local up-local down stop-all open-dashboards cli-up cli ps logs
 docker-env:
 	$(DOCKER_ENV)
 
@@ -161,6 +161,7 @@ open-dashboards:
 	@echo "Opening dashboards in browser..."
 	@sleep 2
 	@xdg-open http://127.0.0.1:$(UVICORN_PORT)/docs >/dev/null 2>&1 || true
+	@xdg-open http://127.0.0.1:$(UVICORN_PORT)/public/docs >/dev/null 2>&1 || true
 	@xdg-open http://localhost:$(ADMINER_PORT) >/dev/null 2>&1 || true
 	@xdg-open http://127.0.0.1:5500/htmlcov/index.html >/dev/null 2>&1 || true
 	@xdg-open http://127.0.0.1:5500/htmlcov-docker/index.html >/dev/null 2>&1 || true
@@ -179,6 +180,20 @@ up-local: local-env
 
 down:
 	$(DOCKER_COMPOSE) down
+
+# `docker compose ps`/`logs` without `-p $(PROJECT_NAME)` look at the wrong
+# Compose project (Docker's own default, derived from the current directory
+# name) and silently show nothing when PROJECT_NAME is overridden via
+# APP_SERVICE_NAME -- these wrap the same $(DOCKER_COMPOSE) alias every other
+# target here already uses, so they always match what `make upd` started.
+ps:
+	$(DOCKER_COMPOSE) ps
+
+# `service=app` narrows to one container's logs; omitted, shows every
+# service's. `-f` follows (Ctrl-C to stop); `tail=N` overrides the default
+# scrollback, e.g. `make logs service=app tail=500`.
+logs:
+	$(DOCKER_COMPOSE) logs -f --tail=$(or $(tail),200) $(strip $(service))
 
 stop-all:
 	docker ps -q | xargs -r docker stop

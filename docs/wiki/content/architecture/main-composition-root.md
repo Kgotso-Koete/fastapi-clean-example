@@ -8,7 +8,9 @@
     - [`src/app/main/ioc/provider_registry.py`](../../../../src/app/main/ioc/provider_registry.py) — `get_providers()`, the web process's full provider list
     - [`src/app/main/config/`](../../../../src/app/main/config/) — settings models and their loaders
     - [`src/app/main/worker/`](../../../../src/app/main/worker/) — the Celery worker process's own, independent composition root
-    - [`src/app/main/celery_factory.py`](../../../../src/app/main/celery_factory.py) — `build_celery_app()`, shared by both processes
+    - [`src/app/main/cli/`](../../../../src/app/main/cli/) — the CLI's own, independent composition root (see [CLI (Terminal Adapter)](../core-patterns/inbound-cli.md))
+    - [`src/app/main/ioc/public_api.py`](../../../../src/app/main/ioc/public_api.py) / [`src/app/main/run_public_api.py`](../../../../src/app/main/run_public_api.py) — the public API's own, independent composition root, mounted into the *same* OS process as the web app (see [Public API (Server-to-Server Clients)](../core-patterns/public-api.md))
+    - [`src/app/main/celery_factory.py`](../../../../src/app/main/celery_factory.py) — `build_celery_app()`, shared by both Celery-aware processes
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
 
@@ -16,23 +18,34 @@
 
 `main` is the outermost layer and the only one allowed to import all three of the others (per [Layer Dependencies & Import Rules](layer-dependencies.md)). It's where every concrete decision actually gets made: which `outbound` adapter satisfies which `core` port, what settings come from which environment variables, and how the FastAPI app itself gets assembled. Nothing under `src/app/main/` is imported by `core`, `outbound`, or `inbound` — it only ever imports *them*.
 
-## The two composition roots
+## Four composition roots, three OS processes
 
-This codebase actually has **two independent composition roots**, not one: `main/run.py`'s `make_app()` for the FastAPI web process, and `main/worker/` for the Celery worker process. They are separate OS (Operating System) processes, each building its own Dishka container from its own provider list, and neither ever shares a Python object with the other — they only agree on a shared contract (the `"app.events.dispatch_handler"` Celery task name and the Postgres database both connect to).
+This codebase actually has **four independent composition roots** — `main/run.py`'s `make_app()` (the private, cookie-authenticated web app), `main/ioc/public_api.py`'s `PublicApiProvider` (the API-key-authenticated public API), `main/worker/` (the Celery worker), and `main/cli/` (the terminal adapter) — spread across only **three OS (Operating System) processes**. The public API is the one surprise: it does **not** get its own process the way the worker and the CLI invocation do. `docker-entrypoint.sh` boots exactly one `uvicorn` process running `make_app_with_public_api()`, which mounts the public API as a nested Starlette sub-application (its own Dishka container, its own `setup_dishka()` call) inside the *same* process as the private app. See [Dependency Injection with Dishka](../core-patterns/dependency-injection.md) for exactly why that container still has to be independent (Dishka validates a whole graph at build time, and `IdentityProvider`/`AccessRevoker` bind to different concrete adapters in each) even though it shares a process with `CoreProvider`'s own container.
 
-!!! figure "Two composition roots: what the web process wires vs. what the worker process wires"
+Every composition root builds its own Dishka container from its own provider list, and none of them ever shares a live Python object with another — they only agree on shared contracts (the `"app.events.dispatch_handler"` Celery task name, and the one Postgres database all four connect to).
+
+!!! figure "Four composition roots: web process (two containers), worker process, CLI process"
     ```mermaid
     %%{init: {"theme": "default", "themeVariables": {"fontSize": "14px"}, "flowchart": {"nodeSpacing": 20, "rankSpacing": 16, "padding": 10, "subGraphTitleMargin": {"top": 5, "bottom": 12}, "useMaxWidth": false}}}%%
     flowchart LR
-        subgraph web["web process — main/run.py: make_app()"]
-            core_p["CoreProvider\n(CQRS commands/queries)"]
-            outbound_p["outbound_providers()\n(hasher pool, persistence, auth)"]
-            celery_p["CeleryProvider\n(CeleryEnabled flag only)"]
+        subgraph webproc["web OS process — main/run_public_api.py: make_app_with_public_api()"]
+            subgraph web["private app — make_app()"]
+                core_p["CoreProvider\n(CQRS commands/queries)"]
+                outbound_p["outbound_providers()\n(hasher pool, persistence, auth)"]
+                celery_p["CeleryProvider\n(CeleryEnabled flag only)"]
+            end
+            subgraph pub["public API — make_public_api_app() (/public)"]
+                pub_p["PublicApiProvider\n(API-key issue/list/revoke, usage, profile)"]
+            end
         end
 
-        subgraph worker["worker process — main/worker/"]
+        subgraph worker["worker OS process — main/worker/"]
             worker_p["WorkerProvider\n(email sender, outbox repo, handlers)"]
             outbound_reuse["HasherThreadPoolProvider\nPersistenceSqlaProvider\n(reused as-is)"]
+        end
+
+        subgraph cliproc["CLI OS process — main/cli/ (one per invocation)"]
+            cli_p["CliProvider\n(admin/ops terminal commands)"]
         end
 
         db[("Postgres")]
@@ -40,21 +53,26 @@ This codebase actually has **two independent composition roots**, not one: `main
 
         core_p --> db
         outbound_p --> db
+        pub_p --> db
         worker_p --> db
         outbound_reuse --> db
+        cli_p --> db
         celery_p -.->|CeleryEnabled flag| redis
         worker_p -->|drains outbox, sends tasks| redis
 
         linkStyle default stroke-width:3px,stroke:#333333
+        style webproc stroke-width:1px,stroke:#333333
         style web stroke-width:1px,stroke:#333333
+        style pub stroke-width:1px,stroke:#333333
         style worker stroke-width:1px,stroke:#333333
+        style cliproc stroke-width:1px,stroke:#333333
     ```
 
-    > Both processes ultimately talk to the same Postgres database and the same Redis broker, but each builds its own, independently-validated Dishka container: the web process's via [`get_providers()`](../../../../src/app/main/ioc/provider_registry.py) (called from `make_app()`), the worker process's via [`get_worker_providers()`](../../../../src/app/main/worker/provider.py) (called from `build_worker_container()` in [`worker/container.py`](../../../../src/app/main/worker/container.py), itself invoked from the `worker_process_init` Celery signal handler in [`worker/celery_app.py`](../../../../src/app/main/worker/celery_app.py)).
+    > All four ultimately talk to the same Postgres database (and the worker/web talk to the same Redis broker too), but each builds its own, independently-validated Dishka container: the private app's via [`get_providers()`](../../../../src/app/main/ioc/provider_registry.py), the public API's via [`get_public_api_providers()`](../../../../src/app/main/ioc/public_api.py) (both called from `main/run_public_api.py`, in the one web process), the worker's via [`get_worker_providers()`](../../../../src/app/main/worker/provider.py) (its own process), and the CLI's via [`CliProvider`](../../../../src/app/main/cli/provider.py) (a new, short-lived process per invocation).
 
 ## The web process: `make_app()`
 
-[`run.py`](../../../../src/app/main/run.py)'s `make_app()` is what every real entry point (`uvicorn`, and the app's own `if __name__ == "__main__":` block) actually calls. In order, it: loads every settings model (via `main/config/loader.py`'s `load_*_settings()` functions, each reading from environment variables through `pydantic-settings`), constructs the `FastAPI` instance (with `docs_url`/`redoc_url` set to `None` outside `ENVIRONMENT=development` — see [Environment-aware deployment gating](../configuration/deployment-environments.md)), builds the Dishka container from `get_providers()` plus a `context={...}` dict binding every settings object by type, and finally calls `setup_middlewares()`/`setup_metrics()`/`setup_global_exception_handlers()` (all in [`setup.py`](../../../../src/app/main/setup.py)) before mounting the root router from [`inbound`](inbound-layer.md).
+[`run.py`](../../../../src/app/main/run.py)'s `make_app()` builds the private app on its own, and is still what tests and the app's own `if __name__ == "__main__":` block call directly. The actual process entry point `docker-entrypoint.sh` boots, though, is `main/run_public_api.py`'s `make_app_with_public_api()` — it calls this same `make_app()` unmodified, then mounts the public API sub-app on top (see [Public API (Server-to-Server Clients)](../core-patterns/public-api.md)). Either way, building the private app itself proceeds identically: it loads every settings model (via `main/config/loader.py`'s `load_*_settings()` functions, each reading from environment variables through `pydantic-settings`), constructs the `FastAPI` instance (with `docs_url`/`redoc_url` set to `None` outside `ENVIRONMENT=development` — see [Environment-aware deployment gating](../configuration/deployment-environments.md)), builds the Dishka container from `get_providers()` plus a `context={...}` dict binding every settings object by type, and finally calls `setup_middlewares()`/`setup_metrics()`/`setup_global_exception_handlers()` (all in [`setup.py`](../../../../src/app/main/setup.py)) before mounting the root router from [`inbound`](inbound-layer.md).
 
 `get_providers()` (in [`provider_registry.py`](../../../../src/app/main/ioc/provider_registry.py)) is short and literal:
 
@@ -120,6 +138,9 @@ The web process's entry point is a single `FastAPI` app built once, at import/st
 
 ## Where to go next
 
+- [Dependency Injection with Dishka](../core-patterns/dependency-injection.md) — the full container-per-composition-root model, all four roots, and exactly why the public API needs its own container despite sharing a process with the private app.
+- [Public API (Server-to-Server Clients)](../core-patterns/public-api.md) — `PublicApiProvider`'s own composition root in detail.
+- [CLI (Terminal Adapter)](../core-patterns/inbound-cli.md) — `CliProvider`'s own composition root in detail, and why it lives under `main/cli/` rather than `inbound/cli/`.
 - [Layer Dependencies & Import Rules](layer-dependencies.md) — why `main` is the only layer allowed to import all three of the others.
 - [Outbound Layer (Infrastructure Adapters)](outbound-layer.md) — every concrete adapter `CoreProvider`/`WorkerProvider` wire in above.
 - [Domain Events & the Transactional Outbox](../core-patterns/domain-events-outbox.md) — the full mechanism the worker process's outbox drain loop and `dispatch_event_handler_task` implement.

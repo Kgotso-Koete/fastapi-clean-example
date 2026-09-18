@@ -475,3 +475,5 @@ Two real bugs surfaced only at this layer, worth knowing about since they're gen
 | Cost as you grow | $0 forever, you own uptime/backups | ~$19/mo once you outgrow the caps | ~$26/mo once you exceed ~5,000 errors/month |
 
 If per-error-type grouping ever matters more than dashboards, [GlitchTip](https://glitchtip.com/) is worth a look — a self-hosted, open-source, Sentry-API-compatible tool that groups errors by type/stack trace natively, using the same `sentry-sdk` Python client. It'd sit alongside this stack rather than replace it (metrics/dashboards and error-grouping are genuinely different jobs).
+
+**Update:** this gap is now a real, scoped plan rather than just a hypothetical — see [`docs/plans/10-sentry-error-tracking.md`](./10-sentry-error-tracking.md) for the full design (Sentry via `sentry-sdk`, swappable to GlitchTip later via DSN alone).
