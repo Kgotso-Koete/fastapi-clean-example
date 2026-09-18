@@ -20,7 +20,7 @@ There's no fully-native path in this project's own tooling — nowhere does it s
     flowchart TB
         updlocal["make upd-local"] --> db_pg[("db_pg")]
         updlocal --> redis[("redis")]
-        uvicorn["uvicorn app.main.run:make_app --reload"] --> app["app"]
+        uvicorn["uvicorn app.main.run_public_api:make_app_with_public_api --reload"] --> app["app"]
 
         linkStyle default stroke-width:3px,stroke:#333333
     ```
@@ -65,7 +65,7 @@ Apply migrations, then start the app via `make_app()` in [`src/app/main/run.py`]
 
 ```shell
 alembic upgrade head
-uvicorn app.main.run:make_app --host 0.0.0.0 --port 8000 --reload
+uvicorn app.main.run_public_api:make_app_with_public_api --host 0.0.0.0 --port 8000 --reload
 ```
 
 Or run [`src/app/main/run.py`](../../../../src/app/main/run.py) directly from your IDE (Integrated Development Environment) instead of the `uvicorn` command — same entry point, easier to attach a debugger to.

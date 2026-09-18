@@ -61,6 +61,7 @@ nav:
       - Authorization & RBAC (Role-Based Access Control): content/core-patterns/authorization-rbac.md
       - Error Handling (error_map Pattern): content/core-patterns/error-handling.md
       - CLI (Terminal Adapter): content/core-patterns/inbound-cli.md
+      - Public API (Server-to-Server Clients): content/core-patterns/public-api.md
   - API Reference: content/api-reference.md
   - Data Models:
       - Domain Entities & Value Objects: content/data-models/domain-entities.md

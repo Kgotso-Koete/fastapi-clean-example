@@ -21,6 +21,7 @@ in `env.py` for Alembic migrations to ensure all models are available
 during database migrations.
 """
 
+from app.outbound.persistence_sqla.mappings.api_key import map_api_keys_table
 from app.outbound.persistence_sqla.mappings.auth_session import map_auth_sessions_table
 from app.outbound.persistence_sqla.mappings.outbox_message import map_event_outbox_table
 from app.outbound.persistence_sqla.mappings.user import map_users_table
@@ -33,3 +34,4 @@ def map_tables() -> None:
     map_users_table()
     map_auth_sessions_table()
     map_event_outbox_table()
+    map_api_keys_table()

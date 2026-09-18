@@ -24,8 +24,12 @@ TODO:
 - [x] Add a self-hosted documentation wiki (MkDocs + Material, ~50 hand-written content pages covering architecture/patterns/use cases) — see `docs/plans/5-self-hosted-docs-wiki.md`
 - [x] Wiki: generate the dependency-graph and complexity diagrams from real code (`grimp`/`radon`) instead of hand-drawing them, so they can't drift stale — see `docs/plans/5-self-hosted-docs-wiki.md`'s Steps 2/3/5
 - [x] Add an inbound CLI (`src/app/main/cli/`, `python -m app.main.cli` / `make cli args="..."`) so core commands/queries can be invoked directly from a terminal script for cron jobs, data seeding, and admin/ops actions, bypassing HTTP entirely — see `docs/plans/6-inbound-cli.md`
+- [x] Add a public-facing API with API-key authentication (issue/list/revoke keys, usage stats, shared `GetOwnProfile`), mounted at `/public` alongside the private app — see `docs/plans/8-public-api-key-auth.md`
 - [ ] Investigate why `docker compose down`/`stop` can fail to remove `worker`/`redis` at all (confirmed in `make test-docker`'s teardown, only `docker kill` recovers it) — see `docs/plans/0-production-readiness-roadmap.md`
 - [ ] Harden for production use: password policy, rate limiting, secrets management, TLS, backups, a real deploy pipeline, self-service password reset, email verification, and more — full prioritized backlog in `docs/plans/0-production-readiness-roadmap.md`
+- [ ] Add an organizations/multi-tenancy bounded context (`Organization`/`OrganizationMembership`, shared membership-based authorization, illustrative personal- vs. organization-scoped example CRUD resources) — not yet started, full design in `docs/plans/9-organizations.md`
+- [ ] Restructure into a modular monolith (one folder per bounded context — Users/Organizations/Notifications, possibly more) once there's more than one real bounded context — decided, not yet started, see `docs/plans/0-production-readiness-roadmap.md`
+- [ ] Add Sentry error tracking (automatic error grouping/fingerprinting, release correlation) alongside the existing Prometheus/Loki/Grafana stack and email alerting — not yet started, full design in `docs/plans/10-sentry-error-tracking.md`
 
 Prerequisites
 ```shell
