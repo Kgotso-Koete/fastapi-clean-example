@@ -18,12 +18,12 @@ API_KEYS_ENDPOINT = "/v1/api-keys/"
 async def _issue_key(
     client: httpx2.AsyncClient,
     *,
-    username: str,
+    identifier: str,
     password: str,
 ) -> dict[str, Any]:
     response = await client.post(
         API_KEYS_ENDPOINT,
-        json={"username": username, "password": password, "expires_in_days": 30, "label": None},
+        json={"identifier": identifier, "password": password, "expires_in_days": 30, "label": None},
     )
     assert response.status_code == 201
     return response.json()  # type: ignore[no-any-return]
@@ -54,8 +54,8 @@ async def test_deactivating_a_user_via_the_private_app_revokes_all_their_api_key
     target = await create_user_with_password(it_user_service, raw_password=target_password)
     it_session.add(target)
     await it_session.commit()
-    key_a = await _issue_key(it_public_client, username=target.username.value, password=target_password)
-    key_b = await _issue_key(it_public_client, username=target.username.value, password=target_password)
+    key_a = await _issue_key(it_public_client, identifier=target.username.value, password=target_password)
+    key_b = await _issue_key(it_public_client, identifier=target.username.value, password=target_password)
 
     response = await it_client.delete(f"{USERS_ENDPOINT}{target.id_}/activation/")
     assert response.status_code == 204

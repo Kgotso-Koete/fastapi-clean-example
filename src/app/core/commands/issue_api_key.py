@@ -3,7 +3,11 @@ from datetime import datetime, timedelta
 from typing import TypedDict
 from uuid import UUID
 
-from app.core.commands.api_key_exceptions import API_KEY_ACCOUNT_INACTIVE, InvalidApiKeyCredentialsError
+from app.core.commands.api_key_exceptions import (
+    API_KEY_ACCOUNT_INACTIVE,
+    ApiKeyLimitExceededError,
+    InvalidApiKeyCredentialsError,
+)
 from app.core.commands.ports.api_key_repository import ApiKeyRepository
 from app.core.commands.ports.transaction_manager import TransactionManager
 from app.core.commands.ports.utc_timer import UtcTimer
@@ -14,14 +18,15 @@ from app.core.common.ports.api_key_hasher import ApiKeyHasher
 from app.core.common.ports.user_finder import UserFinder
 from app.core.common.services.user import UserService
 from app.core.common.value_objects.api_key_expiry_days import ApiKeyExpiryDays
+from app.core.common.value_objects.email import Email
+from app.core.common.value_objects.identifier import resolve_username_or_email
 from app.core.common.value_objects.raw_password import RawPassword
-from app.core.common.value_objects.username import Username
 from app.core.common.value_objects.utc_datetime import UtcDatetime
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class IssueApiKeyRequest:
-    username: str
+    identifier: str
     password: str
     expires_in_days: int
     label: str | None = None
@@ -55,6 +60,7 @@ class IssueApiKey:
         api_key_hasher: ApiKeyHasher,
         api_key_repository: ApiKeyRepository,
         transaction_manager: TransactionManager,
+        max_keys_per_user: int,
     ) -> None:
         self._user_finder = user_finder
         self._user_service = user_service
@@ -62,15 +68,27 @@ class IssueApiKey:
         self._api_key_hasher = api_key_hasher
         self._api_key_repository = api_key_repository
         self._transaction_manager = transaction_manager
+        self._max_keys_per_user = max_keys_per_user
 
     async def execute(self, request: IssueApiKeyRequest) -> IssueApiKeyResponse:
-        user = await self._user_finder.find_by_username(Username(request.username))
+        identifier = resolve_username_or_email(request.identifier)
+        if isinstance(identifier, Email):
+            user = await self._user_finder.find_by_email(identifier)
+        else:
+            user = await self._user_finder.find_by_username(identifier)
         # Same error for "no such user" and "wrong password" -- a different
         # message per case would let a caller enumerate valid usernames.
         if user is None or not await self._user_service.is_password_valid(user, RawPassword(request.password)):
             raise InvalidApiKeyCredentialsError
         if not user.is_active:
             raise InvalidApiKeyCredentialsError(API_KEY_ACCOUNT_INACTIVE)
+
+        # Also BEFORE generating/persisting anything, same discipline as the
+        # expiry check below -- counts only active (non-revoked) keys, so
+        # revoking an old key frees up a slot rather than being a lifetime cap.
+        active_key_count = await self._api_key_repository.count_active_for_user(user.id_)
+        if active_key_count >= self._max_keys_per_user:
+            raise ApiKeyLimitExceededError
 
         # Validate the caller-chosen expiry BEFORE generating/persisting
         # anything -- an out-of-range value must never leave a raw key

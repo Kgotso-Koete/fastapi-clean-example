@@ -7,7 +7,6 @@
     - [`env.example`](../../../../env.example) — every environment variable, documented inline
     - [`scripts/makefile/docker_env.sh`](../../../../scripts/makefile/docker_env.sh) — generates `.env` and derives `COMPOSE_PROFILES`
     - [`docker-entrypoint.sh`](../../../../docker-entrypoint.sh) — what each container actually runs on startup
-    - [`.pre-commit-config.yaml`](../../../../.pre-commit-config.yaml) — the `wiki-build` hook that catches a broken wiki build before it's committed
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
 
@@ -84,7 +83,7 @@ Set `SEED_DB_WITH_TEST_DATA=true` in `.secrets` beforehand and `make upd` also s
 
 > Every port and credential above is the `env.example` default (`${VAR:-default}` in `docker-compose.yml`) — override any of them in `.secrets` if a port collides with something already running on your machine, or before this ever runs somewhere real.
 
-**The wiki container runs `mkdocs serve`** (live-reloading, same as `make wiki` on the host, just containerized on `WIKI_PORT` instead of mkdocs' own default port) — that's what you browse to while it's running; `make upd` doesn't produce a separate static build, and doesn't need to. A `wiki-build` pre-commit hook (`make wiki-build`, see [`.pre-commit-config.yaml`](../../../../.pre-commit-config.yaml)) catches a broken build before it's committed instead — the same "catch it early, on the host, before it ships" role `code-check`/`pip-audit` already play for the rest of this codebase, not something tied to starting the dev stack.
+**The wiki container runs `mkdocs serve`** (live-reloading, same as `make wiki` on the host, just containerized on `WIKI_PORT` instead of mkdocs' own default port) — that's what you browse to while it's running; `make upd` doesn't produce a separate static build, and doesn't need to. `make wiki-build` (a one-shot static build) is available to run by hand if you want to catch a broken build before committing, but it isn't wired to any git hook — not something tied to starting the dev stack either way.
 
 ## Getting full API (Application Programming Interface) access
 
@@ -107,7 +106,7 @@ Every command mentioned on this page, plus a few more — see [`Makefile`](../..
 | `make test-docker` | Full: integration tests against real Postgres/Redis via Docker | See [Testing → Running Tests](../testing/running-tests.md) for what each actually covers |
 | `make migration msg=<short description>` | Generate a new Alembic migration | See [Development Guide → Database Migrations](../development-guide/database-migrations.md) for how Alembic is wired up here |
 | `make wiki` | Serve this wiki locally, outside Docker (live-reload) | |
-| `make wiki-build` | One-shot static build of this wiki to `site/`, on your host | runs automatically as a pre-commit hook; needs `uv` installed locally to run by hand |
+| `make wiki-build` | One-shot static build of this wiki to `site/`, on your host | not wired to any git hook; needs `uv` installed locally to run by hand |
 
 ## Where to go next
 

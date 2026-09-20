@@ -177,7 +177,6 @@ gh pr merge --squash --delete-branch
 |------|-------|-------------|
 | `code-check` | pre-commit | Runs linter, formatter, and type checker (`make check`) |
 | `pip-audit` | pre-commit | Scans dependencies for known security vulnerabilities |
-| `wiki-build` | pre-commit | Fails if the wiki (`docs/wiki/`) doesn't build cleanly (`make wiki-build`) |
 | `test-docker` | pre-push | Runs the full integration test suite before pushing |
 | `no-commit-to-branch` | pre-commit | Blocks direct commits to `main` / `master` |
 | `typos` | pre-commit | Catches common spelling mistakes in code and docs |

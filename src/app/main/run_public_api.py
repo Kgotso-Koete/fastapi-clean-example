@@ -7,8 +7,13 @@ from dishka.integrations.fastapi import setup_dishka
 from fastapi import FastAPI
 
 from app.inbound.http.public_api.router import make_public_router
-from app.main.config.loader import load_password_hasher_settings, load_postgres_settings, load_sqla_settings
-from app.main.config.settings import PasswordHasherSettings, PostgresSettings, SqlaSettings
+from app.main.config.loader import (
+    load_api_key_settings,
+    load_password_hasher_settings,
+    load_postgres_settings,
+    load_sqla_settings,
+)
+from app.main.config.settings import ApiKeySettings, PasswordHasherSettings, PostgresSettings, SqlaSettings
 from app.main.ioc.public_api import get_public_api_providers
 from app.main.run import make_app, make_lifespan
 
@@ -18,6 +23,7 @@ def make_public_api_app(
     password_hasher_settings: PasswordHasherSettings | None = None,
     postgres_settings: PostgresSettings | None = None,
     sqla_settings: SqlaSettings | None = None,
+    api_key_settings: ApiKeySettings | None = None,
 ) -> FastAPI:
     """Pass providers to override existing ones for testing."""
     if password_hasher_settings is None:
@@ -26,6 +32,8 @@ def make_public_api_app(
         postgres_settings = load_postgres_settings()
     if sqla_settings is None:
         sqla_settings = load_sqla_settings()
+    if api_key_settings is None:
+        api_key_settings = load_api_key_settings()
 
     app = FastAPI(
         title="Public API",
@@ -45,6 +53,7 @@ def make_public_api_app(
             PasswordHasherSettings: password_hasher_settings,
             PostgresSettings: postgres_settings,
             SqlaSettings: sqla_settings,
+            ApiKeySettings: api_key_settings,
         },
     )
     setup_dishka(container, app)

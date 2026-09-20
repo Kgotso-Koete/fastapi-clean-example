@@ -5,6 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.main.config.settings import (
     AlertSettings,  # <-- NEW
+    ApiKeySettings,
     AppSettings,
     CelerySettings,
     CookieSettings,
@@ -75,6 +76,10 @@ class AlertEnvConfig(BaseSettings, AlertSettings):
     model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="ALERT_")
 
 
+class ApiKeyEnvConfig(BaseSettings, ApiKeySettings):
+    model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="API_KEY_")
+
+
 def load_app_settings() -> AppSettings:
     return _load_settings(AppEnvConfig)
 
@@ -118,3 +123,7 @@ def load_celery_settings() -> CelerySettings:
 # vvv NEW vvv
 def load_alert_settings() -> AlertSettings:
     return _load_settings(AlertEnvConfig)
+
+
+def load_api_key_settings() -> ApiKeySettings:
+    return _load_settings(ApiKeyEnvConfig)

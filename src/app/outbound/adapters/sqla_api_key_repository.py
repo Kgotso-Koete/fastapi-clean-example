@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -72,3 +72,19 @@ class SqlaApiKeyRepository(ApiKeyRepository):
                 api_key.revoke(now=now)
         except SQLAlchemyError as e:
             raise StorageError from e
+
+    async def count_active_for_user(self, user_id: UserId) -> int:
+        # A plain COUNT, unlike revoke_all_for_user's load-then-mutate loop
+        # above -- read-only, so none of that method's ORM-identity-map
+        # consistency concerns apply here.
+        stmt = (
+            select(func.count())
+            .select_from(api_keys_table)
+            .where(api_keys_table.c.user_id == user_id)
+            .where(api_keys_table.c.revoked_at.is_(None))
+        )
+        try:
+            result = await self._session.execute(stmt)
+        except SQLAlchemyError as e:
+            raise StorageError from e
+        return result.scalar_one()

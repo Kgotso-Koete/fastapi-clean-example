@@ -17,7 +17,7 @@ from app.core.queries.get_api_key_usage_stats import GetApiKeyUsageStats
 from app.core.queries.get_own_profile import GetOwnProfile
 from app.core.queries.list_api_keys import ListApiKeys
 from app.core.queries.ports.api_key_reader import ApiKeyReader
-from app.main.config.settings import PasswordHasherSettings
+from app.main.config.settings import ApiKeySettings, PasswordHasherSettings
 from app.main.ioc.outbound import HasherThreadPoolProvider, PersistenceSqlaProvider, RequestProvider
 from app.outbound.adapters.api_key_access_revoker import ApiKeyAccessRevoker
 from app.outbound.adapters.api_key_identity_provider import ApiKeyIdentityProvider
@@ -108,7 +108,30 @@ class PublicApiProvider(Provider):
         return HmacSha256ApiKeyHasher(pepper=settings.PEPPER.encode())
 
     # Commands (Step 7+)
-    issue_api_key = provide(IssueApiKey)
+    @provide
+    def provide_issue_api_key(
+        self,
+        user_finder: UserFinder,
+        user_service: UserService,
+        utc_timer: UtcTimer,
+        api_key_hasher: ApiKeyHasher,
+        api_key_repository: ApiKeyRepository,
+        transaction_manager: TransactionManager,
+        settings: ApiKeySettings,
+    ) -> IssueApiKey:
+        # A hand-written @provide, not bare provide(IssueApiKey), because
+        # IssueApiKey's max_keys_per_user is a plain int -- dishka can't
+        # auto-wire a bare int from ApiKeySettings the way it auto-wires
+        # every other (Protocol-typed) constructor param above.
+        return IssueApiKey(
+            user_finder=user_finder,
+            user_service=user_service,
+            utc_timer=utc_timer,
+            api_key_hasher=api_key_hasher,
+            api_key_repository=api_key_repository,
+            transaction_manager=transaction_manager,
+            max_keys_per_user=settings.MAX_PER_USER,
+        )
 
     # Queries (Step 8+)
     list_api_keys = provide(ListApiKeys)

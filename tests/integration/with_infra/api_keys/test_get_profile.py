@@ -21,12 +21,12 @@ PROFILE_ENDPOINT = "/v1/account/profile/"
 async def _issue_key(
     client: httpx2.AsyncClient,
     *,
-    username: str,
+    identifier: str,
     password: str,
 ) -> dict[str, Any]:
     response = await client.post(
         API_KEYS_ENDPOINT,
-        json={"username": username, "password": password, "expires_in_days": 30, "label": None},
+        json={"identifier": identifier, "password": password, "expires_in_days": 30, "label": None},
     )
     assert response.status_code == 201
     return response.json()  # type: ignore[no-any-return]
@@ -50,7 +50,7 @@ async def test_returns_200_identical_to_the_private_apps_profile_for_the_same_ac
     private_response = await it_client.get(PRIVATE_PROFILE_ENDPOINT)
     assert private_response.status_code == 200
 
-    key = await _issue_key(it_public_client, username=user.username.value, password=password)
+    key = await _issue_key(it_public_client, identifier=user.username.value, password=password)
     public_response = await it_public_client.get(PROFILE_ENDPOINT, headers={"X-API-Key": key["raw_key"]})
 
     assert public_response.status_code == 200
@@ -81,7 +81,7 @@ async def test_returns_401_for_a_revoked_key(
     user = await create_user_with_password(it_user_service, raw_password=password)
     it_session.add(user)
     await it_session.commit()
-    issued = await _issue_key(it_public_client, username=user.username.value, password=password)
+    issued = await _issue_key(it_public_client, identifier=user.username.value, password=password)
 
     key = await it_session.get(ApiKey, UUID(issued["id"]))
     assert key is not None

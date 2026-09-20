@@ -31,6 +31,9 @@ class FakeApiKeyRepository(ApiKeyRepository):
         self._call_log.append("revoke_all_for_user")
         self.revoked_for_user_id = user_id
 
+    async def count_active_for_user(self, user_id: UserId) -> int:
+        raise NotImplementedError
+
 
 class FakeTransactionManager(TransactionManager):
     def __init__(self, call_log: list[str]) -> None:

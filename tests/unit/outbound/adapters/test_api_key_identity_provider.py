@@ -107,6 +107,9 @@ class FakeApiKeyRepository(ApiKeyRepository):
     async def revoke_all_for_user(self, user_id: UserId) -> None:
         raise NotImplementedError
 
+    async def count_active_for_user(self, user_id: UserId) -> int:
+        raise NotImplementedError
+
 
 class FakeTransactionManager(TransactionManager):
     def __init__(self) -> None:

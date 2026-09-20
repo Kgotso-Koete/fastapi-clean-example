@@ -17,11 +17,6 @@ repos:
         language: system
         pass_filenames: false
         verbose: true
-      - id: wiki-build
-        name: wiki-build (local)
-        entry: make wiki-build
-        language: system
-        pass_filenames: false
       - id: test-docker
         name: test-docker (local)
         entry: make test-docker

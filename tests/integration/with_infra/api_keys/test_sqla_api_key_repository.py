@@ -150,3 +150,45 @@ async def test_revoke_all_for_user_is_a_no_op_on_already_revoked_keys(
     found = await sut.get_by_id(api_key.id_)
     assert found is not None
     assert found.is_revoked
+
+
+@pytest.mark.asyncio
+async def test_count_active_for_user_excludes_revoked_keys_and_other_users(
+    it_session: AsyncSession,
+    it_user_service: UserService,
+) -> None:
+    user_a_id = await _persist_user(it_session, it_user_service)
+    user_b_id = await _persist_user(it_session, it_user_service)
+    sut = SqlaApiKeyRepository(it_session)
+
+    active_a1 = _build_api_key(user_id=user_a_id, key_hash="active-a1")
+    active_a2 = _build_api_key(user_id=user_a_id, key_hash="active-a2")
+    revoked_a3 = _build_api_key(user_id=user_a_id, key_hash="revoked-a3")
+    revoked_a3.revoke(now=UtcDatetime(datetime.now(UTC)))
+    active_b1 = _build_api_key(user_id=user_b_id, key_hash="active-b1")
+    sut.add(active_a1)
+    sut.add(active_a2)
+    sut.add(revoked_a3)
+    sut.add(active_b1)
+    await it_session.commit()
+
+    count_a = await sut.count_active_for_user(user_a_id)
+    count_b = await sut.count_active_for_user(user_b_id)
+
+    # Two active keys for A -- the revoked third one doesn't count, and
+    # B's key doesn't leak into A's count.
+    assert count_a == 2
+    assert count_b == 1
+
+
+@pytest.mark.asyncio
+async def test_count_active_for_user_is_zero_for_a_user_with_no_keys(
+    it_session: AsyncSession,
+    it_user_service: UserService,
+) -> None:
+    user_id = await _persist_user(it_session, it_user_service)
+    sut = SqlaApiKeyRepository(it_session)
+
+    count = await sut.count_active_for_user(user_id)
+
+    assert count == 0

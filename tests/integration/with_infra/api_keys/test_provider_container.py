@@ -5,6 +5,7 @@ from dishka import AsyncContainer
 from fastapi import FastAPI
 from starlette.requests import Request
 
+from app.core.commands.issue_api_key import IssueApiKey
 from app.core.commands.ports.api_key_repository import ApiKeyRepository
 from app.core.common.authorization.current_user_service import CurrentUserService
 from app.core.common.ports.access_revoker import AccessRevoker
@@ -50,7 +51,7 @@ def it_public_container(it_public_app: FastAPI) -> AsyncContainer:
 
 @pytest.mark.parametrize(
     "port",
-    [CurrentUserService, ApiKeyRepository, ApiKeyReader, IdentityProvider, AccessRevoker],
+    [CurrentUserService, ApiKeyRepository, ApiKeyReader, IdentityProvider, AccessRevoker, IssueApiKey],
 )
 @pytest.mark.asyncio
 async def test_resolves_every_infra_binding_without_error(

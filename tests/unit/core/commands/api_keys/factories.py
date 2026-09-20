@@ -6,6 +6,7 @@ from app.core.common.entities.types_ import UserId
 from app.core.common.entities.user import User
 from app.core.common.ports.api_key_hasher import ApiKeyHasher
 from app.core.common.ports.user_finder import UserFinder
+from app.core.common.value_objects.email import Email
 from app.core.common.value_objects.username import Username
 from app.core.common.value_objects.utc_datetime import UtcDatetime
 from app.core.queries.ports.api_key_reader import ApiKeyReader, ApiKeyUsageStatsQm, ListApiKeysQm
@@ -20,13 +21,23 @@ from app.core.queries.query_support.sorting import SortingParams
 
 
 class FakeUserFinder(UserFinder):
-    """Returns a fixed user (or None), regardless of the username asked
-    for -- mirrors CliIdentityProvider's own test fake."""
+    """Returns a fixed user (or None), regardless of the username/email
+    asked for -- mirrors CliIdentityProvider's own test fake. Records every
+    call so a test can assert which lookup method the caller actually used
+    (e.g. proving an email-shaped identifier really goes through
+    find_by_email, not just "some lookup returned a user")."""
 
     def __init__(self, user: User | None) -> None:
         self._user = user
+        self.find_by_username_calls: list[Username] = []
+        self.find_by_email_calls: list[Email] = []
 
     async def find_by_username(self, username: Username) -> User | None:
+        self.find_by_username_calls.append(username)
+        return self._user
+
+    async def find_by_email(self, email: Email) -> User | None:
+        self.find_by_email_calls.append(email)
         return self._user
 
 
@@ -56,11 +67,15 @@ class FakeApiKeyRepository(ApiKeyRepository):
     get_by_key_hash()/revoke_all_for_user() aren't needed by any test using
     this fake yet -- raising NotImplementedError makes an accidental,
     unexpected call to one of them fail loudly instead of silently
-    returning None."""
+    returning None. count_active_for_user() returns a fixed count
+    (defaulting to 0, i.e. "well under any limit") and records every user_id
+    it was asked about, for IssueApiKey's key-limit tests."""
 
-    def __init__(self, get_by_id_result: ApiKey | None = None) -> None:
+    def __init__(self, get_by_id_result: ApiKey | None = None, count_active_for_user_result: int = 0) -> None:
         self.added: list[ApiKey] = []
         self._get_by_id_result = get_by_id_result
+        self._count_active_for_user_result = count_active_for_user_result
+        self.count_active_for_user_calls: list[UserId] = []
 
     def add(self, api_key: ApiKey) -> None:
         self.added.append(api_key)
@@ -73,6 +88,10 @@ class FakeApiKeyRepository(ApiKeyRepository):
 
     async def revoke_all_for_user(self, user_id: UserId) -> None:
         raise NotImplementedError
+
+    async def count_active_for_user(self, user_id: UserId) -> int:
+        self.count_active_for_user_calls.append(user_id)
+        return self._count_active_for_user_result
 
 
 class FakeTransactionManager(TransactionManager):
