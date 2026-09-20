@@ -15,12 +15,12 @@ API_KEYS_ENDPOINT = "/v1/api-keys/"
 async def _issue_key(
     client: httpx2.AsyncClient,
     *,
-    username: str,
+    identifier: str,
     password: str,
 ) -> dict[str, Any]:
     response = await client.post(
         API_KEYS_ENDPOINT,
-        json={"username": username, "password": password, "expires_in_days": 30, "label": None},
+        json={"identifier": identifier, "password": password, "expires_in_days": 30, "label": None},
     )
     assert response.status_code == 201
     return response.json()  # type: ignore[no-any-return]
@@ -36,7 +36,7 @@ async def test_returns_204_and_revokes_the_key(
     user = await create_user_with_password(it_user_service, raw_password=password)
     it_session.add(user)
     await it_session.commit()
-    issued = await _issue_key(it_public_client, username=user.username.value, password=password)
+    issued = await _issue_key(it_public_client, identifier=user.username.value, password=password)
 
     response = await it_public_client.delete(
         f"{API_KEYS_ENDPOINT}{issued['id']}/",
@@ -62,8 +62,8 @@ async def test_returns_403_for_another_users_key(
     user_b = await create_user_with_password(it_user_service, raw_password=password_b)
     it_session.add_all([user_a, user_b])
     await it_session.commit()
-    key_a = await _issue_key(it_public_client, username=user_a.username.value, password=password_a)
-    key_b = await _issue_key(it_public_client, username=user_b.username.value, password=password_b)
+    key_a = await _issue_key(it_public_client, identifier=user_a.username.value, password=password_a)
+    key_b = await _issue_key(it_public_client, identifier=user_b.username.value, password=password_b)
 
     # B tries to revoke A's key using B's own (valid) credentials.
     response = await it_public_client.delete(
@@ -88,7 +88,7 @@ async def test_returns_404_for_an_unknown_id(
     user = await create_user_with_password(it_user_service, raw_password=password)
     it_session.add(user)
     await it_session.commit()
-    issued = await _issue_key(it_public_client, username=user.username.value, password=password)
+    issued = await _issue_key(it_public_client, identifier=user.username.value, password=password)
 
     response = await it_public_client.delete(
         f"{API_KEYS_ENDPOINT}{uuid4()}/",
@@ -111,8 +111,8 @@ async def test_repeated_revoke_is_idempotent(
     # Issue a SECOND key to authenticate with -- the first key gets
     # revoked partway through, so it can no longer authenticate the
     # second (repeated) revoke call.
-    issued = await _issue_key(it_public_client, username=user.username.value, password=password)
-    auth_key = await _issue_key(it_public_client, username=user.username.value, password=password)
+    issued = await _issue_key(it_public_client, identifier=user.username.value, password=password)
+    auth_key = await _issue_key(it_public_client, identifier=user.username.value, password=password)
 
     first = await it_public_client.delete(
         f"{API_KEYS_ENDPOINT}{issued['id']}/",

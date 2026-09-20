@@ -100,7 +100,6 @@ worker:
         subgraph precommit["git commit (pre-commit stage)"]
             c1["make check<br/>(light tier only)"]
             c2["make pip-audit<br/>(non-blocking)"]
-            c3["make wiki-build"]
         end
 
         subgraph prepush["git push (pre-push stage)"]
@@ -121,7 +120,7 @@ worker:
         style ci stroke-width:1px,stroke:#333333
     ```
 
-    > Locally, [`.pre-commit-config.yaml`](../../../../.pre-commit-config.yaml) wires `make check`, `make pip-audit`, and `make wiki-build` to the default `pre-commit` stage, and `make test-docker` to the `pre-push` stage specifically — so the full Docker-backed suite only runs when pushing, not on every single commit, keeping the light, no-Docker tier as the fast feedback loop for everyday commits. CI then reruns both `make check-ci` and `make test-docker` regardless, as the final, environment-independent check before merge.
+    > Locally, [`.pre-commit-config.yaml`](../../../../.pre-commit-config.yaml) wires `make check` and `make pip-audit` to the default `pre-commit` stage, and `make test-docker` to the `pre-push` stage specifically — so the full Docker-backed suite only runs when pushing, not on every single commit, keeping the light, no-Docker tier as the fast feedback loop for everyday commits. CI then reruns both `make check-ci` and `make test-docker` regardless, as the final, environment-independent check before merge.
 
 ## Where to go next
 

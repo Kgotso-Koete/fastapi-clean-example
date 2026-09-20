@@ -4,7 +4,7 @@
     - [`README.md`](../../../../README.md#how-to-commit) — the "How to Commit" section and "Pre-commit Hooks Summary" table this page expands on
     - [`.pre-commit-config.yaml`](../../../../.pre-commit-config.yaml) — every hook this repo runs, and which git stage each fires at
     - [`.github/workflows/ci.yaml`](../../../../.github/workflows/ci.yaml) — the GitHub Actions CI (Continuous Integration) pipeline
-    - [`Makefile`](../../../../Makefile) — `check`, `check-ci`, `test-docker`, `wiki-build`, `pip-audit`, the targets the hooks/CI actually call
+    - [`Makefile`](../../../../Makefile) — `check`, `check-ci`, `test-docker`, `pip-audit`, the targets the hooks/CI actually call
     - [`docs/plans/`](../../../../docs/plans/) — the numbered implementation-plan docs, one per feature
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
@@ -59,7 +59,7 @@ Two local git hook stages sit inside that flow without changing its shape — a 
             pr --> ci --> merge
         end
 
-        commit -->|"pre-commit hooks pass<br/>(code-check, pip-audit,<br/>wiki-build, typos, ...)"| push
+        commit -->|"pre-commit hooks pass<br/>(code-check, pip-audit,<br/>typos, ...)"| push
         push -->|"pre-push hook passes<br/>(test-docker)"| pr
 
         linkStyle default stroke-width:3px,stroke:#333333
@@ -85,13 +85,12 @@ Two local git hook stages sit inside that flow without changing its shape — a 
 
 That's the entire pre-commit/pre-push split in this repo: every hook below runs at commit time except `test-docker`, which runs once, right before a `git push` actually leaves the machine. Because `pre-commit` treats `pre-commit` and `pre-push` as separate git hook types that must each be installed, `README.md`'s Prerequisites step, `pre-commit install --hook-type pre-commit --hook-type pre-push`, matters literally — running plain `pre-commit install` (no `--hook-type` flags) would only install the `pre-commit` hook type, and `test-docker` would silently never run at push time.
 
-`README.md`'s own "Pre-commit Hooks Summary" table lists six hooks. The real file configures more than that — every hook actually declared, grouped by which repo they come from:
+`README.md`'s own "Pre-commit Hooks Summary" table lists five hooks. The real file configures more than that — every hook actually declared, grouped by which repo they come from:
 
 | Hook | Stage | Source | What it does |
 |---|---|---|---|
 | `code-check` | pre-commit | local (`Makefile`) | Runs [`make check`](makefile-commands.md) — Ruff lint+format (auto-fixing), `tombi` format+lint, `deptry`, `slotscheck`, `lint-imports`, `mypy --strict`, then the fast test suite. See [Code Quality Tools](../testing/code-quality-tools.md) for what each gate checks. |
 | `pip-audit-local` | pre-commit | local (`Makefile`) | Runs `make pip-audit` — scans locked dependencies for known vulnerabilities; a finding only warns (stderr), never blocks the commit (see [Code Quality Tools](../testing/code-quality-tools.md)) |
-| `wiki-build` | pre-commit | local (`Makefile`) | Runs `make wiki-build` (`mkdocs build`) — fails the commit if this documentation wiki itself doesn't build cleanly |
 | `test-docker` | **pre-push** | local (`Makefile`) | Runs `make test-docker` — the full integration suite against real Postgres/Redis containers; see [Running Tests](../testing/running-tests.md) |
 | `check-ast`, `check-case-conflict`, `trailing-whitespace`, `end-of-file-fixer`, `check-added-large-files`, `check-docstring-first`, `check-json`, `check-toml`, `check-yaml`, `detect-private-key`, `debug-statements`, `check-merge-conflict`, `mixed-line-ending` | pre-commit | [`pre-commit/pre-commit-hooks`](https://github.com/pre-commit/pre-commit-hooks) | Generic hygiene checks — valid Python syntax (parses to an AST (Abstract Syntax Tree)), no case-only filename clashes, no trailing whitespace, files end in a newline (skipped under `docs/`), no accidentally-committed large files, docstrings appear before code, JSON (JavaScript Object Notation)/TOML (Tom's Obvious, Minimal Language)/YAML (YAML Ain't Markup Language) files parse, no private key material, no stray `pdb`/`breakpoint()` calls, no unresolved merge-conflict markers, line endings normalized to LF (Line Feed) |
 | `no-commit-to-branch` | pre-commit | [`pre-commit/pre-commit-hooks`](https://github.com/pre-commit/pre-commit-hooks) | Blocks a commit whose *current* branch is `develop`, `dev`, `master`, or `main` (`args: [--branch, develop, --branch, dev, --branch, master, --branch, main]`) |
@@ -110,7 +109,6 @@ That's the entire pre-commit/pre-push split in this repo: every hook below runs 
         subgraph precommit["pre-commit stage<br/>(git commit)"]
             codecheck["code-check<br/>(make check)"]
             pipaudit["pip-audit-local"]
-            wikibuild["wiki-build"]
             stdhooks["check-ast, check-yaml,<br/>detect-private-key,<br/>trailing-whitespace, ..."]
             nocommit["no-commit-to-branch"]
             typos["typos"]
@@ -153,7 +151,7 @@ Relevant section of [`.github/workflows/ci.yaml`](../../../../.github/workflows/
 
 `make check-ci` is the non-mutating sibling of the `code-check` hook's `make check` — same lint/type/import gates, but failing instead of auto-fixing (see [Code Quality Tools](../testing/code-quality-tools.md) for the exact `check` vs. `check-ci` gate order). `make test-docker` is the identical target the `test-docker` pre-push hook already runs locally, just against a fresh CI runner.
 
-That overlap is also where the real gap sits: CI never calls `make pip-audit` or `make wiki-build`, and it never runs `typos`, `yamlfmt`, `shellcheck`, or any of the generic `pre-commit-hooks` checks (`detect-private-key`, `check-yaml`, `trailing-whitespace`, and so on) — those exist **only** as local, opt-in pre-commit hooks. `README.md`'s own "Pre-commit Hooks Summary" table doesn't mention this gap either — it lists six hooks total (omitting `yamlfmt`, `shellcheck`, and the whole `pre-commit-hooks` set) and doesn't distinguish "runs locally" from "also re-checked in CI." In practice this means a contributor who commits with `git commit --no-verify` (or never ran `pre-commit install` at all) can push code that skips the dependency-vulnerability scan, the wiki build check, the spell-checker, YAML formatting, and shellcheck entirely — CI's two steps re-verify the lint/type/test gates, but nothing else on that list.
+That overlap is also where the real gap sits: CI never calls `make pip-audit`, and it never runs `typos`, `yamlfmt`, `shellcheck`, or any of the generic `pre-commit-hooks` checks (`detect-private-key`, `check-yaml`, `trailing-whitespace`, and so on) — those exist **only** as local, opt-in pre-commit hooks. `README.md`'s own "Pre-commit Hooks Summary" table doesn't mention this gap either — it lists five hooks total (omitting `yamlfmt`, `shellcheck`, and the whole `pre-commit-hooks` set) and doesn't distinguish "runs locally" from "also re-checked in CI." In practice this means a contributor who commits with `git commit --no-verify` (or never ran `pre-commit install` at all) can push code that skips the dependency-vulnerability scan, the spell-checker, YAML formatting, and shellcheck entirely — CI's two steps re-verify the lint/type/test gates, but nothing else on that list.
 
 ## Local guard vs. GitHub's own branch protection
 

@@ -18,13 +18,13 @@ API_KEYS_ENDPOINT = "/v1/api-keys/"
 async def _issue_key(
     client: httpx2.AsyncClient,
     *,
-    username: str,
+    identifier: str,
     password: str,
     label: str | None = None,
 ) -> dict[str, Any]:
     response = await client.post(
         API_KEYS_ENDPOINT,
-        json={"username": username, "password": password, "expires_in_days": 30, "label": label},
+        json={"identifier": identifier, "password": password, "expires_in_days": 30, "label": label},
     )
     assert response.status_code == 201
     return response.json()  # type: ignore[no-any-return]
@@ -43,9 +43,9 @@ async def test_returns_only_the_authenticated_users_own_keys(
     it_session.add_all([user_a, user_b])
     await it_session.commit()
 
-    key_a1 = await _issue_key(it_public_client, username=user_a.username.value, password=password_a, label="a1")
-    key_a2 = await _issue_key(it_public_client, username=user_a.username.value, password=password_a, label="a2")
-    await _issue_key(it_public_client, username=user_b.username.value, password=password_b, label="b1")
+    key_a1 = await _issue_key(it_public_client, identifier=user_a.username.value, password=password_a, label="a1")
+    key_a2 = await _issue_key(it_public_client, identifier=user_a.username.value, password=password_a, label="a2")
+    await _issue_key(it_public_client, identifier=user_b.username.value, password=password_b, label="b1")
 
     # Revoke one of A's keys directly -- no HTTP revoke endpoint exists yet
     # (that's Step 9); it should still be LISTED, just with revoked_at set.
@@ -92,7 +92,7 @@ async def test_returns_401_for_a_revoked_key(
     user = await create_user_with_password(it_user_service, raw_password=password)
     it_session.add(user)
     await it_session.commit()
-    issued = await _issue_key(it_public_client, username=user.username.value, password=password)
+    issued = await _issue_key(it_public_client, identifier=user.username.value, password=password)
 
     key = await it_session.get(ApiKey, UUID(issued["id"]))
     assert key is not None
@@ -114,7 +114,7 @@ async def test_returns_401_for_an_expired_key(
     user = await create_user_with_password(it_user_service, raw_password=password)
     it_session.add(user)
     await it_session.commit()
-    issued = await _issue_key(it_public_client, username=user.username.value, password=password)
+    issued = await _issue_key(it_public_client, identifier=user.username.value, password=password)
 
     key = await it_session.get(ApiKey, UUID(issued["id"]))
     assert key is not None

@@ -3,6 +3,7 @@ import pytest
 from app.main.config.loader import (
     CeleryEnvConfig,
     load_alert_settings,
+    load_api_key_settings,
     load_app_settings,
     load_celery_settings,
     load_cookie_settings,
@@ -188,6 +189,14 @@ def test_load_celery_settings_reads_env_vars(monkeypatch: pytest.MonkeyPatch) ->
     assert sut.TASK_ACKS_LATE is False
     assert sut.WORKER_CONCURRENCY == 3
     assert sut.WORKER_PREFETCH_MULTIPLIER == 7
+
+
+def test_load_api_key_settings_reads_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("API_KEY_MAX_PER_USER", "7")
+
+    sut = load_api_key_settings()
+
+    assert sut.MAX_PER_USER == 7
 
 
 def test_load_celery_settings_enabled_defaults_to_true(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -2,6 +2,7 @@ import pytest
 
 from app.core.common.entities.user import User
 from app.core.common.ports.user_finder import UserFinder
+from app.core.common.value_objects.email import Email
 from app.core.common.value_objects.username import Username
 from app.main.cli.identity_provider import (
     CliIdentityError,
@@ -14,12 +15,20 @@ from tests.unit.core.common.services.stubs import StubPasswordHasher
 
 
 class FakeUserFinder(UserFinder):
-    """Returns a fixed user (or None), regardless of the username asked for."""
+    """Returns a fixed user (or None), regardless of the username/email asked for.
+
+    CliIdentityProvider only ever calls find_by_username, but find_by_email
+    must still be implemented -- UserFinder is a Protocol with both as
+    abstract methods, so a concrete subclass can't omit either one.
+    """
 
     def __init__(self, user: User | None) -> None:
         self._user = user
 
     async def find_by_username(self, username: Username) -> User | None:
+        return self._user
+
+    async def find_by_email(self, email: Email) -> User | None:
         return self._user
 
 

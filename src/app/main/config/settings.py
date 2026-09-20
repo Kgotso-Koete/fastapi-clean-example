@@ -205,3 +205,9 @@ class AlertSettings(BaseModel):
     @property
     def bcc_emails(self) -> list[str]:
         return _split_emails(self.BCC_EMAILS)
+
+
+class ApiKeySettings(BaseModel):
+    # Counts only active (non-revoked) keys -- revoking an old key frees up
+    # a slot, so this isn't a lifetime cap.
+    MAX_PER_USER: int = Field(ge=1, default=10)

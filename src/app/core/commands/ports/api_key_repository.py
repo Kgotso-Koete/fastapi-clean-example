@@ -31,3 +31,9 @@ class ApiKeyRepository(Protocol):
         """Bulk-revokes every un-revoked key for one user -- used by
         ApiKeyAccessRevoker.remove_all_user_access()."""
         ...
+
+    @abstractmethod
+    async def count_active_for_user(self, user_id: UserId) -> int:
+        """Counts this user's active (non-revoked) keys -- used by
+        IssueApiKey to enforce the per-user key limit."""
+        ...

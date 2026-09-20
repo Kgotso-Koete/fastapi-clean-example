@@ -30,3 +30,11 @@ class ApiKeyNotFoundError(BaseError):
     specific to the public API's own ApiKey-by-id commands/queries."""
 
     default_message: ClassVar[str] = "API key not found."
+
+
+class ApiKeyLimitExceededError(BaseError):
+    """Raised by IssueApiKey when the caller already has the maximum
+    allowed number of active (non-revoked) API keys. Revoking an existing
+    key frees up a slot -- the limit is on active keys, not a lifetime cap."""
+
+    default_message: ClassVar[str] = "You have reached the maximum number of active API keys."

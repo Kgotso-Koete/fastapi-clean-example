@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-09-20: API-key email/username identifier and per-user key limit
+
+### Added
+- **API Keys:** `IssueApiKey` now accepts either a username or an email via a renamed `IssueApiKeyRequest.identifier` field, auto-detected by a new shared `resolve_username_or_email` helper (`src/app/core/common/value_objects/identifier.py`) — the same try-`Email`-then-`Username` pattern `LogIn._resolve_identifier` already uses for the private app's login, but pulled into a standalone function rather than editing `log_in.py` itself. Added `UserFinder.find_by_email`/`SqlaUserFinder.find_by_email` to support the email path.
+- **API Keys:** Added a per-user limit on active (non-revoked) API keys, configurable via a new `API_KEY_MAX_PER_USER` env var (`ApiKeySettings`, default `10`). Exceeding the limit raises a new `ApiKeyLimitExceededError`, mapped to `409 Conflict` on `POST /public/v1/api-keys/`. Revoking a key frees up a slot — this is not a lifetime cap. Added `ApiKeyRepository.count_active_for_user`/`SqlaApiKeyRepository.count_active_for_user` (a plain `COUNT` excluding revoked keys).
+
+### Fixed
+- **Pre-commit:** Removed the `wiki-build` hook from `.pre-commit-config.yaml`. It ran `make wiki-build` after `git add .` had already staged the working tree, so any wiki content the hook regenerated (`docs/wiki/generated/*.md`) landed as an untracked/modified-after-commit diff instead of being included in the commit — a confusing failure mode with no clean fix short of always remembering to run `make wiki-build` by hand before staging. `make wiki-build` still exists and works exactly as before; it's just no longer run automatically. Updated `README.md`'s "Pre-commit Hooks Summary" table and the wiki pages that documented it as a git hook (`development-guide/version-control.md`, `development-guide/makefile-commands.md`, `getting-started/quick-start-docker.md`, `testing/running-tests.md`) to match.
+
 ## [0.14.0] - 2026-09-19: Public API with API-key authentication
 
 ### Added

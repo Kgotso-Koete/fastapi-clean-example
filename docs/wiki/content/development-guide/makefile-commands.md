@@ -169,7 +169,7 @@ These sit at the top of the `Makefile` and change several targets' behavior at o
 |---|---|---|
 | `make wiki-generate` | Runs [`scripts/wiki/dependency_graph.py`](../../../../scripts/wiki/dependency_graph.py) and [`scripts/wiki/complexity_report.py`](../../../../scripts/wiki/complexity_report.py) — regenerates the dependency-graph/complexity content this wiki transcludes | Prerequisite of both `wiki` and `wiki-build`; rarely run by itself |
 | `make wiki` | `wiki-generate`, then `uv run mkdocs serve --dev-addr 127.0.0.1:$(WIKI_PORT)` | Live-reloading, on the host, no Docker — same content this page is part of; needs `uv sync --dev` done once |
-| `make wiki-build` | `wiki-generate`, then `uv run mkdocs build` — one-shot static build to `site/` | Runs automatically as a pre-commit hook (`wiki-build` in [`.pre-commit-config.yaml`](../../../../.pre-commit-config.yaml)) to catch a broken build before it's committed |
+| `make wiki-build` | `wiki-generate`, then `uv run mkdocs build` — one-shot static build to `site/` | Not wired to any git hook — run it by hand to catch a broken wiki build before committing |
 | `make wiki-full` | `test-docker`, then `wiki-generate`, then `mkdocs build`, then `mkdocs serve --dev-addr 127.0.0.1:$(WIKI_PORT)` | One-shot pipeline for verifying the wiki reflects current code end-to-end, instead of running `test-docker`/`wiki-generate`/`wiki-build`/`wiki` as separate one-off commands |
 
 ## Misc / Project Structure
