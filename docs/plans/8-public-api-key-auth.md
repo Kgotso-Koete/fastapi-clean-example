@@ -16,6 +16,15 @@ Two decisions were confirmed directly with the user before finalizing this plan:
 
 A third requirement, added after the initial design pass: an authenticated account must be able to do the same self-service things whether it arrives via browser cookie (the future frontend) or via API key (a B2B backend) -- concretely, the same account must be able to retrieve its own profile through either mechanism. See "Symmetric profile access" below.
 
+## User stories
+
+| Story | As a | I want | So that | Acceptance criteria |
+|---|---|---|---|---|
+| 1. Issue a key | integrating developer | to exchange my username (or email) and password for a long-lived API key once | my backend can call this API without logging in or holding a cookie jar | `POST /public/v1/api-keys/` with `identifier`, `password`, `expires_in_days`, optional `label` returns `201` with the raw key, shown once<br>Wrong password and unknown account return the same `401`<br>`expires_in_days` outside 1 to 365 returns `400`, nothing stored |
+| 2. Call the API with a key | API client | to authenticate every request with an `X-API-Key` header | I can reach my own account's data programmatically | Valid key on `GET /public/v1/account/profile/` returns `200` with the same profile the cookie app shows<br>Missing, unknown, expired or revoked key returns `401`<br>Only the key's hash is stored |
+| 3. Manage my keys | account owner managing their keys | to list, inspect and revoke my own keys | I can tell them apart, see which are in use, and shut down one that leaked | `GET /public/v1/api-keys/` lists only my keys, with `key_prefix`, never a hash<br>`GET .../{api_key_id}/usage/` shows `use_count`/`last_used_at`; another account's key `403`, unknown id `404`<br>`DELETE .../{api_key_id}/` returns `204` (also when repeated); the key stops working at once |
+| 4. Key limit | account owner managing their keys | a cap on how many active keys I can hold | keys can't pile up unnoticed | Holding `API_KEY_MAX_PER_USER` (default 10) non-revoked keys makes the next issue return `409`<br>Revoking a key frees a slot; not a lifetime cap |
+
 ---
 
 ## Why this is safe to add without touching existing composition
@@ -718,3 +727,394 @@ Exercises `ApiKeyAccessRevoker` for real, through `CurrentUserService`, the same
   8. Open Adminer (`http://localhost:8080`), inspect the `api_keys` table directly, and confirm the `key_hash` column never contains anything resembling any raw key returned above.
 
   (There is deliberately no password-change step here -- `ChangeOwnPassword` was removed from this plan's scope; see Step 10.)
+
+## Human checks
+
+Simple checks a human runs by hand against the seeded data (`docs/plans/agents.md` 1.3), with copy-pasteable `curl` commands. The public API is mounted under http://localhost:8000/public/, and every route except issuing a key needs the key in an `X-API-Key` header.
+
+### Setup
+
+1. In `.secrets`, set `SEED_DB_WITH_TEST_DATA=true`. It's `false` by default in `env.example`, and seeding never runs with `ENVIRONMENT=production`.
+2. Start from a fresh, freshly seeded database (`make down` discards the old one), with the app on http://localhost:8000:
+   ```shell
+   make down
+   make upd
+   ```
+   Re-run these to reset. Only a key's hash is stored, so the seed script logs a seeded key's raw value just once, on the run that creates it (checks 5 and 7 read it from that log). The checks also issue and revoke keys, and check 14 fills luke-cage's key limit.
+3. Run every command in one terminal, top to bottom. Keys and key ids are random, so a command that issues a key saves the response to a file in `/tmp`, and the commands after it read `raw_key` and `id` from that file into shell variables such as `$PETER_KEY`, then echo them. A Python `KeyError` traceback there means the issue failed; `python3 -m json.tool` on that file shows why. Shell variables last as long as the terminal, and a key lasts its `expires_in_days`, so keys don't go stale between checks. Where a check reuses a variable, it names the check that set it.
+4. Checks 3 and 6 also log in with a cookie (`-c` saves it at login, `-b` sends it). A cookie session lasts only 5 minutes without use, so those checks log in at their own start.
+5. No check takes its starting state on trust. Each first runs a read-only **Prove** command showing what it relies on, and a check that changes something ends with a command showing the change. Each check's **Acts on:** line names every key and id it uses. Commands that print JSON pipe it through `python3 -m json.tool`, which prints it one field per line.
+6. Set the Compose project name, from the repo root:
+   ```shell
+   PROJECT=$(grep -h '^APP_SERVICE_NAME=' env.example .secrets 2>/dev/null | tail -1 | cut -d= -f2)
+   PROJECT=${PROJECT:-$(basename "$PWD")}
+   echo "$PROJECT"
+   ```
+   This reads the Compose project name the same way the Makefile does (`APP_SERVICE_NAME`, last value wins, else the folder name), so the direct `docker compose -p "$PROJECT"` commands below look at the same containers `make upd` started.
+
+### Seeded data (from `scripts/seed_db.py`)
+
+The users and passwords are the existing `SEED_USERS`:
+- `peter-parker` (`SpideySense2024!`, email `peter.parker@dailybugle.com`): valid key "Spider-Sense Dev Key", expiring 30 days after seeding.
+- `tony-stark` (`ImIronMan#3000`): valid key "Stark Industries CI Key".
+- `diana-prince` (`AmazonWarrior$99`): key "Themyscira Legacy Key", already expired (it expired one day before seeding).
+- `luke-cage` (`PowerMan2024!`): no keys.
+- `jean-grey` (`Phoenix19864202!`): a site ADMIN, used only to list which usernames exist.
+- `natasha-romanoff` (valid) and `bruce-wayne` (expired) have seeded keys too; no check uses them.
+
+A seeded key's raw value is only in the `app` container's log, in a line like `Seeded valid API key 'Spider-Sense Dev Key' for peter-parker: ak_...`. Checks 5 and 7 read it with `docker compose -p "$PROJECT" logs app` (Setup step 6). (`make logs` doesn't work for this: it follows the log and never exits.)
+
+What the status codes mean here:
+- `400`: the request itself is invalid (an expiry out of range).
+- `401`: no usable credential: a wrong username or password when issuing, or a missing, unknown, expired or revoked key.
+- `403`: a valid key, asking about a key id that belongs to another account.
+- `404`: no key has that id.
+- `409`: the account already holds the maximum number of active keys.
+
+### Checks
+
+1. **Issue a key with a username: 201, and the raw key is shown once.**
+
+   **Why:** issuing a key is this API's login: prove who you are with a username and password once, and get a long-lived key back. The raw key appears in this response only. The server stores just its hash, so it can never show the key again. It's 201 because a new key row was created.
+
+   **Acts on:** a new key for peter-parker, saved in `$PETER_KEY`, with its id in `$PETER_KEY_ID`.
+   ```shell
+   curl -s -o /tmp/peter-key.json -w '%{http_code}\n' -X POST http://localhost:8000/public/v1/api-keys/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "peter-parker", "password": "SpideySense2024!", "expires_in_days": 30, "label": "Manual check key"}'
+   python3 -m json.tool /tmp/peter-key.json
+   PETER_KEY=$(python3 -c 'import json; print(json.load(open("/tmp/peter-key.json"))["raw_key"])')
+   PETER_KEY_ID=$(python3 -c 'import json; print(json.load(open("/tmp/peter-key.json"))["id"])')
+   echo "$PETER_KEY $PETER_KEY_ID"
+   ```
+   Expect `201`, then a body with `id`, `raw_key` (starting `ak_`), `"label": "Manual check key"`, `created_at`, and `expires_at` 30 days later, then the key and id echoed. **Prove** the key was stored, by listing peter's keys with it:
+   ```shell
+   curl -s http://localhost:8000/public/v1/api-keys/ -H "X-API-Key: $PETER_KEY" | python3 -m json.tool
+   echo "${PETER_KEY:0:11}"
+   ```
+   Expect `"total": 2`: the seeded "Spider-Sense Dev Key" and "Manual check key". The second one's `id` is `$PETER_KEY_ID`, and its `key_prefix` is the first 11 characters of `$PETER_KEY`, as the `echo` prints. There's no `key_hash` anywhere.
+
+2. **Issue a key with an email address: 201.**
+
+   **Why:** `identifier` takes a username or an email, like the cookie login does. `label` is optional and defaults to `null`. Every issue makes a new random key, even for the same account.
+
+   **Acts on:** a new key for peter-parker, saved in `$PETER_EMAIL_KEY`, and `$PETER_KEY` (set by check 1) to compare with.
+   ```shell
+   curl -s -o /tmp/peter-email-key.json -w '%{http_code}\n' -X POST http://localhost:8000/public/v1/api-keys/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "peter.parker@dailybugle.com", "password": "SpideySense2024!", "expires_in_days": 7}'
+   python3 -m json.tool /tmp/peter-email-key.json
+   PETER_EMAIL_KEY=$(python3 -c 'import json; print(json.load(open("/tmp/peter-email-key.json"))["raw_key"])')
+   echo "$PETER_EMAIL_KEY"
+   echo "$PETER_KEY"
+   ```
+   Expect `201`, `"label": null` and an `expires_at` 7 days out, then two different keys. **Prove** the new key belongs to the same account, by listing keys with it:
+   ```shell
+   curl -s http://localhost:8000/public/v1/api-keys/ -H "X-API-Key: $PETER_EMAIL_KEY" | python3 -m json.tool
+   ```
+   Expect `"total": 3`, including "Manual check key" from check 1.
+
+3. **A wrong password and an unknown account get the same 401.**
+
+   **Why:** if "no such account" and "wrong password" got different answers, a caller could find out which usernames exist. An unknown account is just failed credentials, so it's 401, not 404.
+
+   **Acts on:** `peter-parker`, a real account, and `nobody-here`, which no account has. `$PETER_KEY` is set by check 1.
+
+   **Prove** peter-parker exists, by fetching his profile with his key:
+   ```shell
+   curl -s http://localhost:8000/public/v1/account/profile/ -H "X-API-Key: $PETER_KEY" | python3 -m json.tool
+   ```
+   Expect `"username": "peter-parker"`. Next, **prove** `nobody-here` doesn't exist. Log in as `jean-grey`, an admin, and list every username:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -c /tmp/jean-grey.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "jean-grey", "password": "Phoenix19864202!"}'
+   curl -s -b /tmp/jean-grey.cookies 'http://localhost:8000/api/v1/users/?limit=100' \
+     | python3 -c 'import sys, json; print(sorted(u["username"] for u in json.load(sys.stdin)["users"]))'
+   ```
+   Expect `200`, then the 15 seeded usernames, with no `nobody-here`. Then try a wrong password, and an unknown account:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -X POST http://localhost:8000/public/v1/api-keys/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "peter-parker", "password": "WrongPassword123!", "expires_in_days": 30}'
+   curl -s -w '\n%{http_code}\n' -X POST http://localhost:8000/public/v1/api-keys/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "nobody-here", "password": "WrongPassword123!", "expires_in_days": 30}'
+   ```
+   Expect `401` both times, with the same `Invalid username or password.`
+
+4. **An expiry out of range: 400, and nothing is stored.**
+
+   **Why:** a key must live 1 to 365 days, so it can neither expire at once nor live forever. The credentials are right, so it isn't 401: it's 400, a bad value in the request. The expiry is checked before a key is generated, so a refused request leaves nothing behind.
+
+   **Acts on:** peter-parker's credentials, and `$PETER_KEY` (set by check 1) to list his keys.
+
+   **Prove** how many keys peter has now:
+   ```shell
+   curl -s http://localhost:8000/public/v1/api-keys/ -H "X-API-Key: $PETER_KEY" | python3 -m json.tool
+   ```
+   Expect `"total": 3` (the seeded key plus checks 1 and 2). Then ask for 0 days, then 366:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -X POST http://localhost:8000/public/v1/api-keys/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "peter-parker", "password": "SpideySense2024!", "expires_in_days": 0}'
+   curl -s -w '\n%{http_code}\n' -X POST http://localhost:8000/public/v1/api-keys/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "peter-parker", "password": "SpideySense2024!", "expires_in_days": 366}'
+   ```
+   Expect `400` both times, with `Expiry must be between 1 and 365 days.` **Prove** nothing was stored, by listing peter's keys again:
+   ```shell
+   curl -s http://localhost:8000/public/v1/api-keys/ -H "X-API-Key: $PETER_KEY" | python3 -m json.tool
+   ```
+   Expect `"total": 3` still.
+
+5. **A seeded valid key works: 200, with peter's profile.**
+
+   **Why:** the seed script builds its keys the same way issuing does (a hash plus an 11-character prefix), so a seeded key must authenticate like an issued one. That's what makes the seeded keys usable for manual testing straight after `make upd`. The profile never includes the password hash.
+
+   **Acts on:** peter's seeded "Spider-Sense Dev Key", read from the log into `$SEEDED_PETER_KEY`, and `$PETER_KEY` (set by check 1) to look at it.
+
+   Read the seeded key from the `app` container's log:
+   ```shell
+   SEEDED_PETER_KEY=$(docker compose -p "$PROJECT" logs app | grep -o 'for peter-parker: ak_[A-Za-z0-9_-]*' | tail -n 1 | cut -d' ' -f3)
+   echo "$SEEDED_PETER_KEY"
+   ```
+   Expect a key starting `ak_`. An empty line means the database wasn't fresh (the log says `Seed API key 'Spider-Sense Dev Key' already exists, skipping.` instead); run Setup step 2 again. **Prove** it's peter's seeded, valid key, by listing his keys with `$PETER_KEY`:
+   ```shell
+   curl -s http://localhost:8000/public/v1/api-keys/ -H "X-API-Key: $PETER_KEY" | python3 -m json.tool
+   echo "${SEEDED_PETER_KEY:0:11}"
+   ```
+   Expect a "Spider-Sense Dev Key" row with `"revoked_at": null`, an `expires_at` about 30 days from seeding, and a `key_prefix` equal to what the `echo` prints. Then fetch the profile with the seeded key:
+   ```shell
+   curl -s -w '\n%{http_code}\n' http://localhost:8000/public/v1/account/profile/ -H "X-API-Key: $SEEDED_PETER_KEY"
+   ```
+   Expect `200`, with `"username": "peter-parker"`, `"email": "peter.parker@dailybugle.com"` and no password hash.
+
+6. **The same profile through a cookie and through a key.**
+
+   **Why:** an account can do the same self-service things whichever way it signs in. Both profile routes run the same query behind two different identity mechanisms, so they must return the same body.
+
+   **Acts on:** peter-parker's cookie session, and `$PETER_KEY` (set by check 1).
+
+   Log in as `peter-parker`:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -c /tmp/peter-parker.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}'
+   ```
+   Expect `200`. Then fetch the profile both ways:
+   ```shell
+   curl -s -b /tmp/peter-parker.cookies http://localhost:8000/api/v1/account/profile/ | python3 -m json.tool
+   curl -s http://localhost:8000/public/v1/account/profile/ -H "X-API-Key: $PETER_KEY" | python3 -m json.tool
+   ```
+   Expect two identical bodies: the same `id`, `"username": "peter-parker"`, `"phone_number": "27821000011"`, `"role": "user"`, `"is_active": true` and the same timestamps.
+
+7. **A seeded expired key: 401.**
+
+   **Why:** an expired key is refused, with the same 401 and message as an unknown key. It's 401 and not 403: the credential itself no longer works, so the caller isn't anyone at all.
+
+   **Acts on:** diana's seeded "Themyscira Legacy Key", read from the log into `$SEEDED_DIANA_KEY`, and a new key for diana issued here into `$DIANA_KEY`, to look at the seeded one.
+
+   Read the seeded key from the log, and issue diana a fresh key:
+   ```shell
+   SEEDED_DIANA_KEY=$(docker compose -p "$PROJECT" logs app | grep -o 'for diana-prince: ak_[A-Za-z0-9_-]*' | tail -n 1 | cut -d' ' -f3)
+   echo "$SEEDED_DIANA_KEY"
+   curl -s -o /tmp/diana-key.json -w '%{http_code}\n' -X POST http://localhost:8000/public/v1/api-keys/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "diana-prince", "password": "AmazonWarrior$99", "expires_in_days": 30}'
+   DIANA_KEY=$(python3 -c 'import json; print(json.load(open("/tmp/diana-key.json"))["raw_key"])')
+   echo "$DIANA_KEY"
+   ```
+   Expect a seeded key starting `ak_`, then `201` and a second, different key. **Prove** the seeded key has expired and isn't revoked, by listing diana's keys with the fresh one:
+   ```shell
+   curl -s http://localhost:8000/public/v1/api-keys/ -H "X-API-Key: $DIANA_KEY" | python3 -m json.tool
+   echo "${SEEDED_DIANA_KEY:0:11}"
+   ```
+   Expect a "Themyscira Legacy Key" row with an `expires_at` in the past, `"revoked_at": null`, and a `key_prefix` equal to what the `echo` prints. Then try the expired key:
+   ```shell
+   curl -s -w '\n%{http_code}\n' http://localhost:8000/public/v1/account/profile/ -H "X-API-Key: $SEEDED_DIANA_KEY"
+   ```
+   Expect `401`, with `Invalid or expired API key.`
+
+8. **No key, or a made-up key: 401.**
+
+   **Why:** every route except issuing needs a key. A made-up key's hash matches no stored row. Both get the same 401 and message, so a caller learns nothing about which keys exist.
+
+   **Acts on:** no key at all, then `ak_not-a-real-key`, which matches no key. Nothing needs proving: a real key has 43 random characters after `ak_`, so no issue ever produced this one.
+   ```shell
+   curl -s -w '\n%{http_code}\n' http://localhost:8000/public/v1/account/profile/
+   curl -s -w '\n%{http_code}\n' http://localhost:8000/public/v1/account/profile/ -H 'X-API-Key: ak_not-a-real-key'
+   ```
+   Expect `401` both times, with `Invalid or expired API key.`
+
+9. **Listing shows only my own keys, never a hash.**
+
+   **Why:** the list is scoped to the account the key belongs to, so one account can't see another's keys. Each row shows a `key_prefix` (`ak_` plus 8 characters) to tell keys apart, never the hash.
+
+   **Acts on:** `$PETER_KEY` (set by check 1), and a new key for tony-stark issued here into `$TONY_KEY`.
+
+   Issue tony a key, and **prove** what he holds, by listing his keys with it:
+   ```shell
+   curl -s -o /tmp/tony-key.json -w '%{http_code}\n' -X POST http://localhost:8000/public/v1/api-keys/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "tony-stark", "password": "ImIronMan#3000", "expires_in_days": 30}'
+   TONY_KEY=$(python3 -c 'import json; print(json.load(open("/tmp/tony-key.json"))["raw_key"])')
+   echo "$TONY_KEY"
+   curl -s http://localhost:8000/public/v1/api-keys/ -H "X-API-Key: $TONY_KEY" | python3 -m json.tool
+   ```
+   Expect `201`, the key, then `"total": 2`: the seeded "Stark Industries CI Key" and the unlabeled key just issued. Then list peter's keys:
+   ```shell
+   curl -s http://localhost:8000/public/v1/api-keys/ -H "X-API-Key: $PETER_KEY" | python3 -m json.tool
+   ```
+   Expect `api_keys`, `"total": 3`, `"limit": 20` and `"offset": 0`. The rows are "Spider-Sense Dev Key", "Manual check key" and the unlabeled key from check 2. There's no "Stark Industries CI Key", and no `key_hash` field anywhere.
+
+10. **Usage stats count every successful request, including the one asking: 200.**
+
+    **Why:** each successful authentication adds one to the key's `use_count` and sets `last_used_at`, so you can see which keys are in use. Asking about a key *with that same key* counts as a use too. Asking with another of your keys doesn't touch it. The response never includes `user_id` or `key_hash`.
+
+    **Acts on:** a new key for peter-parker issued here, in `$USAGE_KEY` with its id in `$USAGE_KEY_ID`, and `$PETER_KEY` (set by check 1) to look at it from outside.
+    ```shell
+    curl -s -o /tmp/peter-usage-key.json -w '%{http_code}\n' -X POST http://localhost:8000/public/v1/api-keys/ \
+      -H 'Content-Type: application/json' \
+      -d '{"identifier": "peter-parker", "password": "SpideySense2024!", "expires_in_days": 30, "label": "Usage check key"}'
+    USAGE_KEY=$(python3 -c 'import json; print(json.load(open("/tmp/peter-usage-key.json"))["raw_key"])')
+    USAGE_KEY_ID=$(python3 -c 'import json; print(json.load(open("/tmp/peter-usage-key.json"))["id"])')
+    echo "$USAGE_KEY $USAGE_KEY_ID"
+    ```
+    Expect `201`, then the key and id. **Prove** the new key is unused, by asking about it with `$PETER_KEY`:
+    ```shell
+    curl -s "http://localhost:8000/public/v1/api-keys/$USAGE_KEY_ID/usage/" -H "X-API-Key: $PETER_KEY" | python3 -m json.tool
+    ```
+    Expect `"use_count": 0` and `"last_used_at": null`. Then use the new key once, and ask about it with itself:
+    ```shell
+    curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/public/v1/account/profile/ -H "X-API-Key: $USAGE_KEY"
+    curl -s "http://localhost:8000/public/v1/api-keys/$USAGE_KEY_ID/usage/" -H "X-API-Key: $USAGE_KEY" | python3 -m json.tool
+    ```
+    Expect `200`, then `"use_count": 2` (the profile request plus this one), a `last_used_at` of just now, and no `user_id` or `key_hash` field. **Prove** the count was stored, and that asking from another key doesn't add to it:
+    ```shell
+    curl -s "http://localhost:8000/public/v1/api-keys/$USAGE_KEY_ID/usage/" -H "X-API-Key: $PETER_KEY" | python3 -m json.tool
+    ```
+    Expect `"use_count": 2` still.
+
+11. **Usage stats for another account's key: 403.**
+
+    **Why:** you may only look at your own keys. tony's key is valid, so it isn't 401. The key id exists, so it isn't 404. It's 403: a real caller, asking about a key that isn't theirs. This follows the same 404-versus-403 rule as revoking.
+
+    **Acts on:** peter's "Manual check key" (`$PETER_KEY_ID`, set by check 1), asked about with tony's key (`$TONY_KEY`, set by check 9).
+
+    **Prove** that `$PETER_KEY_ID` is peter's, and that `$TONY_KEY` is tony's:
+    ```shell
+    echo "$PETER_KEY_ID"
+    curl -s http://localhost:8000/public/v1/api-keys/ -H "X-API-Key: $PETER_KEY" | python3 -m json.tool
+    curl -s http://localhost:8000/public/v1/account/profile/ -H "X-API-Key: $TONY_KEY" | python3 -m json.tool
+    ```
+    Expect the echoed id on peter's "Manual check key" row, then `"username": "tony-stark"`. Then, with tony's key, ask about peter's key:
+    ```shell
+    curl -s -w '\n%{http_code}\n' "http://localhost:8000/public/v1/api-keys/$PETER_KEY_ID/usage/" -H "X-API-Key: $TONY_KEY"
+    ```
+    Expect `403`, with `Not authorized.`
+
+12. **Usage stats for an unknown key id: 404.**
+
+    **Why:** no key has this id, so there is nothing to show. The caller's own key is valid, so it isn't 401.
+
+    **Acts on:** `00000000-0000-4000-8000-000000000000`, a made-up id that matches no key, asked about with `$PETER_KEY` (set by check 1). Nothing needs proving: every real key id is a UUIDv7, which starts with the time it was made, so none is all zeros.
+    ```shell
+    curl -s -w '\n%{http_code}\n' http://localhost:8000/public/v1/api-keys/00000000-0000-4000-8000-000000000000/usage/ -H "X-API-Key: $PETER_KEY"
+    ```
+    Expect `404`, with `API key not found.`
+
+13. **Revoke a key: 204, it stops working at once: 401, and revoking again is safe: 204.**
+
+    **Why:** revoking is how you shut down a key that leaked, so it must stop working on the very next request. Revoking twice is harmless (idempotent), so a retried request never errors. The `DELETE`s are sent with another of peter's keys, because a revoked key can't authenticate anything, including a second revoke of itself.
+
+    **Acts on:** peter's "Manual check key" (`$PETER_KEY`, id `$PETER_KEY_ID`, both set by check 1), revoked with peter's key from check 2 (`$PETER_EMAIL_KEY`). After this check `$PETER_KEY` no longer works.
+
+    **Prove** `$PETER_KEY` works and isn't revoked:
+    ```shell
+    curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/public/v1/account/profile/ -H "X-API-Key: $PETER_KEY"
+    echo "$PETER_KEY_ID"
+    curl -s http://localhost:8000/public/v1/api-keys/ -H "X-API-Key: $PETER_EMAIL_KEY" | python3 -m json.tool
+    ```
+    Expect `200`, then the echoed id on the "Manual check key" row, with `"revoked_at": null`. Then revoke it, try it, and revoke it again:
+    ```shell
+    curl -s -o /dev/null -w '%{http_code}\n' -X DELETE "http://localhost:8000/public/v1/api-keys/$PETER_KEY_ID/" -H "X-API-Key: $PETER_EMAIL_KEY"
+    curl -s -w '\n%{http_code}\n' http://localhost:8000/public/v1/account/profile/ -H "X-API-Key: $PETER_KEY"
+    curl -s -o /dev/null -w '%{http_code}\n' -X DELETE "http://localhost:8000/public/v1/api-keys/$PETER_KEY_ID/" -H "X-API-Key: $PETER_EMAIL_KEY"
+    ```
+    Expect `204`, then `401` with `Invalid or expired API key.`, then `204`. **Prove** the key is marked revoked, by listing peter's keys:
+    ```shell
+    curl -s http://localhost:8000/public/v1/api-keys/ -H "X-API-Key: $PETER_EMAIL_KEY" | python3 -m json.tool
+    ```
+    Expect the "Manual check key" row still listed, now with a `revoked_at` date.
+
+14. **The per-account key limit: 409 once it's reached, and revoking frees a slot: 201.**
+
+    **Why:** `API_KEY_MAX_PER_USER` (default `10`, in `env.example`) caps how many non-revoked keys one account holds, so keys can't pile up unnoticed. Expired keys still count until they're revoked. It's 409, not 400 or 403: the request is fine and the caller is allowed, but the account's current state (full) blocks it. Revoking a key frees its slot, so it isn't a lifetime cap.
+
+    **Acts on:** luke-cage's credentials; his first key, saved in `$LUKE_KEY` with its id in `$LUKE_KEY_ID`; and his tenth, saved in `$LUKE_LAST_KEY`.
+
+    Issue luke's first key:
+    ```shell
+    curl -s -o /tmp/luke-key-1.json -w '%{http_code}\n' -X POST http://localhost:8000/public/v1/api-keys/ \
+      -H 'Content-Type: application/json' \
+      -d '{"identifier": "luke-cage", "password": "PowerMan2024!", "expires_in_days": 1}'
+    LUKE_KEY=$(python3 -c 'import json; print(json.load(open("/tmp/luke-key-1.json"))["raw_key"])')
+    LUKE_KEY_ID=$(python3 -c 'import json; print(json.load(open("/tmp/luke-key-1.json"))["id"])')
+    echo "$LUKE_KEY $LUKE_KEY_ID"
+    ```
+    Expect `201`, then the key and id. **Prove** luke had no keys before it, by listing his keys:
+    ```shell
+    curl -s http://localhost:8000/public/v1/api-keys/ -H "X-API-Key: $LUKE_KEY" | python3 -m json.tool
+    ```
+    Expect `"total": 1`. Then issue eight more, and a tenth that's saved:
+    ```shell
+    for i in $(seq 1 8); do
+      curl -s -o /dev/null -w '%{http_code}\n' -X POST http://localhost:8000/public/v1/api-keys/ \
+        -H 'Content-Type: application/json' \
+        -d '{"identifier": "luke-cage", "password": "PowerMan2024!", "expires_in_days": 1}'
+    done
+    curl -s -o /tmp/luke-key-10.json -w '%{http_code}\n' -X POST http://localhost:8000/public/v1/api-keys/ \
+      -H 'Content-Type: application/json' \
+      -d '{"identifier": "luke-cage", "password": "PowerMan2024!", "expires_in_days": 1}'
+    LUKE_LAST_KEY=$(python3 -c 'import json; print(json.load(open("/tmp/luke-key-10.json"))["raw_key"])')
+    echo "$LUKE_LAST_KEY"
+    ```
+    Expect nine `201` lines, then the key. **Prove** luke is at the limit:
+    ```shell
+    curl -s http://localhost:8000/public/v1/api-keys/ -H "X-API-Key: $LUKE_LAST_KEY" | python3 -m json.tool
+    ```
+    Expect `"total": 10`, every row with `"revoked_at": null`. Then try an eleventh:
+    ```shell
+    curl -s -w '\n%{http_code}\n' -X POST http://localhost:8000/public/v1/api-keys/ \
+      -H 'Content-Type: application/json' \
+      -d '{"identifier": "luke-cage", "password": "PowerMan2024!", "expires_in_days": 1}'
+    ```
+    Expect `409`, with `You have reached the maximum number of active API keys.` Then revoke the first key, and try again:
+    ```shell
+    curl -s -o /dev/null -w '%{http_code}\n' -X DELETE "http://localhost:8000/public/v1/api-keys/$LUKE_KEY_ID/" -H "X-API-Key: $LUKE_LAST_KEY"
+    curl -s -o /dev/null -w '%{http_code}\n' -X POST http://localhost:8000/public/v1/api-keys/ \
+      -H 'Content-Type: application/json' \
+      -d '{"identifier": "luke-cage", "password": "PowerMan2024!", "expires_in_days": 1}'
+    ```
+    Expect `204`, then `201`. **Prove** the change, by listing his keys again:
+    ```shell
+    curl -s http://localhost:8000/public/v1/api-keys/ -H "X-API-Key: $LUKE_LAST_KEY" | python3 -m json.tool
+    ```
+    Expect `"total": 11`, with exactly one `revoked_at` date: on the row whose `id` is `$LUKE_KEY_ID`.
+
+15. **The public docs are always on: 200.**
+
+    **Why:** an integrating developer must be able to read this API's docs whatever the deployment's `ENVIRONMENT`. The private app's http://localhost:8000/docs is only served in development. The public docs belong to their own mounted app, so that rule doesn't reach them.
+
+    **Acts on:** no key and no data: the docs routes need neither. Nothing needs proving here.
+    ```shell
+    curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/public/docs
+    curl -s http://localhost:8000/public/openapi.json | python3 -c 'import sys, json; print(json.load(sys.stdin)["info"]["title"])'
+    ```
+    Expect `200`, then `Public API`, which shows the request reached the public app's own routing. Open http://localhost:8000/public/docs in a browser: it lists the API Keys and Account routes and has an `X-API-Key` field for trying them. To see the two docs pages differ, set `ENVIRONMENT=production` in `.secrets`, run `make down` then `make upd`, and run:
+    ```shell
+    curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/docs
+    curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/public/docs
+    ```
+    Expect `404`, then `200`. Set `ENVIRONMENT=development` again afterwards (production also turns seeding off).

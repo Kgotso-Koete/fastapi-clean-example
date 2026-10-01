@@ -13,6 +13,7 @@ from app.main.config.loader import (
     load_cookie_settings,
     load_email_settings,
     load_jwt_settings,
+    load_organization_settings,
     load_password_hasher_settings,
     load_postgres_settings,
     load_redis_settings,
@@ -26,6 +27,7 @@ from app.main.config.settings import (
     CookieSettings,
     EmailSettings,
     JwtSettings,
+    OrganizationSettings,
     PasswordHasherSettings,
     PostgresSettings,
     RedisSettings,
@@ -66,6 +68,7 @@ def make_app(  # noqa: C901 -- new alert_settings branch pushed this past the co
     redis_settings: RedisSettings | None = None,
     celery_settings: CelerySettings | None = None,
     alert_settings: AlertSettings | None = None,
+    organization_settings: OrganizationSettings | None = None,
 ) -> FastAPI:
     """Pass providers to override existing ones for testing."""
     if app_settings is None:
@@ -93,6 +96,9 @@ def make_app(  # noqa: C901 -- new alert_settings branch pushed this past the co
         celery_settings = load_celery_settings()
     if alert_settings is None:
         alert_settings = load_alert_settings()
+    # Organizations (docs/plans/9-organizations.md): the invitation TTL.
+    if organization_settings is None:
+        organization_settings = load_organization_settings()
 
     # /openapi.json stays reachable regardless (e.g. to import the schema
     # into Postman/Insomnia) -- only the interactive HTML pages are dev-only.
@@ -122,6 +128,7 @@ def make_app(  # noqa: C901 -- new alert_settings branch pushed this past the co
             RedisSettings: redis_settings,
             CelerySettings: celery_settings,
             AlertSettings: alert_settings,
+            OrganizationSettings: organization_settings,
         },
     )
     setup_dishka(container, app)

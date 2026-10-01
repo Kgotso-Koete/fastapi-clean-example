@@ -5,31 +5,31 @@
 !!! figure "Worst 15 files in `src/app` by cyclomatic complexity"
     | File | Max cyclomatic complexity (rank) | Worst block | Maintainability index (rank) |
     |---|---|---|---|
-    | `src/app/main/run.py` | 14 (C) | `make_app` | 55.3 (A) |
+    | `src/app/main/run.py` | 15 (C) | `make_app` | 55.4 (A) |
     | `src/app/core/common/value_objects/raw_password.py` | 9 (B) | `RawPassword._validate` | 54.4 (A) |
     | `src/app/outbound/adapters/sqla_api_key_reader.py` | 9 (B) | `SqlaApiKeyReader.list_by_user` | 60.7 (A) |
     | `src/app/outbound/adapters/sqla_user_reader.py` | 9 (B) | `SqlaUserReader.list_users` | 53.3 (A) |
+    | `src/app/core/commands/change_organization_member_role.py` | 8 (B) | `ChangeOrganizationMemberRole.execute` | 72.7 (A) |
+    | `src/app/core/commands/invite_organization_member.py` | 8 (B) | `InviteOrganizationMember.execute` | 68.7 (A) |
+    | `src/app/core/commands/remove_organization_member.py` | 7 (B) | `RemoveOrganizationMember.execute` | 75.5 (A) |
+    | `src/app/core/common/value_objects/organization_name.py` | 7 (B) | `OrganizationName._validate` | 79.4 (A) |
     | `src/app/core/common/value_objects/username.py` | 7 (B) | `Username._validate` | 70.5 (A) |
+    | `src/app/core/commands/issue_api_key.py` | 6 (B) | `IssueApiKey.execute` | 69.0 (A) |
     | `src/app/core/common/value_objects/base.py` | 6 (B) | `ValueObject.__repr_value` | 73.3 (A) |
     | `src/app/inbound/http/errors/alerting.py` | 6 (B) | `RequestUserContext` | 72.2 (A) |
     | `src/app/outbound/auth_ctx/handlers/log_in.py` | 6 (B) | `LogIn.execute` | 69.3 (A) |
+    | `src/app/core/commands/accept_organization_invitation.py` | 5 (A) | `AcceptOrganizationInvitation.execute` | 82.4 (A) |
     | `src/app/core/common/value_objects/phone_number.py` | 5 (A) | `PhoneNumber._normalize` | 74.4 (A) |
-    | `src/app/core/queries/query_support/offset_pagination.py` | 5 (A) | `OffsetPaginationParams._validate` | 55.1 (A) |
-    | `src/app/main/config/logging_.py` | 5 (A) | `JsonFormatter` | 85.7 (A) |
-    | `src/app/outbound/adapters/api_key_identity_provider.py` | 5 (A) | `ApiKeyIdentityProvider.get_current_user_id` | 84.1 (A) |
-    | `src/app/outbound/adapters/hybrid_event_dispatcher.py` | 5 (A) | `HybridEventDispatcher` | 78.3 (A) |
-    | `src/app/outbound/adapters/sqla_flusher.py` | 5 (A) | `SqlaFlusher.flush` | 60.9 (A) |
-    | `src/app/outbound/auth_ctx/handlers/sign_up.py` | 5 (A) | `SignUp.execute` | 100.0 (A) |
 
     > "Rank" here is `radon`'s own A-F (complexity) / A-C (maintainability index) letter grades — A is best in both cases. A file with a high complexity rank isn't automatically a problem (a router with many mapped exception types is inherently branchy) — treat this as a place to look, not an automatic verdict.
 
-!!! figure "Cyclomatic complexity rank distribution across every file in src/app (220 files)"
+!!! figure "Cyclomatic complexity rank distribution across every file in src/app (264 files)"
     ```mermaid
     %%{init: {"theme": "default", "themeVariables": {"fontSize": "14px"}, "flowchart": {"nodeSpacing": 20, "rankSpacing": 16, "padding": 10, "subGraphTitleMargin": {"top": 5, "bottom": 12}, "useMaxWidth": false}}}%%
     pie showData
         title Cyclomatic complexity rank (A best, F worst)
-        "A" : 212
-        "B" : 7
+        "A" : 251
+        "B" : 12
         "C" : 1
     ```
 

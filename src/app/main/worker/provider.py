@@ -2,6 +2,7 @@ from collections.abc import Iterable
 
 from dishka import Provider, Scope, provide
 
+from app.core.common.events.handlers.send_organization_invitation_email import SendOrganizationInvitationEmail
 from app.core.common.events.handlers.send_welcome_email import SendWelcomeEmail
 from app.core.common.ports.email_sender import EmailSender
 from app.main.config.settings import EmailSettings
@@ -49,6 +50,9 @@ class WorkerProvider(Provider):
         )
 
     send_welcome_email = provide(SendWelcomeEmail, scope=Scope.REQUEST)
+    # docs/plans/9-organizations.md, Step 6b -- relayed from the outbox like
+    # the welcome email, so the worker must be able to build it too.
+    send_organization_invitation_email = provide(SendOrganizationInvitationEmail, scope=Scope.REQUEST)
 
     # Bound by its own concrete type, not the core OutboxRepository
     # Protocol -- app.main.worker.outbox_drain_loop resolves it directly to

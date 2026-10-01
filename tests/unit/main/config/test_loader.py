@@ -2,12 +2,14 @@ import pytest
 
 from app.main.config.loader import (
     CeleryEnvConfig,
+    OrganizationEnvConfig,
     load_alert_settings,
     load_api_key_settings,
     load_app_settings,
     load_celery_settings,
     load_cookie_settings,
     load_jwt_settings,
+    load_organization_settings,
     load_password_hasher_settings,
     load_postgres_settings,
     load_redis_settings,
@@ -197,6 +199,29 @@ def test_load_api_key_settings_reads_env_vars(monkeypatch: pytest.MonkeyPatch) -
     sut = load_api_key_settings()
 
     assert sut.MAX_PER_USER == 7
+
+
+def test_load_organization_settings_reads_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
+    # How long a pending organization invitation stays acceptable -- read by
+    # InviteOrganizationMember to set each invitation's expires_at.
+    monkeypatch.setenv("ORGANIZATION_INVITATION_TTL_DAYS", "3")
+
+    sut = load_organization_settings()
+
+    assert sut.INVITATION_TTL_DAYS == 3
+
+
+def test_load_organization_settings_invitation_ttl_defaults_to_7_days(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The documented default (docs/plans/9-organizations.md) when a deployment
+    # never sets the variable. Same isolation as the CELERY_ENABLED default
+    # test below: delenv clears the process environment, and _env_file=None
+    # stops a developer's own .env from supplying a value, so this proves the
+    # field default itself.
+    monkeypatch.delenv("ORGANIZATION_INVITATION_TTL_DAYS", raising=False)
+
+    sut = OrganizationEnvConfig(_env_file=None)
+
+    assert sut.INVITATION_TTL_DAYS == 7
 
 
 def test_load_celery_settings_enabled_defaults_to_true(monkeypatch: pytest.MonkeyPatch) -> None:

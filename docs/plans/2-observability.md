@@ -25,6 +25,16 @@ Before this feature, the app had no way to answer three questions:
 
 This feature adds three free, open-source, fully local tools to answer them: **Prometheus** (metrics), **Loki** (logs), and **Grafana** (the dashboard that queries both) — plus a critical-error email alert that fires on genuine server bugs (never on ordinary user-input mistakes), and now shows *who* hit the bug.
 
+## User stories
+
+| Story | As a | I want | So that | Acceptance criteria |
+|---|---|---|---|---|
+| 1. See whether the app is healthy | operator | request rate, latency and error-rate metrics | I can tell at a glance whether the app is healthy | `GET /metrics` returns 200 in Prometheus text format<br>Prometheus scrapes it every 15s<br>Grafana's "App Overview" dashboard shows the panels |
+| 2. Search the logs | developer | structured JSON logs I can filter by field in Grafana | I can find what broke without grepping free text | `APP_LOG_FORMAT=json` writes one JSON object per line<br>Loki query `{compose_service="app"} \| json \| exception_type="ValueError"` finds the error |
+| 3. Hear about server bugs | on-call developer | an email when a request hits an unhandled 5xx error | I find out before a user reports it | Only when `ALERT_ENABLED=true`<br>Never for 4xx errors<br>At most one email per exception type per `ALERT_COOLDOWN_S`<br>Shows who hit it (user or anonymous) |
+| 4. Count unhandled errors | operator | a counter of unhandled exceptions by type | I can graph and spot error spikes | `app_unhandled_exceptions_total{exception_type=...}` goes up by 1 per unhandled error |
+| 5. Nothing leaks to the client | API client | a generic 500 body when the server fails | internal details never reach callers | The 500 body never contains the exception message or the user's details |
+
 ## 2. Architecture: how the pieces fit together
 
 Two fundamentally different mechanisms are running side by side here — that distinction matters more than any individual tool's configuration.
@@ -476,4 +486,284 @@ Two real bugs surfaced only at this layer, worth knowing about since they're gen
 
 If per-error-type grouping ever matters more than dashboards, [GlitchTip](https://glitchtip.com/) is worth a look — a self-hosted, open-source, Sentry-API-compatible tool that groups errors by type/stack trace natively, using the same `sentry-sdk` Python client. It'd sit alongside this stack rather than replace it (metrics/dashboards and error-grouping are genuinely different jobs).
 
-**Update:** this gap is now a real, scoped plan rather than just a hypothetical — see [`docs/plans/10-sentry-error-tracking.md`](./10-sentry-error-tracking.md) for the full design (Sentry via `sentry-sdk`, swappable to GlitchTip later via DSN alone).
+**Update:** this gap is now a real, scoped plan rather than just a hypothetical — see [`docs/plans/13-sentry-error-tracking.md`](./13-sentry-error-tracking.md) for the full design (Sentry via `sentry-sdk`, swappable to GlitchTip later via DSN alone).
+
+## Human checks
+
+Since this plan was written, the alert settings have changed: `ALERT_TO_EMAIL`/`ALERT_TO_NAME` became the comma-separated `ALERT_TO_EMAILS` (plus optional `ALERT_CC_EMAILS`/`ALERT_BCC_EMAILS`), see `env.example`. The checks below use the current names. They trigger a server error through `GET /debug/test-error` (`src/app/inbound/http/debug/test_error.py`). That route raises a `ValueError` on purpose, and it is always mounted, whatever `APP_DEBUG_MODE` is set to.
+
+### Setup
+
+1. In `.secrets`, set:
+   ```shell
+   SEED_DB_WITH_TEST_DATA=true
+   ALERT_ENABLED=true
+   ALERT_TO_EMAILS=oncall@example.com
+   ```
+   Keep the `env.example` defaults `ENVIRONMENT=development` (Prometheus, Grafana, Loki and Promtail only start in development), `APP_LOG_FORMAT=json`, `ALERT_COOLDOWN_S=300` and `EMAIL_USE_CONSOLE=true`. With these defaults, alert emails are written to the `app` logs instead of being sent.
+2. Restart the stack:
+   ```shell
+   make down
+   make upd
+   ```
+   The alert cooldown and the unhandled-exception counter live in the `app` process's memory, so recreating the container resets both. Prometheus, Grafana and Loki keep their data in named volumes, so `make down` doesn't clear them. The app runs with `uvicorn --reload`, so don't edit files under `src/` while running these checks: a reload restarts the process and resets the counter.
+3. **Prove** the settings the containers got. `.env` is `env.example` followed by `.secrets`, and the last value of a name wins:
+   ```shell
+   grep -E '^(ENVIRONMENT|APP_SERVICE_NAME|APP_LOG_FORMAT|ALERT_ENABLED|ALERT_TO_EMAILS|ALERT_COOLDOWN_S|EMAIL_USE_CONSOLE)=' .env
+   ```
+   Expect, as the last line for each name: `ENVIRONMENT=development`, `APP_LOG_FORMAT=json`, `ALERT_ENABLED=true`, `ALERT_TO_EMAILS=oncall@example.com`, `ALERT_COOLDOWN_S=300` and `EMAIL_USE_CONSOLE=true`. Note the last `APP_SERVICE_NAME` (`fastapi-clean-example` by default): metric names and the Grafana dashboard's title start with it.
+4. **Prove** the stack is up:
+   ```shell
+   make ps
+   curl -s http://localhost:8000/livez/
+   ```
+   Expect `app`, `prometheus`, `grafana`, `loki` and `promtail` rows, each with a status starting with `Up`, then `"OK"` once the app has finished its migrations and seeding (if nothing prints, wait a few seconds and run it again). The app is on http://localhost:8000, Prometheus on http://localhost:9090, Loki on http://localhost:3100 and Grafana on http://localhost:3000.
+5. `matt-murdock` (`Daredevil1!!`) is the seeded user these checks log in as: a plain USER with email `matt.murdock@nelsonmurdock.com` and phone `27821000005`. His cookie file is `/tmp/matt-murdock.cookies`. A check that acts as him logs him in first, because a session lasts only **5 minutes** without use (`SessionSettings.TTL_MIN` in `src/app/main/config/settings.py`). Run every command in the same terminal, top to bottom.
+6. Set the Compose project name, from the repo root:
+   ```shell
+   PROJECT=$(grep -h '^APP_SERVICE_NAME=' env.example .secrets 2>/dev/null | tail -1 | cut -d= -f2)
+   PROJECT=${PROJECT:-$(basename "$PWD")}
+   echo "$PROJECT"
+   ```
+   This reads the Compose project name the same way the Makefile does (`APP_SERVICE_NAME`, last value wins, else the folder name), so the direct `docker compose -p "$PROJECT"` commands below look at the same containers `make upd` started.
+7. **Reading the app logs.** The checks print the `app` container's whole log so far with `docker compose -p "$PROJECT" logs --no-log-prefix app` and pipe it through `grep -oE`, which prints only these parts of the JSON log lines:
+   - `"exception_type": ...` to the end of an `Unhandled exception` line: its `path`, `method`, `user_status`, and the user's details when logged in;
+   - `[subject=[ALERT] ...]`: one per alert email written;
+   - `User:</b> ...`: the alert email's "User" line.
+
+   The command exits by itself; nothing printed means no matching line.
+8. **Run checks 3 to 5 within 5 minutes.** Check 3's error starts the 300-second alert cooldown, and check 5 relies on still being inside it.
+
+### Checks
+
+1. **The metrics endpoint is reachable without logging in (200).**
+
+   **Why:** metrics are pulled: Prometheus calls `GET /metrics` every 15 seconds, and it has no session, so the endpoint needs no login. It's plumbing, not a business route, so it isn't in the OpenAPI schema either.
+
+   **Acts on:** nothing but the endpoint; no user, no id.
+   ```shell
+   curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/metrics
+   ```
+   Expect `200`.
+
+2. **Request metrics are exported, labeled by handler, method and status.**
+
+   **Why:** the dashboard's request-rate, latency and 5xx panels group by these labels. The metric names start with `APP_SERVICE_NAME` (hyphens become underscores, which Prometheus names require), so two services scraped by one Prometheus never collide.
+
+   **Acts on:** the `/livez/` liveness route, called here so there's a known request to look for.
+
+   **Prove** which prefix to expect:
+   ```shell
+   grep '^APP_SERVICE_NAME=' .env | tail -1
+   ```
+   Expect `APP_SERVICE_NAME=fastapi-clean-example` unless `.secrets` overrides it. Then make one request, and look for it in the metrics:
+   ```shell
+   curl -s -w '\n%{http_code}\n' http://localhost:8000/livez/
+   curl -s http://localhost:8000/metrics | grep 'http_requests_total{'
+   ```
+   Expect `"OK"` and `200`, then sample lines whose names are that service name with underscores, followed by `_http_requests_total` (`fastapi_clean_example_http_requests_total` by default). One of them has `handler="/livez/"`, `method="GET"` and `status="2xx"`: status codes are grouped by class.
+
+3. **A server error from a logged-in user returns a generic 500 that leaks nothing, and is counted once.**
+
+   **Why:** an unhandled exception is a bug on our side, so it's a 500, not a 4xx. The caller gets only a generic error body: the exception's message and the user's details go to the logs and the alert email, never into the response. `app_unhandled_exceptions_total` counts only exceptions that reach the global catch-all.
+
+   **Acts on:** seeded `matt-murdock`, and the always-mounted `GET /debug/test-error` route.
+
+   Log in as `matt-murdock`:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -c /tmp/matt-murdock.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "matt-murdock", "password": "Daredevil1!!"}'
+   ```
+   Expect `200`. **Prove** whose session the cookie holds:
+   ```shell
+   curl -s -b /tmp/matt-murdock.cookies http://localhost:8000/api/v1/account/profile/ | python3 -m json.tool
+   ```
+   Expect `"username": "matt-murdock"`, `"email": "matt.murdock@nelsonmurdock.com"` and `"phone_number": "27821000005"`. **Prove** the counter's starting value:
+   ```shell
+   curl -s http://localhost:8000/metrics | grep '^app_unhandled_exceptions_total'
+   ```
+   Expect nothing printed: no unhandled error since the app started, and a labeled counter has no line until its first increment. Then, as `matt-murdock`, call the error route:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -b /tmp/matt-murdock.cookies http://localhost:8000/debug/test-error
+   ```
+   Expect `500`. The body must not contain `Test error for alerting` or `matt.murdock@nelsonmurdock.com`. **Prove** it was counted:
+   ```shell
+   curl -s http://localhost:8000/metrics | grep '^app_unhandled_exceptions_total'
+   ```
+   Expect `app_unhandled_exceptions_total{exception_type="ValueError"} 1.0`.
+
+4. **The alert email names the user who hit the error.**
+
+   **Why:** an on-call developer needs to know who was affected. The session cookie holds only a session id, so the handler looks the user up in the database, but only on this error path, so ordinary requests never pay for it.
+
+   **Acts on:** `matt-murdock`'s user id, saved in `$MATT_ID`.
+
+   Log in as `matt-murdock`, then save his id from his profile into `MATT_ID`:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -c /tmp/matt-murdock.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "matt-murdock", "password": "Daredevil1!!"}'
+   MATT_ID=$(curl -s -b /tmp/matt-murdock.cookies http://localhost:8000/api/v1/account/profile/ \
+     | python3 -c 'import sys, json; print(json.load(sys.stdin)["id"])')
+   echo "$MATT_ID"
+   ```
+   Expect `200`, then a UUID. Then look at check 3's error in the app logs:
+   ```shell
+   docker compose -p "$PROJECT" logs --no-log-prefix app | grep -oE '"exception_type": .*|\[subject=\[ALERT\][^]]*\]|User:</b> [^<]*'
+   ```
+   Expect exactly three lines:
+   - `"exception_type": "ValueError", "path": "/debug/test-error", "method": "GET", "user_status": "authenticated"`, followed by `"user_id"` equal to `$MATT_ID`, `"username": "matt-murdock"`, `"user_email": "matt.murdock@nelsonmurdock.com"` and `"user_phone_number": "27821000005"`;
+   - `[subject=[ALERT] ValueError on GET /debug/test-error]`;
+   - `User:</b> matt-murdock (id=`, then `$MATT_ID`, then `, email=matt.murdock@nelsonmurdock.com, phone=27821000005)`.
+
+5. **A repeat error within the cooldown is counted, but sends no second email.**
+
+   **Why:** alerts are rate-limited per exception type (`ALERT_COOLDOWN_S`, 300 seconds), so an outage throwing the same error thousands of times sends one email, not thousands. The counter still counts every one, so the graph shows the real error rate. This request sends no cookie, so its log line says `anonymous`.
+
+   **Acts on:** nothing but the error route; no user.
+
+   **Prove** the cooldown length, the counter's current value, and that one alert has been written so far:
+   ```shell
+   grep '^ALERT_COOLDOWN_S=' .env | tail -1
+   curl -s http://localhost:8000/metrics | grep '^app_unhandled_exceptions_total'
+   docker compose -p "$PROJECT" logs --no-log-prefix app | grep -oE '"exception_type": .*|\[subject=\[ALERT\][^]]*\]|User:</b> [^<]*'
+   ```
+   Expect `ALERT_COOLDOWN_S=300`, then the counter at `1.0`, then the same three log lines as check 4 (one `[subject=[ALERT] ...]`). Then call the error route without a cookie:
+   ```shell
+   curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/debug/test-error
+   curl -s http://localhost:8000/metrics | grep '^app_unhandled_exceptions_total'
+   docker compose -p "$PROJECT" logs --no-log-prefix app | grep -oE '"exception_type": .*|\[subject=\[ALERT\][^]]*\]|User:</b> [^<]*'
+   ```
+   Expect `500`, then the counter at `2.0`, then a fourth log line, `"exception_type": "ValueError", "path": "/debug/test-error", "method": "GET", "user_status": "anonymous"}`, but still only one `[subject=[ALERT] ...]` line.
+
+6. **After a restart, the first error alerts again, and an anonymous error's alert says "anonymous".**
+
+   **Why:** the cooldown is held in memory, so a restart clears it and the next error emails again. With no session cookie, the user is `anonymous (no valid session)`; `unknown` is kept for when the user lookup itself fails (for example, the database is down), which is a different fact worth seeing.
+
+   **Acts on:** nothing but the error route; no user.
+
+   Restart the stack (this also re-seeds the database and starts fresh `app` logs):
+   ```shell
+   make down
+   make upd
+   ```
+   **Prove** the app is up again (it runs migrations and seeding first, so this can take a few seconds), that the counter was reset, and that no error has been logged since the restart:
+   ```shell
+   curl -s http://localhost:8000/livez/
+   curl -s http://localhost:8000/metrics | grep '^app_unhandled_exceptions_total'
+   docker compose -p "$PROJECT" logs --no-log-prefix app | grep -oE '"exception_type": .*|\[subject=\[ALERT\][^]]*\]|User:</b> [^<]*'
+   ```
+   Expect `"OK"` (if nothing prints, wait a few seconds and run it again), then nothing printed by the other two. Then call the error route without a cookie:
+   ```shell
+   curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/debug/test-error
+   curl -s http://localhost:8000/metrics | grep '^app_unhandled_exceptions_total'
+   docker compose -p "$PROJECT" logs --no-log-prefix app | grep -oE '"exception_type": .*|\[subject=\[ALERT\][^]]*\]|User:</b> [^<]*'
+   ```
+   Expect `500`, then the counter at `1.0`, then three log lines: `"exception_type": "ValueError", "path": "/debug/test-error", "method": "GET", "user_status": "anonymous"}`, `[subject=[ALERT] ValueError on GET /debug/test-error]` and `User:</b> anonymous (no valid session)`.
+
+7. **A 4xx error neither alerts nor counts.**
+
+   **Why:** a wrong password is the user's mistake, not a bug. It's a mapped business error, answered `401` by its own route before it could reach the global catch-all, so it's logged as a handled exception and never counted or emailed. Alerting on 4xx would page someone for every mistyped password. 401 rather than 403: a wrong password means "not authenticated", not "authenticated but not allowed".
+
+   **Acts on:** seeded `matt-murdock`'s username, with a wrong password.
+
+   **Prove** the counter's value before the request:
+   ```shell
+   curl -s http://localhost:8000/metrics | grep '^app_unhandled_exceptions_total'
+   ```
+   Expect `app_unhandled_exceptions_total{exception_type="ValueError"} 1.0` (from check 6). Then log in with a wrong password:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "matt-murdock", "password": "WrongPassword#1"}'
+   ```
+   Expect `401` with the message `Not authenticated.`. **Prove** nothing was counted or emailed:
+   ```shell
+   curl -s http://localhost:8000/metrics | grep '^app_unhandled_exceptions_total'
+   docker compose -p "$PROJECT" logs --no-log-prefix app | grep -oE '"exception_type": .*|\[subject=\[ALERT\][^]]*\]|Handled exception: [A-Za-z]+'
+   ```
+   Expect the same `1.0` line as before. In the logs, expect still only check 6's one `"exception_type": ...` line and one `[subject=[ALERT] ...]` line, plus a `Handled exception: AuthenticationError` line for this login.
+
+8. **Prometheus is scraping the app.**
+
+   **Why:** metrics only reach Prometheus if it pulls them. If the target were down, the dashboard would show stale or empty graphs, with no error anywhere else.
+
+   **Acts on:** Prometheus's one scrape target, `app:8000/metrics`.
+
+   Wait at least 15 seconds (one scrape interval) after `make upd`, then list Prometheus's targets:
+   ```shell
+   curl -s http://localhost:9090/api/v1/targets | python3 -m json.tool
+   ```
+   Expect one active target with `"scrapeUrl": "http://app:8000/metrics"`, `"health": "up"` and `"lastError": ""`, with `"job"` set to your `APP_SERVICE_NAME`.
+
+9. **Prometheus has stored the counter.**
+
+   **Why:** the dashboard reads Prometheus's stored copy, not the app. This proves the counter made it from the app's `/metrics` into Prometheus's database.
+
+   **Acts on:** the `app_unhandled_exceptions_total` series for `ValueError`.
+
+   **Prove** the app's own current value:
+   ```shell
+   curl -s http://localhost:8000/metrics | grep '^app_unhandled_exceptions_total'
+   ```
+   Expect `app_unhandled_exceptions_total{exception_type="ValueError"} 1.0`. Wait about 15 seconds, then ask Prometheus:
+   ```shell
+   curl -s 'http://localhost:9090/api/v1/query?query=app_unhandled_exceptions_total' | python3 -m json.tool
+   ```
+   Expect `"status": "success"`, and a result whose `"metric"` includes `"exception_type": "ValueError"` and whose `"value"` ends with `"1"`.
+
+10. **The Grafana dashboard shows the errors.**
+
+    **Why:** the dashboard is provisioned from `observability/grafana/provisioning/`, so it exists on a fresh Grafana without anyone building it by hand.
+
+    **Acts on:** the dashboard with uid `app-overview`.
+
+    **Prove** it was provisioned (`admin` / `admin` comes from `docker-compose.yml`; Grafana keeps its data in a named volume, so if you changed that password at an earlier first login, use the new one):
+    ```shell
+    curl -s -u admin:admin 'http://localhost:3000/api/search?query=App%20Overview' | python3 -m json.tool
+    ```
+    Expect one result with `"uid": "app-overview"` and a `"title"` of your `APP_SERVICE_NAME` followed by `: App Overview`. Then open http://localhost:3000/d/app-overview in a browser and log in with the same credentials. Expect the "5xx error rate" and "Unhandled exceptions by type" panels to show a rise for the errors from the checks above. Both graph a 5-minute rate, so the rise fades a few minutes after the last error.
+
+11. **Loki can find the error by field.**
+
+    **Why:** the app writes one JSON object per log line, so Loki can filter on any field (`exception_type`, `path`, `user_status`) at query time. Only `level` is promoted to a label (`observability/promtail/promtail-config.yml`), because high-cardinality labels bloat Loki's index.
+
+    **Acts on:** the `app` service's logs from the last hour.
+
+    In Grafana, go to Explore, pick the Loki datasource, and run:
+    ```shell
+    {compose_service="app"} | json | exception_type="ValueError"
+    ```
+    Expect the `Unhandled exception` log lines from the checks above, each with its `path` and `user_status` fields. The same query from the terminal, printing one `path user_status` line per log entry Loki returns:
+    ```shell
+    curl -s -G http://localhost:3100/loki/api/v1/query_range \
+      --data-urlencode 'query={compose_service="app"} | json | exception_type="ValueError"' \
+      | python3 -c 'import sys, json; [print(s["stream"].get("path"), s["stream"].get("user_status")) for s in json.load(sys.stdin)["data"]["result"]]'
+    ```
+    Expect `/debug/test-error anonymous` for check 6's error, plus lines for checks 3 and 5 if they ran within the last hour. Loki keeps its data in a named volume, so errors from earlier runs in the last hour show up too.
+
+12. **With alerting turned off, errors are still counted, but no email is sent.**
+
+    **Why:** `ALERT_ENABLED` switches off only the email, for a deployment with no mail set up. Logging and the counter don't depend on it, so the error is still visible in the logs and in Grafana.
+
+    **Acts on:** nothing but the error route; no user.
+
+    In `.secrets`, set `ALERT_ENABLED=false`, then restart the stack:
+    ```shell
+    make down
+    make upd
+    ```
+    **Prove** the app got the new value, is up again, and the counter was reset:
+    ```shell
+    grep '^ALERT_ENABLED=' .env | tail -1
+    curl -s http://localhost:8000/livez/
+    curl -s http://localhost:8000/metrics | grep '^app_unhandled_exceptions_total'
+    ```
+    Expect `ALERT_ENABLED=false`, then `"OK"` (if nothing prints, wait a few seconds and run it again), then nothing printed for the counter. Then call the error route:
+    ```shell
+    curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/debug/test-error
+    curl -s http://localhost:8000/metrics | grep '^app_unhandled_exceptions_total'
+    docker compose -p "$PROJECT" logs --no-log-prefix app | grep -oE '"exception_type": .*|\[subject=\[ALERT\][^]]*\]|User:</b> [^<]*'
+    ```
+    Expect `500`, then the counter at `1.0`, then exactly one log line, `"exception_type": "ValueError", "path": "/debug/test-error", "method": "GET", "user_status": "anonymous"}`, and no `[subject=[ALERT] ...]` line. Set `ALERT_ENABLED=true` in `.secrets` again before re-running these checks.

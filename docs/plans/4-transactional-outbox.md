@@ -35,6 +35,18 @@ Before this pattern, asserting "an event was reliably dispatched" for a backgrou
 
 ---
 
+## User stories
+
+| Story | As a | I want | So that | Acceptance criteria |
+|---|---|---|---|---|
+| 1. Welcome email is never silently lost | new user | my welcome email to arrive even if the worker was down when I signed up | a crash or deploy at the wrong moment doesn't cost me my email | Sign-up still returns 200 while the worker is stopped<br>An `event_outbox` row with `processed_at` NULL is waiting<br>The email is sent once the worker is back |
+| 2. No email for a sign-up that failed | person whose sign-up was rejected | no welcome email | I'm never told about an account that doesn't exist | A rejected sign-up (e.g. 409) leaves no `event_outbox` row, because it rolls back with the user |
+| 3. Trace one event everywhere | operator | one id that is the same in Postgres, Flower and Redis | I can audit a single event end to end | The `event_outbox.id` equals the Celery task id<br>It also names the `celery-task-meta-<id>` key in Redis |
+| 4. Keep or delete relayed rows | operator | to choose whether relayed outbox rows are kept | I can inspect history in Adminer, or keep the table small | `CELERY_OUTBOX_RETAIN_AFTER_RELAY=true` (default) marks the row processed and keeps it<br>`false` deletes it after relay |
+| 5. A quiet idle worker | operator | the outbox poll to create no Celery tasks when nothing is pending | Flower and Redis only show real events | No task, no Redis key and no drain log line on an idle tick |
+
+---
+
 ## Background: workers, processes/threads, and why Redis is in the picture
 
 Skip this if you're already comfortable with these terms — it exists so the diagram below (and words like "worker process" and "Redis broker" throughout this doc) aren't assumed vocabulary.
@@ -275,3 +287,291 @@ uv run mypy
 4. `docker compose start worker` — confirm `processed_at` gets set within the drain interval, the row **stays** in the table (default `CELERY_OUTBOX_RETAIN_AFTER_RELAY=true`), the email still arrives, and Flower/Redis show exactly one `dispatch_handler` task whose id matches the outbox row's own `id` — no `drain_outbox`-style entry appears at all.
 5. Set `CELERY_OUTBOX_RETAIN_AFTER_RELAY=false` in `.secrets`, `make down && make upd`, repeat steps 3-4, and confirm the row is deleted instead of marked.
 6. `make check` — full lint/type/import/test pass.
+
+---
+
+## Human checks
+
+**Setup**
+
+1. Keep the `env.example` defaults `CELERY_ENABLED=true`, `CELERY_OUTBOX_RETAIN_AFTER_RELAY=true`, `CELERY_DRAIN_OUTBOX_INTERVAL_SECONDS=3`, `ENVIRONMENT=development` (Adminer, Flower and Redis Commander only start in development) and `EMAIL_USE_CONSOLE=true` (emails are logged, not sent). If `.secrets` sets any of them differently, remove that line. No seeded users are needed. `SEED_DB_WITH_TEST_DATA` can be either value: the seed script inserts its rows directly, without domain events, so it writes no outbox rows, and none of its usernames are used here.
+2. Restart the stack. `db_pg` and `redis` have no named volumes, so `make down` also wipes the database and every stored task result, and the checks start from an empty outbox:
+   ```shell
+   make down
+   make upd
+   ```
+   Give the worker about 45 seconds to turn healthy (`make ps` shows `worker` as `(healthy)`) before check 1.
+3. The app is on http://localhost:8000, Flower on http://localhost:5555 and Redis Commander on http://localhost:8081.
+4. Set the Compose project name, from the repo root:
+   ```shell
+   PROJECT=$(grep -h '^APP_SERVICE_NAME=' env.example .secrets 2>/dev/null | tail -1 | cut -d= -f2)
+   PROJECT=${PROJECT:-$(basename "$PWD")}
+   echo "$PROJECT"
+   ```
+   This reads the Compose project name the same way the Makefile does (`APP_SERVICE_NAME`, last value wins, else the folder name), so the direct `docker compose -p "$PROJECT"` commands below look at the same containers `make upd` started. The commands read logs, Postgres (`psql`, with the `env.example` credentials) and Redis (`redis-cli`) through it. They use `docker compose logs` rather than `make logs` because it prints and exits, so `grep` can filter it; `make logs` follows until Ctrl-C. Run every command in the same terminal, top to bottom. You can also browse the table in Adminer at http://localhost:8080 (System `PostgreSQL`, Server `db_pg`, Username `postgres`, Password `password`, Database `clean-example`), table `event_outbox`.
+5. No check logs in. Sign-up is only for callers who aren't logged in (a logged-in caller gets `403`), so these `curl` commands deliberately send no cookie.
+
+**Checks**
+
+1. **The `event_outbox` table exists, and starts empty.**
+
+   **Why:** the migration creates the table. It starts empty because only a use case with a `"background"` handler (here, sign-up) writes to it, and `make down` wiped the database.
+   ```shell
+   docker compose -p "$PROJECT" exec -T db_pg psql -U postgres -d clean-example -c '\d event_outbox'
+   docker compose -p "$PROJECT" exec -T db_pg psql -U postgres -d clean-example \
+     -c "SELECT count(*) FROM event_outbox;"
+   ```
+   Expect the columns `id`, `event_type`, `handler_type`, `payload`, `created_at` and `processed_at`, with `processed_at` the only one not marked `not null` (NULL means "not relayed yet"). Then `0`.
+
+2. **A sign-up writes one outbox row, which is relayed, marked processed and kept.**
+
+   **Why:** the row commits in the same transaction as the user, so the promise to send the email can't be lost (user story 1). The worker's drain loop relays it within 3 seconds (`CELERY_DRAIN_OUTBOX_INTERVAL_SECONDS`) and sets `processed_at`. With `CELERY_OUTBOX_RETAIN_AFTER_RELAY=true` the row is kept as history rather than deleted (user story 4).
+
+   **Acts on:** a new user, `bruce-banner`, created here, and the outbox row his sign-up writes.
+
+   **Prove** the worker keeps relayed rows, and that `bruce-banner` has no row yet:
+   ```shell
+   docker compose -p "$PROJECT" exec -T worker printenv CELERY_OUTBOX_RETAIN_AFTER_RELAY
+   docker compose -p "$PROJECT" exec -T db_pg psql -U postgres -d clean-example \
+     -c "SELECT count(*) FROM event_outbox WHERE payload->>'username' = 'bruce-banner';"
+   ```
+   Expect `true`, then `0`. Then sign him up:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -X POST http://localhost:8000/api/v1/account/signup/ \
+     -H 'Content-Type: application/json' \
+     -d '{"username":"bruce-banner","password":"Gamma#Radiation1962","email":"bruce.banner@culver.edu","phone_number":"0821000301"}'
+   ```
+   Expect `200`. Wait for the drain loop, then show his row:
+   ```shell
+   sleep 5
+   docker compose -p "$PROJECT" exec -T db_pg psql -U postgres -d clean-example \
+     -c "SELECT id, handler_type, created_at, processed_at FROM event_outbox WHERE payload->>'username' = 'bruce-banner';"
+   ```
+   Expect one row, with `handler_type` `app.core.common.events.handlers.send_welcome_email:SendWelcomeEmail` and `processed_at` filled in, a moment after `created_at`.
+
+3. **The worker relayed the row and sent the email, once.**
+
+   **Why:** the drain loop logs one `Draining outbox row` line per row it relays, and the relayed task runs `SendWelcomeEmail` in the worker. One sign-up should give exactly one email.
+
+   **Acts on:** `bruce-banner`'s outbox row.
+   ```shell
+   docker compose -p "$PROJECT" logs --no-log-prefix worker \
+     | grep -F -e 'Draining outbox row' -e 'bruce.banner@culver.edu'
+   docker compose -p "$PROJECT" logs --no-log-prefix worker \
+     | grep -c 'Sending welcome email to bruce.banner@culver.edu'
+   ```
+   Expect `Draining outbox row -> app.core.common.events.user_registered:UserRegisteredEvent : app.core.common.events.handlers.send_welcome_email:SendWelcomeEmail`, then `Sending welcome email to bruce.banner@culver.edu`, the `EMAIL [to=['bruce.banner@culver.edu']] ... [subject=Welcome to the platform!]` line and `Welcome email sent to bruce.banner@culver.edu`. Then `1`.
+
+4. **The Celery task id is the outbox row's own id.**
+
+   **Why:** the drain loop passes the row's `id` as the Celery `task_id`, so one id traces the event across Postgres and Celery (user story 3). The relay is a plain loop, not a Celery task, so no `drain_outbox`-style task should exist at all.
+
+   **Acts on:** `bruce-banner`'s outbox row; its id is saved in `$OUTBOX_ID`.
+
+   Save the row's id and print its Flower page:
+   ```shell
+   OUTBOX_ID=$(docker compose -p "$PROJECT" exec -T db_pg psql -U postgres -d clean-example -t -A \
+     -c "SELECT id FROM event_outbox WHERE payload->>'username' = 'bruce-banner';")
+   echo "http://localhost:5555/task/$OUTBOX_ID"
+   ```
+   Expect one URL ending in a UUID. **Prove** the worker ran a task under exactly that id:
+   ```shell
+   docker compose -p "$PROJECT" logs --no-log-prefix worker \
+     | grep -F "Task app.events.dispatch_handler[$OUTBOX_ID] succeeded"
+   ```
+   Expect one `Task app.events.dispatch_handler[...] succeeded in ...s: None` line with that id. Then open the printed URL: expect an `app.events.dispatch_handler` task in state `SUCCESS`. Open http://localhost:5555/tasks: expect this one task, and nothing named like `drain_outbox`.
+
+5. **The Redis result key uses the same id, one key per relayed row.**
+
+   **Why:** Celery names a task's result `celery-task-meta-` plus the task id, in the result backend (`REDIS_RESULT_DB=1`). Since only real relayed rows become tasks, Postgres and Redis hold the same number of them.
+
+   **Acts on:** `bruce-banner`'s outbox row, saved in `$OUTBOX_ID`.
+
+   Save the id, then read its result key:
+   ```shell
+   OUTBOX_ID=$(docker compose -p "$PROJECT" exec -T db_pg psql -U postgres -d clean-example -t -A \
+     -c "SELECT id FROM event_outbox WHERE payload->>'username' = 'bruce-banner';")
+   echo "celery-task-meta-$OUTBOX_ID"
+   docker compose -p "$PROJECT" exec -T redis redis-cli -n 1 GET "celery-task-meta-$OUTBOX_ID" | python3 -m json.tool
+   ```
+   Expect the key name, then JSON with `"status": "SUCCESS"` and a `"task_id"` equal to `$OUTBOX_ID`. **Prove** the counts match:
+   ```shell
+   docker compose -p "$PROJECT" exec -T db_pg psql -U postgres -d clean-example -t -A \
+     -c "SELECT count(*) FROM event_outbox;"
+   docker compose -p "$PROJECT" exec -T redis redis-cli -n 1 --scan --pattern 'celery-task-meta-*' | wc -l
+   ```
+   Expect `1` and `1`. In the UI, open http://localhost:8081, expand the `results` connection and select the printed key.
+
+6. **With the worker stopped, sign-up still succeeds and the row waits as pending.**
+
+   **Why:** this is the gap the outbox closes (user story 1). Sign-up doesn't need the worker or Redis: the promise to send the email is a committed Postgres row, which simply waits, `processed_at` NULL, until a worker can relay it.
+
+   **Acts on:** a new user, `steve-rogers`, created here, and the outbox row his sign-up writes.
+
+   Stop the worker, and **prove** it's stopped and that `steve-rogers` doesn't exist yet:
+   ```shell
+   docker compose -p "$PROJECT" stop worker
+   docker compose -p "$PROJECT" ps -a worker
+   docker compose -p "$PROJECT" exec -T db_pg psql -U postgres -d clean-example \
+     -c "SELECT count(*) FROM users WHERE username = 'steve-rogers';"
+   ```
+   Expect the `worker` row with a status starting `Exited`, then `0`. Then sign him up:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -X POST http://localhost:8000/api/v1/account/signup/ \
+     -H 'Content-Type: application/json' \
+     -d '{"username":"steve-rogers","password":"Shield#Brooklyn1918","email":"steve.rogers@shield.gov","phone_number":"0821000302"}'
+   ```
+   Expect `200`. Wait longer than one drain interval, then **prove** the row is still pending and no email went out:
+   ```shell
+   sleep 10
+   docker compose -p "$PROJECT" exec -T db_pg psql -U postgres -d clean-example \
+     -c "SELECT id, created_at, processed_at FROM event_outbox WHERE payload->>'username' = 'steve-rogers';"
+   docker compose -p "$PROJECT" logs --no-log-prefix worker \
+     | grep -c 'Sending welcome email to steve.rogers@shield.gov'
+   ```
+   Expect one row with an empty `processed_at`, then `0`.
+
+7. **When the worker comes back, the pending row is relayed exactly once.**
+
+   **Why:** a restarted worker's drain loop picks up whatever is still pending, so the email is late but not lost. Each row is relayed once: it's marked processed in the same commit that releases its `FOR UPDATE SKIP LOCKED` lock, so the worker's other drain loops (one per child process, `CELERY_WORKER_CONCURRENCY=2`) skip it.
+
+   **Acts on:** `steve-rogers`'s outbox row; its id is saved in `$OUTBOX_ID`.
+
+   **Prove** the row is still pending, and save its id:
+   ```shell
+   docker compose -p "$PROJECT" exec -T db_pg psql -U postgres -d clean-example \
+     -c "SELECT id, processed_at FROM event_outbox WHERE payload->>'username' = 'steve-rogers';"
+   OUTBOX_ID=$(docker compose -p "$PROJECT" exec -T db_pg psql -U postgres -d clean-example -t -A \
+     -c "SELECT id FROM event_outbox WHERE payload->>'username' = 'steve-rogers';")
+   echo "$OUTBOX_ID"
+   ```
+   Expect one row with an empty `processed_at`, and the same id printed. Start the worker and give it time to boot and tick:
+   ```shell
+   docker compose -p "$PROJECT" start worker
+   sleep 15
+   docker compose -p "$PROJECT" exec -T db_pg psql -U postgres -d clean-example \
+     -c "SELECT id, processed_at FROM event_outbox WHERE payload->>'username' = 'steve-rogers';"
+   docker compose -p "$PROJECT" logs --no-log-prefix worker \
+     | grep -c 'Sending welcome email to steve.rogers@shield.gov'
+   docker compose -p "$PROJECT" exec -T redis redis-cli -n 1 GET "celery-task-meta-$OUTBOX_ID" | python3 -m json.tool
+   ```
+   Expect the row with `processed_at` now filled in, then `1` (the log covers both runs of the container, so this is the total), then JSON with `"status": "SUCCESS"` and `"task_id"` equal to `$OUTBOX_ID`. Use Redis here rather than Flower: the worker starts without Celery task events on (no `-E`), so Flower may miss a task that runs in the first seconds after a restart.
+
+8. **A rejected sign-up leaves no outbox row, because it rolls back with the user.**
+
+   **Why:** the outbox row is staged in the same transaction as the user. A taken username fails that transaction, and the rollback takes the staged row with it, so no email goes out for an account that doesn't exist (user story 2). It's `409`, not `400`: the request is well-formed, but conflicts with an existing user.
+
+   **Acts on:** the existing `steve-rogers`. The body reuses his username with a new email and phone number, so only the username conflicts.
+
+   **Prove** `steve-rogers` exists, and save the row count:
+   ```shell
+   docker compose -p "$PROJECT" exec -T db_pg psql -U postgres -d clean-example \
+     -c "SELECT count(*) FROM users WHERE username = 'steve-rogers';"
+   OUTBOX_BEFORE=$(docker compose -p "$PROJECT" exec -T db_pg psql -U postgres -d clean-example -t -A \
+     -c "SELECT count(*) FROM event_outbox;")
+   echo "outbox rows: $OUTBOX_BEFORE"
+   ```
+   Expect `1`, then `outbox rows: 2` (bruce's and steve's). Then try to sign up with the same username:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -X POST http://localhost:8000/api/v1/account/signup/ \
+     -H 'Content-Type: application/json' \
+     -d '{"username":"steve-rogers","password":"Shield#Brooklyn1918","email":"cap@shield.gov","phone_number":"0821000303"}'
+   OUTBOX_AFTER=$(docker compose -p "$PROJECT" exec -T db_pg psql -U postgres -d clean-example -t -A \
+     -c "SELECT count(*) FROM event_outbox;")
+   echo "outbox rows: $OUTBOX_BEFORE -> $OUTBOX_AFTER"
+   ```
+   Expect `409` with the message `Username already exists.`, then `outbox rows: 2 -> 2`.
+
+9. **An idle worker creates no Celery traffic.**
+
+   **Why:** the drain loop is a plain loop on the worker's own event loop, not a Celery Beat task. An empty tick touches only Postgres: it logs nothing and sends nothing to Celery, so Flower and Redis show only real events (user story 5).
+
+   Save the starting numbers:
+   ```shell
+   DRAINED_BEFORE=$(docker compose -p "$PROJECT" logs --no-log-prefix worker | grep -c 'Draining outbox row')
+   RESULTS_BEFORE=$(docker compose -p "$PROJECT" exec -T redis redis-cli -n 1 --scan --pattern 'celery-task-meta-*' | wc -l)
+   echo "drain lines: $DRAINED_BEFORE, task results: $RESULTS_BEFORE"
+   ```
+   Expect `drain lines: 2, task results: 2`. Note the number of tasks at http://localhost:5555/tasks. Wait about 10 drain ticks without signing anyone up, then count again:
+   ```shell
+   sleep 30
+   DRAINED_AFTER=$(docker compose -p "$PROJECT" logs --no-log-prefix worker | grep -c 'Draining outbox row')
+   RESULTS_AFTER=$(docker compose -p "$PROJECT" exec -T redis redis-cli -n 1 --scan --pattern 'celery-task-meta-*' | wc -l)
+   echo "drain lines: $DRAINED_BEFORE -> $DRAINED_AFTER, task results: $RESULTS_BEFORE -> $RESULTS_AFTER"
+   ```
+   Expect `drain lines: 2 -> 2, task results: 2 -> 2`. Reload http://localhost:5555/tasks: the same number of tasks as before.
+
+10. **With retention off, a relayed row is deleted instead of kept.**
+
+    **Why:** `CELERY_OUTBOX_RETAIN_AFTER_RELAY=false` is for an operator who wants the table kept small (user story 4). The row is still relayed first, and only then deleted, so the email still goes out.
+
+    **Acts on:** a new user, `sam-wilson`, created here, and the outbox row his sign-up writes.
+
+    In `.secrets`, set `CELERY_OUTBOX_RETAIN_AFTER_RELAY=false` (add the line if it isn't there). **Prove** the setting:
+    ```shell
+    grep '^CELERY_OUTBOX_RETAIN_AFTER_RELAY=' .secrets
+    ```
+    Expect `CELERY_OUTBOX_RETAIN_AFTER_RELAY=false`. Restart the stack (this wipes the database again), and give the worker about 45 seconds before the next command:
+    ```shell
+    make down
+    make upd
+    ```
+    **Prove** the worker has the setting, and the outbox is empty:
+    ```shell
+    docker compose -p "$PROJECT" exec -T worker printenv CELERY_OUTBOX_RETAIN_AFTER_RELAY
+    docker compose -p "$PROJECT" exec -T db_pg psql -U postgres -d clean-example \
+      -c "SELECT count(*) FROM event_outbox;"
+    ```
+    Expect `false`, then `0`. Then sign him up:
+    ```shell
+    curl -s -w '\n%{http_code}\n' -X POST http://localhost:8000/api/v1/account/signup/ \
+      -H 'Content-Type: application/json' \
+      -d '{"username":"sam-wilson","password":"Falcon#Harlem1969","email":"sam.wilson@shield.gov","phone_number":"0821000304"}'
+    ```
+    Expect `200`. Wait for the drain loop, then **prove** the row is gone but was relayed:
+    ```shell
+    sleep 5
+    docker compose -p "$PROJECT" exec -T db_pg psql -U postgres -d clean-example \
+      -c "SELECT count(*) FROM event_outbox;"
+    docker compose -p "$PROJECT" logs --no-log-prefix worker \
+      | grep -F -e 'Draining outbox row' -e 'Sending welcome email to sam.wilson@shield.gov'
+    docker compose -p "$PROJECT" exec -T redis redis-cli -n 1 --scan --pattern 'celery-task-meta-*' | wc -l
+    ```
+    Expect `0`, then one `Draining outbox row -> ...` line and `Sending welcome email to sam.wilson@shield.gov`, then `1` (the task's result outlives the deleted row). Afterwards, set the value back to `true` in `.secrets` (or remove the line). Check 11 restarts the stack.
+
+11. **With Celery switched off, no outbox row is written and the app sends the email inline.**
+
+    **Why:** with no broker there is nothing to relay to, so staging is skipped and every handler runs inline after the commit. There is no gap to close, because no second system is involved (user story 4 in `docs/plans/3-celery-redis-events.md`).
+
+    **Acts on:** a new user, `carol-danvers`, created here.
+
+    In `.secrets`, set `CELERY_ENABLED=false` (add the line if it isn't there). **Prove** the settings:
+    ```shell
+    grep -E '^(CELERY_ENABLED|CELERY_OUTBOX_RETAIN_AFTER_RELAY)=' .secrets
+    ```
+    Expect `CELERY_ENABLED=false`, and `CELERY_OUTBOX_RETAIN_AFTER_RELAY=true` or no such line. Restart the stack:
+    ```shell
+    make down
+    make upd
+    ```
+    **Prove** the app has Celery off, and save the row count:
+    ```shell
+    docker compose -p "$PROJECT" exec -T app printenv CELERY_ENABLED
+    OUTBOX_BEFORE=$(docker compose -p "$PROJECT" exec -T db_pg psql -U postgres -d clean-example -t -A \
+      -c "SELECT count(*) FROM event_outbox;")
+    echo "outbox rows: $OUTBOX_BEFORE"
+    ```
+    Expect `false`, then `outbox rows: 0`. Then sign her up and count again:
+    ```shell
+    curl -s -w '\n%{http_code}\n' -X POST http://localhost:8000/api/v1/account/signup/ \
+      -H 'Content-Type: application/json' \
+      -d '{"username":"carol-danvers","password":"Binary#Hala1968","email":"carol.danvers@shield.gov","phone_number":"0821000305"}'
+    OUTBOX_AFTER=$(docker compose -p "$PROJECT" exec -T db_pg psql -U postgres -d clean-example -t -A \
+      -c "SELECT count(*) FROM event_outbox;")
+    echo "outbox rows: $OUTBOX_BEFORE -> $OUTBOX_AFTER"
+    docker compose -p "$PROJECT" logs --no-log-prefix app \
+      | grep -E 'Staging \(background\)|Dispatching \(sync\)|Sending welcome email'
+    ```
+    Expect `200`, then `outbox rows: 0 -> 0`, then `Dispatching (sync) UserRegisteredEvent -> SendWelcomeEmail` followed by `Sending welcome email to carol.danvers@shield.gov`, and no `Staging (background)` line.
+
+    **Reset:** set `CELERY_ENABLED=true` in `.secrets` again (or remove the line), then run `make down` and `make upd`.
