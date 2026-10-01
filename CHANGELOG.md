@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2026-10-01: Organizations (multi-tenancy) bounded context
+
+### Added
+- **Organizations:** A new, additive bounded context next to Identity (`User` is unchanged and knows nothing about it). `Organization` and `OrganizationMembership` entities (`src/app/core/common/entities/`), with `OrganizationRole` (`owner`/`admin`/`member`). A user can belong to many organizations, through one membership row per (organization, user), enforced by a unique constraint. New `organizations` and `organization_memberships` tables (two migrations: the tables, then `expires_at`), `OrganizationRepository`/`SqlaOrganizationRepository` and `OrganizationReader`/`SqlaOrganizationReader`.
+- **Organization authorization:** A shared `MembershipChecker` port (`core/common/authorization/organization_ports.py`, `SqlaMembershipChecker`), `ORGANIZATION_ROLE_HIERARCHY`/`CanAccessOrganization` (`organization_permissions.py`), and `CurrentOrganizationService.require_role()`, reused by every organization-scoped use case. A caller without an accepted membership gets `404 Organization not found.`, never 403, so an outsider can't confirm an organization exists.
+- **Organization use cases and routes** (`src/app/inbound/http/organizations/`, cookie-authenticated, under `/api/v1/organizations/`):
+  - `CreateOrganization`: the creator becomes its OWNER in the same transaction.
+  - `InviteOrganizationMember`: ADMIN or higher; only an OWNER can invite as OWNER.
+  - `AcceptOrganizationInvitation` (idempotent) and `DeclineOrganizationInvitation`, for the invitee only.
+  - `RemoveOrganizationMember`: leaving, removing someone else, or revoking a pending invitation.
+  - `ChangeOrganizationMemberRole`.
+  - The queries `ListMyOrganizations` (with each organization's accepted `member_count`), `ListOrganizationMembers` (usernames and roles only, never email or phone) and `ListMyInvitations`.
+
+  New errors in `core/commands/organization_exceptions.py`, mapped per route: `UnknownInviteeError` (404), `CannotGrantOwnerRoleError` (403), `MembershipAlreadyExistsError` (409), `MembershipNotFoundError` (404), `InvitationExpiredError` (410), `CannotManageOwnerError` (403), `LastOwnerError` (409; an organization always keeps at least one accepted owner).
+- **Invitation expiry:** Pending invitations expire after a new `ORGANIZATION_INVITATION_TTL_DAYS` setting (`OrganizationSettings.INVITATION_TTL_DAYS`, default `7`, at least `1`). Re-inviting over an expired invitation renews that same row instead of adding a second one.
+- **Invitation email:** Inviting or renewing records an `OrganizationInvitationCreatedEvent`, handled by a new `"background"`-mode `SendOrganizationInvitationEmail`. Its outbox row is staged in the same transaction as the invitation, like the welcome email. It's registered in both `CoreProvider` and `WorkerProvider`.
+- **Row-Level Security spike:** `tests/integration/with_infra/organizations/test_rls_spike.py` proves a transaction-local `app.current_organization_id` policy filters rows and fails closed when unset, and pins that superusers bypass RLS. No production RLS yet; it has its own roadmap item.
+- **Dev-only DB seeding:** `scripts/seed_db.py` seeds four superhero organizations (Avengers, X-Men, Defenders, Daily Bugle) with fixed ids, every role, and pending and expired invitations, so the plan's human checks can be pasted as written.
+- **Documentation:**
+  - Added `docs/plans/9-organizations.md` (full design, steps, RLS spike findings, copy-pasteable human checks) and `docs/wiki/content/core-patterns/organizations.md`.
+  - Added `docs/plans/agents.md`, the working agreement between the human maintainer and AI coding agents.
+  - Added the deferred plans `docs/plans/10-profile-editing.md`, `11-search.md` and `12-file-storage.md`.
+  - Renumbered the Sentry plan to `docs/plans/13-sentry-error-tracking.md`.
+
+### Fixed
+- **Domain events on loaded entities:** Recording a domain event on an entity loaded from the database raised `AttributeError: ... has no attribute '_events'`, a 500, first hit by re-inviting over an expired invitation. SQLAlchemy never calls `Entity.__init__` when it loads a row, so a loaded entity had no event list. A new SQLAlchemy `load` listener on the `Entity` base class (`src/app/outbound/persistence_sqla/entity_load_events.py`, registered first in `map_tables()`) gives every loaded entity an empty `_events` list; the domain layer is unchanged. Regression test: `test_reinvite_over_an_expired_invitation_renews_the_row_loaded_from_the_database`.
+
+### Changed
+- **Documentation:**
+  - `README.md`'s TODO checklist and `docs/plans/0-production-readiness-roadmap.md`'s matching checklist line and narrative section marked done.
+  - New roadmap and README items: enforcing Postgres RLS, organization queries on the public API, scoped API keys, profile editing, search and file storage.
+  - Every plan's "Human checks" section was brought to one standard (`docs/plans/agents.md` 1.3): exact commands with no placeholders, each check logging in its own users, a Why line, proof of every assumption, and every id named.
+
 ## [0.15.0] - 2026-09-20: API-key email/username identifier and per-user key limit
 
 ### Added

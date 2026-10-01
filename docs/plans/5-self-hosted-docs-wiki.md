@@ -12,6 +12,15 @@
 
 This plan doesn't propose writing new architectural knowledge — it proposes making the existing (and future) knowledge *navigable, visual, and never able to silently drift from the real code*, by generating the diagrams that matter most (the dependency graph, complexity metrics) directly from the codebase rather than hand-drawing them once and letting them rot.
 
+## User stories
+
+| Story | As a | I want | So that | Acceptance criteria |
+|---|---|---|---|---|
+| 1. Browse the docs locally | developer new to the codebase | a navigable, searchable wiki served on my machine | I can learn the architecture without reading raw markdown files one by one | `make wiki` (host) or `make upd` (the `wiki` Compose service) serves it at http://localhost:8001 (`WIKI_PORT`)<br>Every page is still a plain `.md` file under `docs/wiki/`, readable with no server running |
+| 2. Diagrams that can't go stale | maintainer | the dependency graph and complexity report generated from the real code | they never drift from what the code actually does | `make wiki-generate` rewrites `docs/wiki/generated/dependency-graph.md` and `docs/wiki/generated/complexity.md`<br>The graph never shows an edge from `core` to an outer layer |
+| 3. Single-sourced changelog | maintainer | the Changelog and Roadmap pages to include the real files | I only ever edit one copy | The Changelog page shows the newest `CHANGELOG.md` entry after a rebuild, with no copy step |
+| 4. Never in production | operator deploying the app | the wiki to run only in development | internal architecture and open security gaps are never exposed on a real deployment | The `wiki` service is on the `development` Compose profile<br>With `ENVIRONMENT=production`, nothing listens on the wiki port |
+
 ## Design principle: the plain files are the source of truth, MkDocs is optional rendering
 
 This matters especially for pair-programming with an agentic AI, not just human readers: the content must be readable — by a person in an editor, by GitHub's default renderer, or by an AI reading the file directly — with **zero dependency on `mkdocs serve` running**. MkDocs/Material is purely a rendering layer added on top (navigation, search, live Mermaid) for a nicer browsing experience; it is never a requirement to access the content itself, exactly like `docs/plans/*.md` already works today with no tooling at all. Concretely, this means:
@@ -158,3 +167,148 @@ uv run mypy
 3. Open the Complexity page — confirm the table/chart reflects real current file complexity (spot-check one known-simple file and one known-more-complex one, e.g. `src/app/main/run.py`'s `# noqa: C901` function, against the numbers shown).
 4. Edit `CHANGELOG.md`, rerun `make wiki-build`, confirm the wiki's Changelog page picks up the change with no manual copy step.
 5. If Step 6 is included: `make upd` with `ENVIRONMENT=development` (the default), confirm the wiki is reachable at `127.0.0.1:${WIKI_PORT:-8001}` alongside the rest of the stack; then confirm it does **not** start with `ENVIRONMENT=production`.
+
+---
+
+## Human checks
+
+Simple checks a human runs by hand (`docs/plans/agents.md` 1.3). No seed data is needed: the wiki reads only files in the repository.
+
+### Setup
+
+- The wiki's port is `WIKI_PORT` in `env.example` (default `8001`). The URLs below assume that default.
+- Checks 5 to 10 need the `wiki` Compose service running, which `make upd` starts when `ENVIRONMENT=development` (the default). `make down` first, so every container starts fresh:
+  ```shell
+  make down
+  make upd
+  ```
+- The generated files live under `docs/wiki/generated/` (no leading underscore), as `scripts/wiki/*.py` write them.
+- Run every command from the repository root, in one terminal, top to bottom. Only check 11 needs a second terminal, because `make wiki` keeps running.
+
+### Checks
+
+1. **Regenerating the diagrams writes both generated pages.**
+
+   **Why:** the dependency graph and the complexity report are generated from the real code, never drawn by hand, so they can't drift from it. `make wiki-generate` runs the two generators in `scripts/wiki/`, and each prints one line naming the file it wrote.
+   ```shell
+   make wiki-generate
+   ```
+   Expect two lines, one ending `docs/wiki/generated/dependency-graph.md` and one ending `docs/wiki/generated/complexity.md`, each starting with `Wrote`.
+
+2. **The generated graph has no edge from `core` to an outer layer.**
+
+   **Why:** `core` holds the business rules, and imports only ever point inward (`main` to `inbound` to `outbound` to `core`), so `core` must never import an outer layer. The graph is built from the real imports, so a `core --> ` line would mean the layering is broken. Here grep's "nothing found" (exit code `1`) is the pass; `0` would mean it found such a line.
+   ```shell
+   grep -E '^\s+core --> ' docs/wiki/generated/dependency-graph.md; echo "matches: $?"
+   ```
+   Expect no matching lines, then `matches: 1` (grep found nothing).
+
+3. **The generated graph does show the allowed, inward edges.**
+
+   **Why:** check 2 would also pass on a graph with no edges at all. This shows the graph really has edges, and that they all point inward.
+   ```shell
+   grep -- ' --> ' docs/wiki/generated/dependency-graph.md
+   ```
+   Expect lines such as `outbound --> core`, only ever pointing inward (`main` to `inbound` to `outbound` to `core`).
+
+4. **A static build succeeds.**
+
+   **Why:** `make wiki-build` regenerates both pages, then runs `mkdocs build`, which stops with an error on a broken config or plugin. It runs on the host, without Docker.
+   ```shell
+   make wiki-build
+   ```
+   Expect the command to finish without an error, ending with MkDocs' `Documentation built in ... seconds` line.
+
+5. **The Compose `wiki` service serves the home page: 200.**
+
+   **Why:** in development the wiki runs as its own Compose service, on the `development` profile, at `127.0.0.1:${WIKI_PORT:-8001}`. **Prove** the service is running:
+   ```shell
+   make ps
+   ```
+   Expect a row whose `SERVICE` is `wiki`, with a `STATUS` starting `Up`. Then:
+   ```shell
+   curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8001/
+   ```
+   Expect `200`.
+
+6. **The home page is the wiki, not another service on that port.**
+
+   **Why:** a `200` alone could come from anything listening on that port. The page title comes from `site_name` in `mkdocs.yml`, so it shows MkDocs is the one answering.
+   ```shell
+   curl -s http://localhost:8001/ | grep -o '<title>[^<]*</title>'
+   ```
+   Expect a title containing `fastapi-clean-example Wiki` (the `site_name` in `mkdocs.yml`).
+
+7. **A nested content page resolves under `/content/`: 200.** This is the CLI page from `mkdocs.yml`'s `nav:`.
+
+   **Why:** every section page lives under `docs/wiki/content/`, so its URL starts with `/content/`. Only `index.md` sits at the top, so it can be the home page. A `200` here shows a nested page from the nav really resolves.
+   ```shell
+   curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8001/content/core-patterns/inbound-cli/
+   ```
+   Expect `200`.
+
+8. **The Changelog page includes the real `CHANGELOG.md`.**
+
+   **Why:** the Changelog page includes `CHANGELOG.md` itself (`mkdocs-include-markdown-plugin`), so there is only one copy to edit. The newest version heading in `CHANGELOG.md` must therefore appear on the page, with no copy step. This saves that newest version in `LATEST`, prints it, then counts the lines on the page that contain it:
+   ```shell
+   LATEST=$(grep -m1 -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+   echo "$LATEST"
+   curl -s http://localhost:8001/content/changelog/ | grep -cF "$LATEST"
+   ```
+   Expect a version number (for example `0.15.0`), then a count of at least `1`.
+
+9. **The Complexity page includes the generated report.**
+
+   **Why:** the Complexity page has no table of its own; it includes `docs/wiki/generated/complexity.md`. The report's figure title appears on the page only if that include worked.
+   ```shell
+   curl -s http://localhost:8001/content/complexity/ | grep -c 'by cyclomatic complexity'
+   ```
+   Expect a count of at least `1` (the "Worst ... files in `src/app` by cyclomatic complexity" figure).
+
+10. **A page that doesn't exist: 404.**
+
+    **Why:** an unknown URL must get a real `404`, not a `200` fallback page, so a broken link shows up as broken.
+    ```shell
+    curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8001/content/no-such-page/
+    ```
+    Expect `404`.
+
+11. **`make wiki` serves the same site on the host, without Docker.**
+
+    **Why:** `make wiki` is the no-Docker way to read the wiki while writing it, on the same `WIKI_PORT`. Stop the stack first, because the Compose `wiki` service uses that port. **Prove** nothing is listening there any more:
+    ```shell
+    make down
+    curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8001/
+    ```
+    Expect `000` (no answer). Then start the host server, which keeps running in this terminal:
+    ```shell
+    make wiki
+    ```
+    Then, in a second terminal:
+    ```shell
+    curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8001/
+    ```
+    Expect `200`. Stop `make wiki` with Ctrl-C.
+
+12. **The wiki never starts in production.**
+
+    **Why:** the wiki shows the internal architecture and, on the Roadmap page, which gaps aren't fixed yet, so it must never run on a real deployment. It's on the `development` Compose profile, which `scripts/makefile/docker_env.sh` turns on only when `ENVIRONMENT=development`. In `.secrets`, set `ENVIRONMENT=production`. **Prove** the setting:
+    ```shell
+    grep '^ENVIRONMENT=' .secrets
+    ```
+    Expect `ENVIRONMENT=production`. Then restart the stack, and **prove** the app itself still starts, by asking its liveness route (`curl` retries for up to about 20 seconds while it boots):
+    ```shell
+    make down
+    make upd
+    curl -s --retry 10 --retry-all-errors --retry-delay 2 -o /dev/null -w '%{http_code}\n' http://localhost:8000/livez/
+    ```
+    Expect `200`. Then ask the wiki port, and list the running services:
+    ```shell
+    curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8001/
+    make ps
+    ```
+    Expect `000` (nothing is listening on the wiki port), and no `wiki` row. Afterwards, set `ENVIRONMENT` back to `development` in `.secrets` and restart:
+    ```shell
+    make down
+    make upd
+    ```

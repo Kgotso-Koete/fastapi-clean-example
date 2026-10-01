@@ -11,6 +11,7 @@ from app.main.config.settings import (
     CookieSettings,
     EmailSettings,
     JwtSettings,
+    OrganizationSettings,
     PasswordHasherSettings,
     PostgresSettings,
     RedisSettings,
@@ -80,6 +81,10 @@ class ApiKeyEnvConfig(BaseSettings, ApiKeySettings):
     model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="API_KEY_")
 
 
+class OrganizationEnvConfig(BaseSettings, OrganizationSettings):
+    model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="ORGANIZATION_")
+
+
 def load_app_settings() -> AppSettings:
     return _load_settings(AppEnvConfig)
 
@@ -127,3 +132,7 @@ def load_alert_settings() -> AlertSettings:
 
 def load_api_key_settings() -> ApiKeySettings:
     return _load_settings(ApiKeyEnvConfig)
+
+
+def load_organization_settings() -> OrganizationSettings:
+    return _load_settings(OrganizationEnvConfig)

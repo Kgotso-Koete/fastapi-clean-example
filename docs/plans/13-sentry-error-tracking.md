@@ -15,6 +15,15 @@ This plan fills that gap with Sentry itself, via the official `sentry-sdk` Pytho
 
 Because the adapter this plan adds talks to the `sentry-sdk` client (not directly to Sentry-the-company's API), swapping the target to a self-hosted GlitchTip instance later is a one-line DSN change, not a rewrite -- GlitchTip is deliberately Sentry-API-compatible.
 
+## User stories
+
+| Story | As a | I want | So that | Acceptance criteria |
+|---|---|---|---|---|
+| 1. Grouped error reports | maintainer on call | every unhandled server error reported to Sentry (or GlitchTip) with its stack trace | repeats of one bug show up as one trackable issue I can triage | A genuine unhandled error produces exactly one event<br>The event carries `environment` and `release` tags<br>The existing 500 response, log line, metric and alert email still happen |
+| 2. No noise from business errors | maintainer on call | ordinary 4xx business errors kept out of Sentry | the issue list only holds real bugs | A mapped 4xx (e.g. a wrong login password) produces zero events |
+| 3. Off by default, free tier only | deployment operator | Sentry disabled unless I switch it on, and never sampling traces | the stack runs with no Sentry account and never spends paid quota | With `SENTRY_ENABLED` unset or `false`, nothing is sent<br>The stack starts with no `SENTRY_*` variables set<br>`SENTRY_TRACES_SAMPLE_RATE` defaults to `0.0` |
+| 4. Minimal personal data | account holder | only non-identifying context sent to a third-party service | my email, phone number and username don't leave this deployment's own systems | Events carry `user_status` and `user_id` tags only<br>No `email`, `phone_number` or `username` in any event |
+
 ## Design
 
 ### Where this sits in Clean Architecture -- and why it's deliberately NOT a `core/common/ports/` port
@@ -152,3 +161,183 @@ Test file(s) before production file(s) per step (RED -> GREEN -> refactor). No p
 - **`make check`** -- lint (`ruff`/`mypy --strict`/`slotscheck`) + fast unit tests (Steps 1-3's unit tests, including the fake-transport Sentry tests -- no real network call, no real DSN needed).
 - **`make test-docker`** -- full integration suite, including the extended `test_metrics_and_alerting.py`, and every pre-existing suite (proving nothing regressed).
 - **Manual verification**, using real entrypoints: `make upd` with `SENTRY_ENABLED=true` and a real Sentry (or GlitchTip) DSN set in `.secrets`, hit `GET /test-error`, confirm the event appears in the dashboard within a few seconds, tagged with the right `environment`/`release`/`user_status`/`user_id`, and that a routine 4xx (e.g. a bad login attempt) produces no event at all.
+
+## Human checks
+
+**(planned -- to run once Sentry is implemented)** These checks are based only on what this plan specifies; adjust them to the shipped code if the implementation differs.
+
+They trigger errors through the existing debug route `GET http://localhost:8000/debug/test-error` (`src/app/inbound/http/debug/test_error.py`, mounted under `/debug` in `src/app/inbound/http/root_router.py`), which always raises `ValueError("Test error for alerting - this triggers a 500 and email alert")`. That file is marked "remove after testing"; these checks need it to still exist.
+
+### Setup
+
+1. Create a free-tier Sentry project (or a self-hosted GlitchTip one). Copy its DSN from the project's **Settings > Client Keys (DSN)** page. It's a secret of your own, so it goes only in `.secrets`.
+2. In `.secrets`, add these lines, pasting your DSN straight after `SENTRY_DSN=`:
+   ```shell
+   SEED_DB_WITH_TEST_DATA=true
+   SENTRY_ENABLED=true
+   SENTRY_DSN=
+   ALERT_ENABLED=true
+   ALERT_TO_EMAILS=oncall@example.com
+   ALERT_COOLDOWN_S=0
+   ```
+   - `SEED_DB_WITH_TEST_DATA=true` creates `peter-parker` (`SpideySense2024!`), whom checks 2, 3 and 5 log in as. It's `false` in `env.example`.
+   - The three `ALERT_*` lines let check 6 see the existing alert email. `EMAIL_USE_CONSOLE=true` (the `env.example` default) writes it to the app's logs instead of sending it. `ALERT_COOLDOWN_S=0` turns off the 300-second per-exception-type cooldown, so every check's error emails, not just the first.
+   - Leave `SENTRY_TRACES_SAMPLE_RATE` out, so it stays at its `0.0` default.
+3. Restart with the real entrypoint. `make upd` regenerates `.env` from `env.example` plus `.secrets`, and settings are read only at startup:
+   ```shell
+   make down
+   make upd
+   ```
+4. A login session lasts only **5 minutes** without use (`SessionSettings.TTL_MIN`), so each check that acts as a user logs in at its own start, with its own cookie file in `/tmp`. Run everything in one terminal, top to bottom, with the Sentry project's **Issues** page open in a browser.
+5. Set the Compose project name, from the repo root:
+   ```shell
+   PROJECT=$(grep -h '^APP_SERVICE_NAME=' env.example .secrets 2>/dev/null | tail -1 | cut -d= -f2)
+   PROJECT=${PROJECT:-$(basename "$PWD")}
+   echo "$PROJECT"
+   ```
+   This reads the Compose project name the same way the Makefile does (`APP_SERVICE_NAME`, last value wins, else the folder name), so the direct `docker compose -p "$PROJECT"` commands below look at the same containers `make upd` started.
+
+### Checks
+
+1. **A genuine unhandled error reaches Sentry: `500`, one event.**
+
+   **Why:** an unhandled exception is a real bug, so it must become a Sentry issue with its stack trace. It's `500` because `GlobalExceptionMiddleware` answers every unhandled exception with a 500 JSON body.
+
+   **Acts on:** no seeded data; the request is anonymous (no cookie).
+
+   **Prove** Sentry is switched on and pointed at your project:
+   ```shell
+   grep -E '^(SENTRY_ENABLED|SENTRY_DSN)=' .env
+   ```
+   Expect the last `SENTRY_ENABLED` line to be `true`, and a `SENTRY_DSN` line holding your DSN. In the Sentry Issues page, note whether a `ValueError` issue already exists, and its event count. Then trigger the error:
+   ```shell
+   curl -s -w '\n%{http_code}\n' http://localhost:8000/debug/test-error
+   ```
+   Expect `500`. Within a few seconds, expect one new `ValueError` event with the message above and a stack trace through `test_error.py`: a new issue, or the existing one's count up by exactly 1. Because this request was anonymous, its tags show `user_status` `anonymous` and no `user_id`.
+
+2. **A logged-in user's event is tagged with environment, release, user status and user id.**
+
+   **Why:** `environment` and `release` let you see which deployment and version a bug first appeared in. `user_status` and `user_id` let you find who was affected in this deployment's own systems, without sending who they are to a third party. `release` comes from `AppSettings.VERSION` (env var `APP_VERSION`), which defaults to `development`.
+
+   **Acts on:** `peter-parker`, whose user id is saved in `$PETER_ID`.
+
+   **Prove** the values the tags should carry:
+   ```shell
+   grep -E '^(ENVIRONMENT|APP_VERSION)=' .env
+   ```
+   Expect `ENVIRONMENT=development` and no `APP_VERSION` line, so `release` should be `development`. If an `APP_VERSION` line shows, expect its last value instead. Log in as `peter-parker`, saving the response so his id can be read from it:
+   ```shell
+   curl -s -o /tmp/peter-parker-login.json -w '%{http_code}\n' -c /tmp/peter-parker.cookies \
+     -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}'
+   PETER_ID=$(python3 -c 'import json; print(json.load(open("/tmp/peter-parker-login.json"))["id"])')
+   echo "$PETER_ID"
+   ```
+   Expect `200`, then a UUID. Then, as `peter-parker`, trigger the error:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -b /tmp/peter-parker.cookies http://localhost:8000/debug/test-error
+   ```
+   Expect `500`. Open the newest event of the `ValueError` issue. Expect the tags `environment: development`, `release: development` (or your `APP_VERSION`), `user_status: authenticated` and `user_id` equal to the UUID printed above.
+
+3. **No personal data in the event.**
+
+   **Why:** Sentry is a third-party service, so it gets only `user_status` and `user_id`. Email, phone number and username stay in Loki, which this deployment controls. Searching for peter's real values, not just the field names, catches them under any key.
+
+   **Acts on:** `peter-parker`'s seeded email `peter.parker@dailybugle.com`, phone number `27821000011` and username `peter-parker`.
+
+   Log in as `peter-parker`, and trigger an error as him:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -c /tmp/peter-parker.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}'
+   curl -s -w '\n%{http_code}\n' -b /tmp/peter-parker.cookies http://localhost:8000/debug/test-error
+   ```
+   Expect `200`, then `500`. **Prove** this event is peter's: open the newest `ValueError` event and expect `user_status: authenticated` with a `user_id`. Then use the browser's find-in-page (Ctrl+F) on that event page, including its tags, context and the event's JSON view. Expect no match for `peter.parker@dailybugle.com`, `27821000011` or `peter-parker`, and no `email`, `phone_number` or `username` tag in the tag list.
+
+4. **Repeats group into one issue.**
+
+   **Why:** grouping is the reason to use Sentry at all: the same bug, hit many times, is one issue to triage, with an event count, not many separate issues.
+
+   **Acts on:** no seeded data; anonymous requests.
+
+   **Prove** the starting state: in the Issues page, note how many `ValueError` issues there are (expect one) and its event count. Then trigger the same error three times:
+   ```shell
+   for i in 1 2 3; do curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/debug/test-error; done
+   ```
+   Expect `500` three times. Expect still exactly one `ValueError` issue, with its event count up by 3.
+
+5. **A business 4xx is not reported: `401`, no event.**
+
+   **Why:** a wrong password is an ordinary mistake, mapped to `401` (`AuthenticationError`, in `src/app/inbound/http/account/log_in.py`), not a bug. Reporting it would bury real bugs under noise. It's `401` and not `400` because the password is well-formed (12+ characters, a letter, a digit, a special character), just wrong.
+
+   **Acts on:** `peter-parker`.
+
+   **Prove** the account exists, so the `401` below is about the password and not a missing user:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -c /tmp/peter-parker.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}'
+   ```
+   Expect `200` with his profile. In the Issues page, note the number of issues and the `ValueError` event count. Then log in with a wrong password:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "peter-parker", "password": "WrongPassword123!"}'
+   ```
+   Expect `401` with `Not authenticated.`, and after a few seconds no new issue and no new event.
+
+6. **Existing error handling still runs alongside Sentry.**
+
+   **Why:** Sentry is added next to the existing log line, Prometheus counter and alert email, and replaces none of them. A failure in one must not silence the others.
+
+   **Acts on:** no seeded data; an anonymous request.
+
+   **Prove** alerting is on, with no cooldown:
+   ```shell
+   grep -E '^(ALERT_ENABLED|ALERT_TO_EMAILS|ALERT_COOLDOWN_S|EMAIL_USE_CONSOLE)=' .env
+   ```
+   Expect the last value of each to be `true`, `oncall@example.com`, `0` and `true`. Then trigger the error, and read the counter:
+   ```shell
+   curl -s -w '\n%{http_code}\n' http://localhost:8000/debug/test-error
+   curl -s http://localhost:8000/metrics | grep 'app_unhandled_exceptions_total{'
+   ```
+   Expect `500`, and an `exception_type="ValueError"` counter line with a value above 0. Then show the app's logs (the command prints them and exits):
+   ```shell
+   docker compose -p "$PROJECT" logs --no-log-prefix app | grep -E 'Unhandled exception|\[ALERT\]'
+   ```
+   Expect an `Unhandled exception` line with `ValueError` and path `/debug/test-error`, and an `EMAIL [to=['oncall@example.com']]` line with subject `[ALERT] ValueError on GET /debug/test-error`. In Sentry, expect the `ValueError` event count up by 1 as well.
+
+7. **No performance data is collected.**
+
+   **Why:** tracing has its own quota on Sentry's free plan, and Prometheus and Grafana already cover latency. `SENTRY_TRACES_SAMPLE_RATE=0.0` means no transaction is ever sampled, so the quota is never touched.
+
+   **Acts on:** no seeded data.
+
+   **Prove** the sample rate is `0.0`:
+   ```shell
+   grep '^SENTRY_TRACES_SAMPLE_RATE=' .env
+   ```
+   Expect `SENTRY_TRACES_SAMPLE_RATE=0.0` (from `env.example`) and no other value. Then, in the Sentry project's **Performance** (or **Traces**) page, expect no transactions at all, even after the requests above.
+
+8. **Disabled means silent.**
+
+   **Why:** Sentry is off by default, so the stack must run with no Sentry account and send nothing when switched off. The error itself is still handled: still `500`.
+
+   **Acts on:** no seeded data; an anonymous request.
+
+   In `.secrets`, change `SENTRY_ENABLED=true` to `SENTRY_ENABLED=false`, then restart:
+   ```shell
+   make down
+   make upd
+   ```
+   **Prove** Sentry is now off and the stack started normally:
+   ```shell
+   grep '^SENTRY_ENABLED=' .env | tail -1
+   curl -s -w '\n%{http_code}\n' http://localhost:8000/healthz/
+   ```
+   Expect `SENTRY_ENABLED=false`, then `"OK"` and `200`. In the Issues page, note the `ValueError` event count. Then trigger the error:
+   ```shell
+   curl -s -w '\n%{http_code}\n' http://localhost:8000/debug/test-error
+   ```
+   Expect `500`, and after a few seconds no new event. To check the stack also starts with no `SENTRY_*` lines at all, delete both `SENTRY_*` lines from `.secrets` and run the same `make down`, `make upd`, `/healthz/` and `/debug/test-error` commands: expect the same results. Afterwards, remove the `ALERT_*` lines from `.secrets` too if you don't want them, and run `make down` then `make upd`.

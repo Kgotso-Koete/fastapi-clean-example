@@ -19,6 +19,18 @@ Celery + Redis was chosen over a Postgres-backed transactional outbox (discussed
 
 ---
 
+## User stories
+
+| Story | As a | I want | So that | Acceptance criteria |
+|---|---|---|---|---|
+| 1. Fast sign-up | new user | my sign-up response not to wait for the welcome email | signing up feels instant | Sign-up returns 200 straight away<br>The welcome email is written by the `worker` container a few seconds later |
+| 2. Email survives a transient failure | new user | the welcome email to be retried if sending fails for a moment | a short outage doesn't cost me my email | The `app.events.dispatch_handler` task retries up to 3 times, 10s apart |
+| 3. See background work | operator | to see each background task and what's stored in Redis | I can confirm a task really ran instead of guessing | Flower (http://localhost:5555) lists the task as SUCCESS<br>Redis Commander (http://localhost:8081) shows its result key |
+| 4. Run without Celery | solo maintainer on a small budget | to switch Celery off with one setting | I can deploy on just the web process and Postgres | `CELERY_ENABLED=false` skips `redis`/`worker`/`flower`/`redis-commander`<br>Sign-up still returns 200<br>The welcome email is still written, by `app`, inline |
+| 5. Choose sync or background per handler | developer | each handler to declare whether it runs inline or in the background | a slow side effect never blocks a response that doesn't need it | `DISPATCH_MODE` is declared on the handler class<br>`SendWelcomeEmail` is `"background"` |
+
+---
+
 ## Confirmed decisions
 
 1. **Persistent per-worker event loop, built now** — not a naive `asyncio.run()` per task. More plumbing today, but avoids "Future attached to a different loop" the moment a DB-touching background handler (e.g. `CreateInvoice`) is added.
@@ -248,3 +260,230 @@ Found while manually verifying the v0.7.4 fix: setting `CELERY_ENABLED=false` as
 Raised directly by the user after manually verifying both the Celery-enabled and Celery-less paths worked: every other piece of this stack is visually inspectable (Adminer for Postgres, Flower for Celery's task-level view, Grafana/Loki for logs, Swagger for the API, coverage HTML for tests) except Redis itself — there was no way to actually look inside it and confirm what's really stored there (broker messages vs. result-backend entries), as opposed to trusting Flower's task-level abstraction over it.
 
 **Fix:** a new `redis-commander` service (`rediscommander/redis-commander:latest`) added to `docker-compose.yml`, directly after `flower`, inside the same `profiles: ["celery"]` gate (so it's skipped automatically alongside `redis`/`worker`/`flower` whenever `CELERY_ENABLED=false`). `REDIS_HOSTS=broker:redis:6379:0,results:redis:6379:1` gives it two labeled connections in its UI — one per logical Redis database already in use (`REDIS_DB` for the Celery broker, `REDIS_RESULT_DB` for the result backend) — so both are browsable side by side. `env.example` gains `REDIS_COMMANDER_PORT=8081` (matching the existing `FLOWER_PORT` pattern), `Makefile`'s `open-dashboards` gets an `xdg-open` line for it, and `README.md`'s dashboard URL list and "Background Events" section both mention it.
+
+---
+
+## Human checks
+
+Since this plan, `docs/plans/4-transactional-outbox.md` changed how a background handler reaches Celery. The web process now writes an `event_outbox` row, and the worker's drain loop publishes it to Celery every `CELERY_DRAIN_OUTBOX_INTERVAL_SECONDS` (3s by default). So the welcome email shows up in the worker logs a few seconds after sign-up, not instantly. The outbox itself is checked in that plan's own Human checks. These checks only read the row's `id`, because the drain loop reuses it as the Celery task id.
+
+**Setup**
+
+1. Keep the `env.example` defaults `CELERY_ENABLED=true`, `ENVIRONMENT=development` (Flower and Redis Commander only start in development) and `EMAIL_USE_CONSOLE=true` (emails are logged, not sent). If `.secrets` sets any of them differently, remove that line. No seeded users are needed. `SEED_DB_WITH_TEST_DATA` can be either value: the seed script writes no outbox rows, and none of its usernames are used here.
+2. Restart the stack. `db_pg` and `redis` have no named volumes, so `make down` also wipes the database and every stored task result, and the checks start from nothing:
+   ```shell
+   make down
+   make upd
+   ```
+   Give the worker about 45 seconds to turn healthy before check 1.
+3. The app is on http://localhost:8000, Flower on http://localhost:5555 and Redis Commander on http://localhost:8081.
+4. Set the Compose project name, from the repo root:
+   ```shell
+   PROJECT=$(grep -h '^APP_SERVICE_NAME=' env.example .secrets 2>/dev/null | tail -1 | cut -d= -f2)
+   PROJECT=${PROJECT:-$(basename "$PWD")}
+   echo "$PROJECT"
+   ```
+   This reads the Compose project name the same way the Makefile does (`APP_SERVICE_NAME`, last value wins, else the folder name), so the direct `docker compose -p "$PROJECT"` commands below look at the same containers `make upd` started. The commands read logs, Postgres (`psql`, with the `env.example` credentials) and Redis (`redis-cli`) through it. They use `docker compose logs` rather than `make logs` because it prints and exits, so `grep` can filter it; `make logs` follows until Ctrl-C. Run every command in the same terminal, top to bottom.
+5. No check logs in. Sign-up is only for callers who aren't logged in (a logged-in caller gets `403`), so these `curl` commands deliberately send no cookie.
+
+**Checks**
+
+1. **Redis, the worker, Flower and Redis Commander are all running, and the worker is healthy.**
+
+   **Why:** `make upd` derives the Compose profiles from `CELERY_ENABLED` and `ENVIRONMENT` (`scripts/makefile/docker_env.sh`). `celery` starts `redis` and `worker`; `celery-development` adds `flower` and `redis-commander`, which need both switches on. `(healthy)` means the worker answered Celery's `inspect ping`, so it is ready for tasks.
+
+   **Prove** which profiles `make upd` turned on:
+   ```shell
+   grep '^COMPOSE_PROFILES=' .env
+   ```
+   Expect `COMPOSE_PROFILES=celery,development,celery-development`. Then list the services:
+   ```shell
+   make ps
+   ```
+   Expect `app`, `db_pg`, `redis`, `worker`, `flower` and `redis-commander` all listed as running (alongside the `development` tools such as `adminer` and `grafana`), and `worker` shown as `(healthy)`.
+
+2. **The worker registered the dispatch task and connected to Redis.**
+
+   **Why:** the web process never imports worker code. A background handler reaches the worker as a message naming the task `app.events.dispatch_handler`. If the worker hadn't registered exactly that name, or couldn't reach the broker (`REDIS_DB=0`), no background handler would ever run.
+   ```shell
+   docker compose -p "$PROJECT" logs --no-log-prefix worker \
+     | grep -E 'app\.events\.dispatch_handler|Connected to redis|ready\.'
+   ```
+   Expect `. app.events.dispatch_handler` (from the startup banner's `[tasks]` list), `Connected to redis://redis:6379/0`, and a `celery@... ready.` line, where `...` is the container's hostname.
+
+3. **Sign-up returns 200, and only stages the email.**
+
+   **Why:** `SendWelcomeEmail` declares `DISPATCH_MODE = "background"`, so the request doesn't send the email. It writes an `event_outbox` row in the same transaction as the user, and returns. The worker sends the email later (check 4).
+
+   **Acts on:** a new user, `clark-kent`, created here.
+
+   **Prove** `clark-kent` doesn't exist yet:
+   ```shell
+   docker compose -p "$PROJECT" exec -T db_pg psql -U postgres -d clean-example \
+     -c "SELECT count(*) FROM users WHERE username = 'clark-kent';"
+   ```
+   Expect `0`. Then sign him up:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -X POST http://localhost:8000/api/v1/account/signup/ \
+     -H 'Content-Type: application/json' \
+     -d '{"username":"clark-kent","password":"Krypton#Smallville1","email":"clark.kent@dailyplanet.com","phone_number":"0821000201"}'
+   ```
+   Expect `200` and a JSON body with `"username":"clark-kent"`. **Prove** the app staged the email rather than sending it:
+   ```shell
+   docker compose -p "$PROJECT" logs --no-log-prefix app \
+     | grep -E 'Staging \(background\)|Sending welcome email'
+   ```
+   Expect one line containing `Staging (background) UserRegisteredEvent -> SendWelcomeEmail`, and no `Sending welcome email` line. (App log lines are JSON, so the text is inside a `"message"` field.)
+
+4. **The worker, not the app, sent the welcome email, as a task named by the outbox row's id.**
+
+   **Why:** the worker's drain loop relays each pending `event_outbox` row to Celery every 3 seconds (`CELERY_DRAIN_OUTBOX_INTERVAL_SECONDS`), using the row's own `id` as the Celery task id. So the id read from Postgres here is the one that appears in the worker log, Flower and Redis.
+
+   **Acts on:** `clark-kent`'s outbox row; its id is saved in `$TASK_ID`.
+
+   Wait for the drain loop, then save the row's id:
+   ```shell
+   sleep 5
+   TASK_ID=$(docker compose -p "$PROJECT" exec -T db_pg psql -U postgres -d clean-example -t -A \
+     -c "SELECT id FROM event_outbox WHERE payload->>'username' = 'clark-kent';")
+   echo "$TASK_ID"
+   ```
+   Expect one UUID. An empty line means no row was written. Then search the worker log for that task and the email:
+   ```shell
+   docker compose -p "$PROJECT" logs --no-log-prefix worker \
+     | grep -F -e "Task app.events.dispatch_handler[$TASK_ID] succeeded" -e 'clark.kent@dailyplanet.com'
+   ```
+   Expect `Sending welcome email to clark.kent@dailyplanet.com`, an `EMAIL [to=['clark.kent@dailyplanet.com']] ... [subject=Welcome to the platform!]` line, `Welcome email sent to clark.kent@dailyplanet.com`, and `Task app.events.dispatch_handler[...] succeeded in ...s: None` with the printed id. **Prove** the app never sent it:
+   ```shell
+   docker compose -p "$PROJECT" logs --no-log-prefix app \
+     | grep -c 'Sending welcome email to clark.kent@dailyplanet.com'
+   ```
+   Expect `0`.
+
+5. **Flower shows the task as SUCCESS.**
+
+   **Why:** Flower is the operator's task-level view of Celery (user story 3). It should show the one task the sign-up caused, finished, with the event it carried.
+
+   **Acts on:** `clark-kent`'s outbox row, whose id is also the Celery task id, saved in `$TASK_ID`.
+
+   Save the id and print the task's Flower page:
+   ```shell
+   TASK_ID=$(docker compose -p "$PROJECT" exec -T db_pg psql -U postgres -d clean-example -t -A \
+     -c "SELECT id FROM event_outbox WHERE payload->>'username' = 'clark-kent';")
+   echo "http://localhost:5555/task/$TASK_ID"
+   ```
+   Open the printed URL. Expect the name `app.events.dispatch_handler` and state `SUCCESS`. Its kwargs show `event_type` `app.core.common.events.user_registered:UserRegisteredEvent`, `handler_type` `app.core.common.events.handlers.send_welcome_email:SendWelcomeEmail`, and a `payload` with `"username": "clark-kent"` and `"email": "clark.kent@dailyplanet.com"`. Then open http://localhost:5555/tasks: expect this one task and no other.
+
+6. **Redis holds the task's result under the same id, and no leftover message.**
+
+   **Why:** Celery writes each finished task's outcome to the result backend (`REDIS_RESULT_DB=1`) as the key `celery-task-meta-` plus the task id. The broker queue (`REDIS_DB=0`, the list `events`, from `CELERY_TASK_DEFAULT_QUEUE`) should be empty: a message is removed once the worker finishes it (`CELERY_TASK_ACKS_LATE=true`).
+
+   **Acts on:** `clark-kent`'s outbox row and Celery task, saved in `$TASK_ID`.
+
+   Save the id, then read the result key and the queue length:
+   ```shell
+   TASK_ID=$(docker compose -p "$PROJECT" exec -T db_pg psql -U postgres -d clean-example -t -A \
+     -c "SELECT id FROM event_outbox WHERE payload->>'username' = 'clark-kent';")
+   echo "celery-task-meta-$TASK_ID"
+   docker compose -p "$PROJECT" exec -T redis redis-cli -n 1 GET "celery-task-meta-$TASK_ID" | python3 -m json.tool
+   docker compose -p "$PROJECT" exec -T redis redis-cli -n 0 LLEN events
+   ```
+   Expect the key name, then JSON with `"status": "SUCCESS"` and a `"task_id"` equal to `$TASK_ID`, then `0`. To see the same in the UI, open http://localhost:8081, expand the `results` connection and select the printed key. The `broker` connection has no `events` list.
+
+7. **A rejected sign-up queues no background task.**
+
+   **Why:** the outbox row is written in the same transaction as the user. When the username is taken, that transaction rolls back and takes the row with it, so the worker has nothing to relay and nobody is welcomed to an account that doesn't exist. It's `409`, not `400`: the request is well-formed, but conflicts with an existing user.
+
+   **Acts on:** the existing `clark-kent`. The body reuses his username with a new email and phone number, so only the username conflicts.
+
+   **Prove** `clark-kent` exists, and save the outbox and task-result counts:
+   ```shell
+   docker compose -p "$PROJECT" exec -T db_pg psql -U postgres -d clean-example \
+     -c "SELECT count(*) FROM users WHERE username = 'clark-kent';"
+   OUTBOX_BEFORE=$(docker compose -p "$PROJECT" exec -T db_pg psql -U postgres -d clean-example -t -A \
+     -c "SELECT count(*) FROM event_outbox;")
+   RESULTS_BEFORE=$(docker compose -p "$PROJECT" exec -T redis redis-cli -n 1 --scan --pattern 'celery-task-meta-*' | wc -l)
+   echo "outbox rows: $OUTBOX_BEFORE, task results: $RESULTS_BEFORE"
+   ```
+   Expect `1`, then `outbox rows: 1, task results: 1`. Then try to sign up with the same username:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -X POST http://localhost:8000/api/v1/account/signup/ \
+     -H 'Content-Type: application/json' \
+     -d '{"username":"clark-kent","password":"Krypton#Smallville1","email":"kal-el@dailyplanet.com","phone_number":"0821000202"}'
+   ```
+   Expect `409` with the message `Username already exists.`. Wait for a drain tick, then count again:
+   ```shell
+   sleep 5
+   OUTBOX_AFTER=$(docker compose -p "$PROJECT" exec -T db_pg psql -U postgres -d clean-example -t -A \
+     -c "SELECT count(*) FROM event_outbox;")
+   RESULTS_AFTER=$(docker compose -p "$PROJECT" exec -T redis redis-cli -n 1 --scan --pattern 'celery-task-meta-*' | wc -l)
+   echo "outbox rows: $OUTBOX_BEFORE -> $OUTBOX_AFTER, task results: $RESULTS_BEFORE -> $RESULTS_AFTER"
+   ```
+   Expect `outbox rows: 1 -> 1, task results: 1 -> 1`. http://localhost:5555/tasks still lists the one task.
+
+8. **With Celery switched off, the Celery services don't start.**
+
+   **Why:** `CELERY_ENABLED` is the one switch (user story 4). `make upd` derives the Compose profiles from it, so a deployment on a small budget runs only the web process and Postgres, with no Redis, worker or dashboards to pay for.
+
+   In `.secrets`, set `CELERY_ENABLED=false` (add the line if it isn't there). **Prove** the setting:
+   ```shell
+   grep '^CELERY_ENABLED=' .secrets
+   ```
+   Expect `CELERY_ENABLED=false`. Restart the stack (this also wipes the database, so `clark-kent` is gone):
+   ```shell
+   make down
+   make upd
+   grep '^COMPOSE_PROFILES=' .env
+   make ps
+   ```
+   Expect `COMPOSE_PROFILES=development`, then `app` and `db_pg` running (plus the `development` tools such as `adminer` and `grafana`), but no `redis`, `worker`, `flower` or `redis-commander`.
+
+9. **With Celery switched off, sign-up still works and the app sends the welcome email inline.**
+
+   **Why:** with Celery off, `HybridEventDispatcher` writes no outbox row and runs every handler inline after the commit, whatever its `DISPATCH_MODE`. So a `"background"` handler is never lost for lack of a worker; it just runs in the request instead.
+
+   **Acts on:** a new user, `lois-lane`, created here.
+
+   **Prove** the app has Celery switched off, and that `lois-lane` doesn't exist yet:
+   ```shell
+   docker compose -p "$PROJECT" exec -T app printenv CELERY_ENABLED
+   docker compose -p "$PROJECT" exec -T db_pg psql -U postgres -d clean-example \
+     -c "SELECT count(*) FROM users WHERE username = 'lois-lane';"
+   ```
+   Expect `false`, then `0`. Then sign her up:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -X POST http://localhost:8000/api/v1/account/signup/ \
+     -H 'Content-Type: application/json' \
+     -d '{"username":"lois-lane","password":"Pulitzer#Metro1938","email":"lois.lane@dailyplanet.com","phone_number":"0821000203"}'
+   ```
+   Expect `200`. **Prove** the app itself sent the email, without staging it:
+   ```shell
+   docker compose -p "$PROJECT" logs --no-log-prefix app \
+     | grep -E 'Staging \(background\)|Dispatching \(sync\)|lois\.lane@dailyplanet\.com'
+   ```
+   Expect `Dispatching (sync) UserRegisteredEvent -> SendWelcomeEmail`, followed by `Sending welcome email to lois.lane@dailyplanet.com`, the `EMAIL [to=['lois.lane@dailyplanet.com']] ...` line and `Welcome email sent to lois.lane@dailyplanet.com`. No `Staging (background)` line.
+
+10. **Flower is unreachable while Celery is switched off.**
+
+    **Why:** the `flower` container isn't running, so nothing listens on port 5555. `curl` can't connect at all, so it prints `000` rather than an HTTP status.
+    ```shell
+    curl -s -o /dev/null -w '%{http_code}\n' http://localhost:5555
+    ```
+    Expect `000`.
+
+11. **Turning Celery back on brings the worker back.**
+
+    **Why:** switching back is the same one setting. This also leaves the stack in its default state for other plans' checks.
+
+    In `.secrets`, set `CELERY_ENABLED=true` (or remove the line). **Prove** the setting:
+    ```shell
+    grep '^CELERY_ENABLED=' .secrets
+    ```
+    Expect `CELERY_ENABLED=true`, or no output if you removed the line. Then restart, and give the worker about 45 seconds before the last command:
+    ```shell
+    make down
+    make upd
+    grep '^COMPOSE_PROFILES=' .env
+    make ps
+    ```
+    Expect `COMPOSE_PROFILES=celery,development,celery-development`, and `redis`, `worker`, `flower` and `redis-commander` running again, with `worker` `(healthy)`.

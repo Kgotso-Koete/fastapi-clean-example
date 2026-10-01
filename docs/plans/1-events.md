@@ -6,6 +6,17 @@
 
 ---
 
+## User stories
+
+| Story | As a | I want | So that | Acceptance criteria |
+|---|---|---|---|---|
+| 1. Welcome email on sign-up | new user | a welcome email after I sign up | I know my account was created and I can log in | Sign-up returns 200 with my profile<br>An email with subject "Welcome to the platform!" is addressed to my email<br>The sign-up response does not wait for the email |
+| 2. Welcome email for admin-created accounts | user whose account an admin created | the same welcome email | I find out about my new account | Admin's create-user call returns 201<br>The same welcome email goes to the new user's email |
+| 3. No email for a failed sign-up | person whose sign-up was rejected | no welcome email | I'm never told about an account that doesn't exist | A 400 (invalid field) or 409 (duplicate) sign-up sends no email |
+| 4. React to an event without touching existing code | developer | to add a new reaction to an event by writing one handler and registering it | existing handlers and use cases stay unchanged | One new handler class plus one registry line in `main/ioc/core.py`<br>`SendWelcomeEmail` and `SignUp` are untouched |
+
+---
+
 ## TDD Methodology: Red-Green-Refactor
 
 We follow **strict Red-Green TDD** throughout this implementation. For every step:
@@ -815,3 +826,295 @@ Make the `EventDispatcher` provider dynamic based on the injected settings:
 
 ### Manual Verification
 - We can manually set `EVENT_DISPATCH_MODE=sync` in the `.env` file (or export it) and start the server to verify the `SyncEventDispatcher` is used during a sign-up request.
+
+---
+
+## Human checks
+
+These checks run against the code as it is today. The asyncio dispatchers and `EVENT_DISPATCH_MODE` described above were later replaced by `HybridEventDispatcher`, Celery and the transactional outbox (see `docs/plans/3-celery-redis-events.md` and `docs/plans/4-transactional-outbox.md`). So with the default `CELERY_ENABLED=true`, the welcome email is written by the `worker` container, a few seconds after sign-up (`CELERY_DRAIN_OUTBOX_INTERVAL_SECONDS=3`), not by `app`.
+
+### Setup
+
+1. In `.secrets`, set `SEED_DB_WITH_TEST_DATA=true` (it's `false` in `env.example`): the checks log in as seeded users from `scripts/seed_db.py`. Keep the `env.example` defaults `EMAIL_USE_CONSOLE=true` (emails are logged by `ConsoleEmailSender`, never sent) and `CELERY_ENABLED=true` (the welcome email runs in the `worker` container).
+2. Start from a fresh, freshly seeded database. `db_pg` has no named volume, so `make down` discards the old database:
+   ```shell
+   make down
+   make upd
+   ```
+   Re-run these two commands before running the checks again: checks 1 and 5 create accounts, so a second run would get `409` instead.
+3. **Prove** the worker is running, since every welcome email depends on it:
+   ```shell
+   make ps
+   ```
+   Expect a `worker` row whose status starts with `Up`. It shows `(healthy)` once its health check passes, which can take up to 45 seconds.
+4. Each user gets their own cookie file in `/tmp` (for example `/tmp/miles-morales.cookies`). Every check starts by logging in each user it acts as, with the exact command and password, because a session lasts only **5 minutes** without use (`SessionSettings.TTL_MIN` in `src/app/main/config/settings.py`). An expired cookie gets `401 Not authenticated.`. A login answers `200` with the user's profile. Run every command in the same terminal, top to bottom.
+5. Set the Compose project name, from the repo root:
+   ```shell
+   PROJECT=$(grep -h '^APP_SERVICE_NAME=' env.example .secrets 2>/dev/null | tail -1 | cut -d= -f2)
+   PROJECT=${PROJECT:-$(basename "$PWD")}
+   echo "$PROJECT"
+   ```
+   This reads the Compose project name the same way the Makefile does (`APP_SERVICE_NAME`, last value wins, else the folder name), so the direct `docker compose -p "$PROJECT"` commands below look at the same containers `make upd` started.
+6. **Reading the worker logs.** The checks print the worker's whole log so far with `docker compose -p "$PROJECT" logs --no-log-prefix worker` and pipe it through `grep` to show only the lines about one person. The command exits by itself; nothing printed means no matching line. The worker picks up new events every 3 seconds (`CELERY_DRAIN_OUTBOX_INTERVAL_SECONDS`), so wait about 5 seconds after a request before looking.
+7. **Listing users.** Only an admin can list users (`GET /api/v1/users/`), so the checks prove which accounts exist as `miles-morales`. With 15 or more users the full JSON is long, so those commands print the `total`, then one `username role email` line per user, sorted by username.
+
+### Seeded data (from `scripts/seed_db.py`)
+
+- `miles-morales` (`WebSlingerHero1!`) is an ADMIN: he may list users and create plain users, but not admins.
+- `matt-murdock` (`Daredevil1!!`) is a plain USER, with the email `matt.murdock@nelsonmurdock.com`.
+- There are 15 seeded users, so a fresh database lists `total: 15`.
+
+### Checks
+
+1. **Sign-up succeeds (200), and the welcome email follows in the worker a few seconds later.**
+
+   **Why:** a new account records a `UserRegisteredEvent`, and its `SendWelcomeEmail` handler is a "background" handler. Sign-up answers first and the worker sends the email afterwards, so a slow or broken email provider never delays or fails a sign-up. That's why the email shows up in the `worker` logs, not the `app` logs. The sign-up route is declared with status 200 (`src/app/inbound/http/account/sign_up.py`), unlike the admin create route in check 5, which answers 201.
+
+   **Acts on:** a new account, `kara-danvers`.
+
+   Log in as `miles-morales`:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -c /tmp/miles-morales.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "miles-morales", "password": "WebSlingerHero1!"}'
+   ```
+   Expect `200`. **Prove** there's no `kara-danvers` yet, by listing users as him:
+   ```shell
+   curl -s -b /tmp/miles-morales.cookies 'http://localhost:8000/api/v1/users/?limit=100&sorting_field=username&sorting_order=asc' \
+     | python3 -c 'import sys, json; d = json.load(sys.stdin); print("total:", d["total"]); print("\n".join(u["username"] + "  " + u["role"] + "  " + u["email"] for u in d["users"]))'
+   ```
+   Expect `total: 15` and no `kara-danvers` line. Then sign up `kara-danvers`, with no cookie (sign-up is for people who aren't logged in):
+   ```shell
+   curl -s -w '\n%{http_code}\n' -X POST http://localhost:8000/api/v1/account/signup/ \
+     -H 'Content-Type: application/json' \
+     -d '{"username":"kara-danvers","password":"Krypton#2024!","email":"kara.danvers@catco.com","phone_number":"0821000101"}'
+   ```
+   Expect `200`, and a JSON body with `"username":"kara-danvers"`, `"role":"user"`, `"is_active":true` and `"phone_number":"27821000101"` (the number is normalized to country-code form). **Prove** the account exists, by listing users as `miles-morales` again:
+   ```shell
+   curl -s -b /tmp/miles-morales.cookies 'http://localhost:8000/api/v1/users/?limit=100&sorting_field=username&sorting_order=asc' \
+     | python3 -c 'import sys, json; d = json.load(sys.stdin); print("total:", d["total"]); print("\n".join(u["username"] + "  " + u["role"] + "  " + u["email"] for u in d["users"]))'
+   ```
+   Expect `total: 16` and a `kara-danvers  user  kara.danvers@catco.com` line. About 5 seconds after the sign-up, look for her welcome email in the worker logs:
+   ```shell
+   docker compose -p "$PROJECT" logs --no-log-prefix worker | grep -E 'kara.danvers@catco.com|Welcome, kara-danvers'
+   ```
+   Expect, in this order: `Sending welcome email to kara.danvers@catco.com`; an `EMAIL [to=['kara.danvers@catco.com']] [cc=()] [bcc=()] [subject=Welcome to the platform!]` line; an HTML line containing `Welcome, kara-danvers!`; then `Welcome email sent to kara.danvers@catco.com`.
+
+2. **A duplicate username is rejected (409), creating no account and sending no email.**
+
+   **Why:** usernames are unique. The duplicate is caught when the new row is flushed to the database, before the commit, so nothing is committed: not the account, and not the welcome email's outbox row, which `SignUp` writes in the same transaction. 409 rather than 400, because the request itself is valid; it conflicts with an existing account.
+
+   **Acts on:** the existing `kara-danvers` (from check 1), and a new email, `kara.zorel@catco.com`.
+
+   Log in as `miles-morales`:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -c /tmp/miles-morales.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "miles-morales", "password": "WebSlingerHero1!"}'
+   ```
+   Expect `200`. **Prove** `kara-danvers` exists and nobody uses `kara.zorel@catco.com`, by listing users as him:
+   ```shell
+   curl -s -b /tmp/miles-morales.cookies 'http://localhost:8000/api/v1/users/?limit=100&sorting_field=username&sorting_order=asc' \
+     | python3 -c 'import sys, json; d = json.load(sys.stdin); print("total:", d["total"]); print("\n".join(u["username"] + "  " + u["role"] + "  " + u["email"] for u in d["users"]))'
+   ```
+   Expect `total: 16`, a `kara-danvers  user  kara.danvers@catco.com` line, and no `kara.zorel@catco.com`. Then try to sign up `kara-danvers` again, with a different email and phone number:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -X POST http://localhost:8000/api/v1/account/signup/ \
+     -H 'Content-Type: application/json' \
+     -d '{"username":"kara-danvers","password":"Krypton#2024!","email":"kara.zorel@catco.com","phone_number":"0821000102"}'
+   ```
+   Expect `409` with the message `Username already exists.`. **Prove** nothing was created, by listing users again:
+   ```shell
+   curl -s -b /tmp/miles-morales.cookies 'http://localhost:8000/api/v1/users/?limit=100&sorting_field=username&sorting_order=asc' \
+     | python3 -c 'import sys, json; d = json.load(sys.stdin); print("total:", d["total"]); print("\n".join(u["username"] + "  " + u["role"] + "  " + u["email"] for u in d["users"]))'
+   ```
+   Expect `total: 16` still, and no `kara.zorel@catco.com`. Then, after about 5 seconds, look for an email to that address in the worker logs:
+   ```shell
+   docker compose -p "$PROJECT" logs --no-log-prefix worker | grep 'kara.zorel@catco.com'
+   ```
+   Expect nothing printed.
+
+3. **A duplicate email is rejected (409), creating no account and sending no email.**
+
+   **Why:** emails are unique too, so one person can't hold two accounts, and logging in by email always finds exactly one user. Same 409 reasoning as check 2.
+
+   **Acts on:** seeded `matt-murdock`'s email, `matt.murdock@nelsonmurdock.com`, and a new username, `foggy-nelson`.
+
+   Log in as `miles-morales`:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -c /tmp/miles-morales.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "miles-morales", "password": "WebSlingerHero1!"}'
+   ```
+   Expect `200`. **Prove** `matt-murdock` already uses that email, and there's no `foggy-nelson`, by listing users as him:
+   ```shell
+   curl -s -b /tmp/miles-morales.cookies 'http://localhost:8000/api/v1/users/?limit=100&sorting_field=username&sorting_order=asc' \
+     | python3 -c 'import sys, json; d = json.load(sys.stdin); print("total:", d["total"]); print("\n".join(u["username"] + "  " + u["role"] + "  " + u["email"] for u in d["users"]))'
+   ```
+   Expect `total: 16`, a `matt-murdock  user  matt.murdock@nelsonmurdock.com` line, and no `foggy-nelson`. Then try to sign up `foggy-nelson` with matt's email:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -X POST http://localhost:8000/api/v1/account/signup/ \
+     -H 'Content-Type: application/json' \
+     -d '{"username":"foggy-nelson","password":"NelsonMurdock#1","email":"matt.murdock@nelsonmurdock.com","phone_number":"0821000103"}'
+   ```
+   Expect `409` with the message `Email already exists.`. **Prove** nothing was created, by listing users again:
+   ```shell
+   curl -s -b /tmp/miles-morales.cookies 'http://localhost:8000/api/v1/users/?limit=100&sorting_field=username&sorting_order=asc' \
+     | python3 -c 'import sys, json; d = json.load(sys.stdin); print("total:", d["total"]); print("\n".join(u["username"] + "  " + u["role"] + "  " + u["email"] for u in d["users"]))'
+   ```
+   Expect `total: 16` still, and no `foggy-nelson`. Then, after about 5 seconds, look for a welcome email to `foggy-nelson` in the worker logs:
+   ```shell
+   docker compose -p "$PROJECT" logs --no-log-prefix worker | grep 'foggy-nelson'
+   ```
+   Expect nothing printed.
+
+4. **An invalid password is rejected (400), creating no account and sending no email.**
+
+   **Why:** a password needs at least 12 characters, plus a letter, a digit and a special character (`src/app/core/common/value_objects/raw_password.py`). It's 400, not FastAPI's 422: the JSON has the right shape, so FastAPI accepts it, and it's the domain's `RawPassword` value object that rejects the value. That happens before any database work, so nothing is created.
+
+   **Acts on:** a new username, `barry-allen`.
+
+   Log in as `miles-morales`:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -c /tmp/miles-morales.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "miles-morales", "password": "WebSlingerHero1!"}'
+   ```
+   Expect `200`. **Prove** there's no `barry-allen`, by listing users as him:
+   ```shell
+   curl -s -b /tmp/miles-morales.cookies 'http://localhost:8000/api/v1/users/?limit=100&sorting_field=username&sorting_order=asc' \
+     | python3 -c 'import sys, json; d = json.load(sys.stdin); print("total:", d["total"]); print("\n".join(u["username"] + "  " + u["role"] + "  " + u["email"] for u in d["users"]))'
+   ```
+   Expect `total: 16` and no `barry-allen`. Then try to sign up with a 7-character password:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -X POST http://localhost:8000/api/v1/account/signup/ \
+     -H 'Content-Type: application/json' \
+     -d '{"username":"barry-allen","password":"short1!","email":"barry.allen@starlabs.com","phone_number":"0821000104"}'
+   ```
+   Expect `400` with the message `Password must be at least 12 characters long.`. **Prove** nothing was created, by listing users again:
+   ```shell
+   curl -s -b /tmp/miles-morales.cookies 'http://localhost:8000/api/v1/users/?limit=100&sorting_field=username&sorting_order=asc' \
+     | python3 -c 'import sys, json; d = json.load(sys.stdin); print("total:", d["total"]); print("\n".join(u["username"] + "  " + u["role"] + "  " + u["email"] for u in d["users"]))'
+   ```
+   Expect `total: 16` still, and no `barry-allen`. Then, after about 5 seconds, look for an email to that address in the worker logs:
+   ```shell
+   docker compose -p "$PROJECT" logs --no-log-prefix worker | grep 'barry.allen@starlabs.com'
+   ```
+   Expect nothing printed.
+
+5. **An admin-created user gets the same welcome email (201).**
+
+   **Why:** `UserRegisteredEvent` is recorded by `UserService`, which both sign-up and the admin `CreateUser` command use, so the one `SendWelcomeEmail` handler covers both ways an account is made. An ADMIN may create plain users; only a SUPER_ADMIN may create admins. 201 because the request creates a new resource.
+
+   **Acts on:** a new account, `hal-jordan`, whose random id is saved in `$HAL_ID`.
+
+   Log in as `miles-morales`:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -c /tmp/miles-morales.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "miles-morales", "password": "WebSlingerHero1!"}'
+   ```
+   Expect `200`. **Prove** miles is an admin and there's no `hal-jordan` yet, by listing users as him:
+   ```shell
+   curl -s -b /tmp/miles-morales.cookies 'http://localhost:8000/api/v1/users/?limit=100&sorting_field=username&sorting_order=asc' \
+     | python3 -c 'import sys, json; d = json.load(sys.stdin); print("total:", d["total"]); print("\n".join(u["username"] + "  " + u["role"] + "  " + u["email"] for u in d["users"]))'
+   ```
+   Expect `total: 16`, a `miles-morales  admin  miles.morales@visionacademy.edu` line, and no `hal-jordan`. Then, as `miles-morales`, create `hal-jordan`. The response is saved to `/tmp/hal-jordan.json` so the status code can be printed, and the new id is read from it into `HAL_ID`:
+   ```shell
+   curl -s -o /tmp/hal-jordan.json -w '%{http_code}\n' -b /tmp/miles-morales.cookies -X POST http://localhost:8000/api/v1/users/ \
+     -H 'Content-Type: application/json' \
+     -d '{"username":"hal-jordan","email":"hal.jordan@ferris-air.com","phone_number":"0821000105","password":"GreenLantern#1959","role":"user"}'
+   HAL_ID=$(python3 -c 'import json; print(json.load(open("/tmp/hal-jordan.json"))["id"])')
+   echo "$HAL_ID"
+   ```
+   Expect `201`, then a UUID. A Python `KeyError` traceback means the create failed. **Prove** the account works, by logging in as `hal-jordan` and reading his profile:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -c /tmp/hal-jordan.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "hal-jordan", "password": "GreenLantern#1959"}'
+   curl -s -b /tmp/hal-jordan.cookies http://localhost:8000/api/v1/account/profile/ | python3 -m json.tool
+   ```
+   Expect `200` for the login, then a profile with the same `"id"` as `$HAL_ID`, `"username": "hal-jordan"` and `"role": "user"`. After about 5 seconds, look for his welcome email in the worker logs:
+   ```shell
+   docker compose -p "$PROJECT" logs --no-log-prefix worker | grep -E 'hal.jordan@ferris-air.com|Welcome, hal-jordan'
+   ```
+   Expect `Sending welcome email to hal.jordan@ferris-air.com`, the `EMAIL [to=['hal.jordan@ferris-air.com']] ...` line, an HTML line containing `Welcome, hal-jordan!`, and `Welcome email sent to hal.jordan@ferris-air.com`.
+
+6. **A logged-in user can't sign up (403), so no account is created and no email is sent.**
+
+   **Why:** sign-up refuses anyone who already has a valid session (`SignUp`: "Logged-in user cannot sign up until session expires or is terminated"), so a logged-in person can't quietly create a second account. Admins create accounts through `POST /api/v1/users/` instead (check 5). 403 rather than 401: the caller *is* authenticated, and that's exactly what's refused.
+
+   **Acts on:** `miles-morales`'s session, and a new username, `arthur-curry`.
+
+   Log in as `miles-morales`:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -c /tmp/miles-morales.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "miles-morales", "password": "WebSlingerHero1!"}'
+   ```
+   Expect `200`. **Prove** his cookie holds a valid session, by reading his profile:
+   ```shell
+   curl -s -b /tmp/miles-morales.cookies http://localhost:8000/api/v1/account/profile/ | python3 -m json.tool
+   ```
+   Expect `"username": "miles-morales"`. **Prove** there's no `arthur-curry`, by listing users as him:
+   ```shell
+   curl -s -b /tmp/miles-morales.cookies 'http://localhost:8000/api/v1/users/?limit=100&sorting_field=username&sorting_order=asc' \
+     | python3 -c 'import sys, json; d = json.load(sys.stdin); print("total:", d["total"]); print("\n".join(u["username"] + "  " + u["role"] + "  " + u["email"] for u in d["users"]))'
+   ```
+   Expect `total: 17` (check 5 added `hal-jordan`) and no `arthur-curry`. Then try to sign up while sending miles' cookie:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -b /tmp/miles-morales.cookies -X POST http://localhost:8000/api/v1/account/signup/ \
+     -H 'Content-Type: application/json' \
+     -d '{"username":"arthur-curry","password":"Atlantis#Trident1","email":"arthur.curry@atlantis.org","phone_number":"0821000106"}'
+   ```
+   Expect `403` with the message `You are already authenticated. Consider logging out.`. **Prove** nothing was created, by listing users again:
+   ```shell
+   curl -s -b /tmp/miles-morales.cookies 'http://localhost:8000/api/v1/users/?limit=100&sorting_field=username&sorting_order=asc' \
+     | python3 -c 'import sys, json; d = json.load(sys.stdin); print("total:", d["total"]); print("\n".join(u["username"] + "  " + u["role"] + "  " + u["email"] for u in d["users"]))'
+   ```
+   Expect `total: 17` still, and no `arthur-curry`. Then, after about 5 seconds, look for an email to that address in the worker logs:
+   ```shell
+   docker compose -p "$PROJECT" logs --no-log-prefix worker | grep 'arthur.curry@atlantis.org'
+   ```
+   Expect nothing printed.
+
+7. **A plain user can't create users (403), so no account is created and no email is sent.**
+
+   **Why:** creating users is for admins only: a USER manages no role at all (`src/app/core/common/authorization/role_hierarchy.py`). 403 rather than 401: matt is logged in, he just isn't allowed. The permission is checked before the new account is even built, so nothing is created.
+
+   **Acts on:** seeded USER `matt-murdock`, and a new username, `victor-stone`.
+
+   Log in as `matt-murdock`, and as `miles-morales`, who checks the result:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -c /tmp/matt-murdock.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "matt-murdock", "password": "Daredevil1!!"}'
+   curl -s -w '\n%{http_code}\n' -c /tmp/miles-morales.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "miles-morales", "password": "WebSlingerHero1!"}'
+   ```
+   Expect `200` both times. **Prove** matt is a plain user, by reading his profile:
+   ```shell
+   curl -s -b /tmp/matt-murdock.cookies http://localhost:8000/api/v1/account/profile/ | python3 -m json.tool
+   ```
+   Expect `"username": "matt-murdock"` and `"role": "user"`. **Prove** there's no `victor-stone`, by listing users as `miles-morales`:
+   ```shell
+   curl -s -b /tmp/miles-morales.cookies 'http://localhost:8000/api/v1/users/?limit=100&sorting_field=username&sorting_order=asc' \
+     | python3 -c 'import sys, json; d = json.load(sys.stdin); print("total:", d["total"]); print("\n".join(u["username"] + "  " + u["role"] + "  " + u["email"] for u in d["users"]))'
+   ```
+   Expect `total: 17` and no `victor-stone`. Then, as `matt-murdock`, try to create a user:
+   ```shell
+   curl -s -w '\n%{http_code}\n' -b /tmp/matt-murdock.cookies -X POST http://localhost:8000/api/v1/users/ \
+     -H 'Content-Type: application/json' \
+     -d '{"username":"victor-stone","email":"victor.stone@starlabs.com","phone_number":"0821000107","password":"Cyborg#Booyah2016","role":"user"}'
+   ```
+   Expect `403` with the message `Not authorized.`. **Prove** nothing was created, by listing users as `miles-morales` again:
+   ```shell
+   curl -s -b /tmp/miles-morales.cookies 'http://localhost:8000/api/v1/users/?limit=100&sorting_field=username&sorting_order=asc' \
+     | python3 -c 'import sys, json; d = json.load(sys.stdin); print("total:", d["total"]); print("\n".join(u["username"] + "  " + u["role"] + "  " + u["email"] for u in d["users"]))'
+   ```
+   Expect `total: 17` still, and no `victor-stone`. Then, after about 5 seconds, look for an email to that address in the worker logs:
+   ```shell
+   docker compose -p "$PROJECT" logs --no-log-prefix worker | grep 'victor.stone@starlabs.com'
+   ```
+   Expect nothing printed.

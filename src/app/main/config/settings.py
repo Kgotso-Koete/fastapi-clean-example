@@ -211,3 +211,11 @@ class ApiKeySettings(BaseModel):
     # Counts only active (non-revoked) keys -- revoking an old key frees up
     # a slot, so this isn't a lifetime cap.
     MAX_PER_USER: int = Field(ge=1, default=10)
+
+
+class OrganizationSettings(BaseModel):
+    # How many days a pending organization invitation stays acceptable;
+    # InviteOrganizationMember sets expires_at = now + this. ge=1 because a
+    # zero-day invitation would already be expired the moment it's sent.
+    # Defaults to 7 so no deployment ever gets invitations that never expire.
+    INVITATION_TTL_DAYS: int = Field(ge=1, default=7)
