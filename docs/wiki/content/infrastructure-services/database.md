@@ -2,7 +2,7 @@
 
 !!! sourcefiles "Relevant Source Files/Folders"
     - [`src/app/outbound/persistence_sqla/registry.py`](../../../../src/app/outbound/persistence_sqla/registry.py) — the shared `MetaData`/`registry` every table maps into, plus the naming convention for constraints
-    - [`src/app/outbound/persistence_sqla/mappings/`](../../../../src/app/outbound/persistence_sqla/mappings/) — imperative table definitions and `map_*_table()` functions (`user.py`, `auth_session.py`, `outbox_message.py`, `all.py`)
+    - [`src/app/outbound/persistence_sqla/mappings/`](../../../../src/app/outbound/persistence_sqla/mappings/) — imperative table definitions and `map_*_table()` functions (`user.py`, `auth_session.py`, `outbox_message.py`, `api_key.py`, `organization.py`, `organization_membership.py`, `all.py`)
     - [`src/app/outbound/persistence_sqla/constraint_names.py`](../../../../src/app/outbound/persistence_sqla/constraint_names.py) — named unique-constraint constants used to translate raw `IntegrityError`s into domain-meaningful exceptions
     - [`src/app/outbound/persistence_sqla/alembic/`](../../../../src/app/outbound/persistence_sqla/alembic/) — `env.py`, `script.py.mako`, and every migration under `versions/`
     - [`alembic.ini`](../../../../alembic.ini) — Alembic's own config, pointed at the `alembic/` folder above
@@ -51,7 +51,13 @@ Domain entities (`User`, `AuthSession`, the outbox's `OutboxMessage` — an **en
 
 `registry.py`'s `MetaData` also carries a shared naming convention (`ix_%(column_0_label)s`, `uq_%(table_name)s_%(column_0_name)s`, `fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s`, ...), so every constraint Alembic autogenerates gets a deterministic, greppable name instead of a driver-assigned one — [`constraint_names.py`](../../../../src/app/outbound/persistence_sqla/constraint_names.py)'s `UQ_USERS_USERNAME`/`UQ_USERS_EMAIL`/`UQ_USERS_PHONE_NUMBER` constants exist precisely so outbound adapters can pattern-match a raised `IntegrityError`'s constraint name back to a specific, human-meaningful conflict (e.g. "username already taken" vs "phone number already taken") instead of guessing from a raw driver error string.
 
-Three tables exist today: `users` (with a composite `Username`/`Email`/`PhoneNumber`/`UtcDatetime` value-object (a Domain-Driven Design building block for something defined purely by its value, not identity; see [Layer Dependencies & Import Rules](../architecture/layer-dependencies.md)) mapping via SQLAlchemy's `composite()`), `auth_sessions` (`ON DELETE CASCADE` to `users.id`), and `event_outbox` (the transactional outbox — see [Core Patterns → Domain Events & Outbox](../core-patterns/domain-events-outbox.md) and [Background Jobs](background-jobs.md) for what writes to and drains it).
+Six tables exist today:
+
+- `users` (with a composite `Username`/`Email`/`PhoneNumber`/`UtcDatetime` value-object (a Domain-Driven Design building block for something defined purely by its value, not identity; see [Layer Dependencies & Import Rules](../architecture/layer-dependencies.md)) mapping via SQLAlchemy's `composite()`);
+- `auth_sessions` (`ON DELETE CASCADE` to `users.id`);
+- `event_outbox` (the transactional outbox — see [Core Patterns → Domain Events & Outbox](../core-patterns/domain-events-outbox.md) and [Background Jobs](background-jobs.md) for what writes to and drains it);
+- `api_keys` (the public API's keys, stored only as hashes — see [Public API](../core-patterns/public-api.md));
+- `organizations` (`name` and a mandatory `description`) and `organization_memberships` (one row per user per organization, accepted or a pending invitation, `ON DELETE CASCADE` to `organizations.id`) — see [Core Patterns → Organizations](../core-patterns/organizations.md) and [Database Models → The organization tables](../data-models/database-models.md#the-organization-tables).
 
 ## Migrations: writing one, and applying them
 
@@ -79,7 +85,7 @@ Three tables exist today: `users` (with a composite `Username`/`Email`/`PhoneNum
 
     > The two flows above never touch the same running process. `make migration msg=<description>` (the `Makefile` target) starts just enough infrastructure (`db_pg`) to run `alembic revision --autogenerate`, which loads every mapping via `map_tables()` and diffs the resulting `mapper_registry.metadata` against the live schema to generate a new file in `alembic/versions/` — always reviewed and adjusted by hand afterward, never trusted blindly (Alembic's own autogenerate is a starting point, not a guarantee). [`env.py`](../../../../src/app/outbound/persistence_sqla/alembic/env.py) itself loads `PostgresSettings` via `load_postgres_settings()` and sets `sqlalchemy.url` from `settings.dsn` — the one place in this codebase explicitly allowed to import `app.main.config.settings` from outside `main` (see [Architecture → Layer Dependencies](../architecture/layer-dependencies.md) for why that's a deliberate, narrow exception).
     >
-    > Separately, every time the `app` or `worker` container actually starts (`docker-entrypoint.sh`'s `start` and `pytest` cases), `alembic upgrade head` runs first, unconditionally, before `uvicorn`/`pytest` ever gets control — so a fresh `db_pg` volume is never left on an old schema. Four migrations exist today, in order: `users`, `auth_sessions`, `add_email_and_phone_number_to_users`, and `add_event_outbox_table` (the last one is what backs the [transactional outbox](background-jobs.md)).
+    > Separately, every time the `app` or `worker` container actually starts (`docker-entrypoint.sh`'s `start` and `pytest` cases), `alembic upgrade head` runs first, unconditionally, before `uvicorn`/`pytest` ever gets control — so a fresh `db_pg` volume is never left on an old schema. Eight migrations exist today, in order: `users`, `auth_sessions`, `add_email_and_phone_number_to_users`, `add_event_outbox_table` (what backs the [transactional outbox](background-jobs.md)), `add_api_keys_table`, `add_organizations_and_organization_memberships_tables`, `add_expires_at_to_organization_memberships`, and `add_description_to_organizations`.
 
 ## `env.example`'s `POSTGRES_*` variables
 

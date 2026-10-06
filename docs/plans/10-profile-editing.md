@@ -1,6 +1,6 @@
 # 10. Profile editing: descriptions, and editing users and organizations
 
-> **Status: planned, not started.** Sequenced after `docs/plans/9-organizations.md` completes. Private API (`/api/v1/...`, cookie auth) only; nothing here is exposed on the public API (see "Why not the public API" below).
+> **Status: planned, not started.** Sequenced after `docs/plans/9-organizations.md` completes. **Moved:** the organization part (story 4 and 5, the `Description` value object, the organization `description`, `UpdateOrganization` and its route) is now built in `docs/plans/9-organizations.md` Step 13. This plan keeps the user-profile part, and reuses that `Description` value object. Private API (`/api/v1/...`, cookie auth) only; nothing here is exposed on the public API (see "Why not the public API" below).
 
 ## Goal
 
@@ -34,7 +34,7 @@ Both entities gain an optional free-text **description**.
 
 ### A `Description` value object (designed first)
 
-Per `docs/plans/agents.md` 2.2, the value object comes before any entity field that holds it.
+Per `docs/plans/agents.md` 2.2, the value object comes before any entity field that holds it. **Built in plan 9, Step 13, with two refinements to the rules below:** 1 to 1000 characters (an empty description is `None` on the entity, never an empty value object), and carriage return allowed alongside tab and newline.
 
 - Rules: `core/common/value_objects/description.py`, the same normalize-then-validate shape as `Email` and `OrganizationName`:
   - trimmed

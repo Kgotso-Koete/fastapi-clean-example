@@ -10,6 +10,10 @@
     - [`src/app/core/common/value_objects/username.py`](../../../../src/app/core/common/value_objects/username.py) — `Username`
     - [`src/app/core/common/value_objects/raw_password.py`](../../../../src/app/core/common/value_objects/raw_password.py) — `RawPassword`
     - [`src/app/core/common/value_objects/utc_datetime.py`](../../../../src/app/core/common/value_objects/utc_datetime.py) — `UtcDatetime`
+    - [`src/app/core/common/entities/organization.py`](../../../../src/app/core/common/entities/organization.py) — the `Organization` entity and `OrganizationId`
+    - [`src/app/core/common/entities/organization_membership.py`](../../../../src/app/core/common/entities/organization_membership.py) — the `OrganizationMembership` entity, `OrganizationMembershipId` and `OrganizationRole`
+    - [`src/app/core/common/value_objects/organization_name.py`](../../../../src/app/core/common/value_objects/organization_name.py) — `OrganizationName`
+    - [`src/app/core/common/value_objects/description.py`](../../../../src/app/core/common/value_objects/description.py) — `Description`
     - [`src/app/core/common/events/domain_event.py`](../../../../src/app/core/common/events/domain_event.py) — the `DomainEvent` base class that `collect_events()` returns instances of
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
@@ -82,6 +86,8 @@ The intent, stated in the docstring, is a strict ordering: a use case mutates th
 | [`Username`](../../../../src/app/core/common/value_objects/username.py) | length bounds, allowed alphabet, no leading/trailing/consecutive specials | rejects `"..bad--name.."` |
 | [`RawPassword`](../../../../src/app/core/common/value_objects/raw_password.py) | minimum length, then encodes to `bytes` | never stored as plaintext beyond this object's lifetime |
 | [`UtcDatetime`](../../../../src/app/core/common/value_objects/utc_datetime.py) | rejects naive datetimes, normalizes any timezone to UTC (Coordinated Universal Time) | orderable via `@total_ordering` + `__lt__` |
+| [`OrganizationName`](../../../../src/app/core/common/value_objects/organization_name.py) | strips, 1 to 100 characters, ASCII letters/digits with single spaces, hyphens or underscores between them | `OrganizationName("  Midnight Suns ")` → stored as `"Midnight Suns"` |
+| [`Description`](../../../../src/app/core/common/value_objects/description.py) | strips, 1 to 1000 characters, any printable text plus tab/newline/carriage return; other control characters rejected | rejects `"   "` (blank) and `"Escape\x1b[31m"` |
 
 > Every one of these raises `BusinessTypeError` (not a generic `ValueError`) on invalid input — a domain-specific exception type that inbound adapters can catch and translate into an HTTP (Hypertext Transfer Protocol) 4xx, without the core layer knowing HTTP exists. That translation lives in the inbound layer, not here; see [Architecture → Inbound Layer](../architecture/inbound-layer.md).
 
@@ -89,7 +95,7 @@ The intent, stated in the docstring, is a strict ordering: a use case mutates th
 
 ## The `User` entity: composition in practice
 
-`User` is the one entity currently in this codebase, and it shows the pattern in full: an `id_` plus a mix of value objects and plain fields.
+`User` was this codebase's first entity, and it shows the pattern in full: an `id_` plus a mix of value objects and plain fields. The organization entities below follow the same pattern.
 
 !!! figure "User entity: fields and their types"
     ```mermaid
@@ -141,6 +147,46 @@ The intent, stated in the docstring, is a strict ordering: a use case mutates th
     > `User` (in [`user.py`](../../../../src/app/core/common/entities/user.py)) subclasses `Entity[UserId]` and composes four value objects (`Username`, `Email`, `PhoneNumber`, `UtcDatetime` used twice, for `created_at` and `updated_at`) plus two plain-typed fields that aren't value objects: `password_hash` (a `NewType`-tagged `bytes`, not a validated shape — validation of the *raw* password happens earlier, in `RawPassword`) and `role` (a plain `StrEnum`, `UserRole`, since role membership doesn't need the validate-and-normalize machinery a value object provides). `created_at` is deliberately read-only from outside — it's stored as `_created_at` and exposed only via a `@property` with no setter, since a user's creation timestamp should never change after construction, even though nothing at the `Entity`/`ValueObject` base-class level enforces that; it's a convention applied at the `User` class itself.
 
 `UserRole` also carries one small piece of business logic beyond being a plain enum: `is_system`, a property that's `True` only for `SUPER_ADMIN` — used elsewhere in the authorization code to keep the bootstrap superadmin role from being granted or revoked like an ordinary admin role.
+
+## The organization entities: `Organization` and `OrganizationMembership`
+
+Two entities make up the Organizations context — see [Core Patterns → Organizations (Multi-Tenancy)](../core-patterns/organizations.md) for the rules they serve.
+
+!!! figure "Organization and OrganizationMembership: fields and their types"
+    ```mermaid
+    classDiagram
+        class Organization {
+            +OrganizationId id_
+            +OrganizationName name
+            +Description description
+            +UserId created_by_user_id
+            +UtcDatetime created_at
+        }
+        class OrganizationMembership {
+            +OrganizationMembershipId id_
+            +OrganizationId organization_id
+            +UserId user_id
+            +OrganizationRole role
+            +UserId invited_by_user_id
+            +UtcDatetime created_at
+            +UtcDatetime accepted_at
+            +UtcDatetime expires_at
+            +is_accepted bool
+            +is_expired(now) bool
+            +accept(now)
+            +renew_invitation(role, invited_by_user_id, now, expires_at)
+        }
+        class OrganizationRole {
+            <<enumeration>>
+            OWNER
+            ADMIN
+            MEMBER
+        }
+        Organization "1" <-- "many" OrganizationMembership : organization_id
+        OrganizationMembership *-- OrganizationRole
+    ```
+
+    > `Organization` (in [`organization.py`](../../../../src/app/core/common/entities/organization.py)) composes two value objects, `OrganizationName` and `Description`, both mandatory, plus a plain `created_by_user_id` reference to Identity's `User`. It knows nothing about who belongs to it. That lives on `OrganizationMembership` (in [`organization_membership.py`](../../../../src/app/core/common/entities/organization_membership.py)), one row per (organization, user). A pending invitation and an accepted membership are the same row: `accepted_at` is `None` while it's pending, `expires_at` is `None` once it's accepted, and the constructor raises `InvalidMembershipExpiryError` unless exactly one of the two is set. `accepted_at` and `expires_at` are properties over plain nullable `datetime` attributes, not `composite()`-mapped value objects, for the reason given in [Database Models](database-models.md#the-organization-tables).
 
 ## Where to go next
 

@@ -10,6 +10,7 @@ from app.core.common.entities.types_ import UserId
 from app.core.common.factories.organization_id_factory import create_organization_id
 from app.core.common.factories.organization_membership_id_factory import create_organization_membership_id
 from app.core.common.services.user import UserService
+from app.core.common.value_objects.description import Description
 from app.core.common.value_objects.organization_name import OrganizationName
 from app.core.common.value_objects.utc_datetime import UtcDatetime
 from app.outbound.adapters.sqla_organization_repository import SqlaOrganizationRepository
@@ -34,6 +35,7 @@ def _build_organization(*, created_by_user_id: UserId, name: str = "Avengers") -
     return Organization(
         id_=create_organization_id(),
         name=OrganizationName(name),
+        description=Description("Earth's mightiest heroes."),
         created_by_user_id=created_by_user_id,
         created_at=UtcDatetime(datetime.now(UTC)),
     )
@@ -96,6 +98,9 @@ async def test_add_then_get_by_id_round_trips(
     # Read back from Postgres (expunge_all above) as the value object, not a
     # raw str -- proves the mapping wraps the column in OrganizationName.
     assert found.name == OrganizationName("Avengers")
+    # Same for the description: written to its own column, and wrapped back
+    # in Description on load.
+    assert found.description == Description("Earth's mightiest heroes.")
     assert found.created_by_user_id == user_id
     assert found.created_at == organization.created_at
 
@@ -257,6 +262,38 @@ async def test_count_owners_counts_only_accepted_owners_of_that_organization(
 
     assert count == 2
     assert other_count == 1
+
+
+@pytest.mark.asyncio
+async def test_count_owners_ignores_an_owner_whose_account_is_deactivated(
+    it_session: AsyncSession,
+    it_user_service: UserService,
+) -> None:
+    # Close-out Step 12 bug: a deactivated owner can't log in, so they
+    # can't run the organization. If they still counted, the last ACTIVE
+    # owner could leave or be demoted, and nobody could manage it again.
+    active_owner_id = await _persist_user(it_session, it_user_service)
+    deactivated_owner = create_user(it_user_service)
+    # Exactly the state a platform admin's DeactivateUser leaves behind.
+    deactivated_owner.is_active = False
+    it_session.add(deactivated_owner)
+    await it_session.commit()
+    sut = SqlaOrganizationRepository(it_session)
+    organization = await _persist_organization(it_session, sut, created_by_user_id=active_owner_id)
+    for user_id in (active_owner_id, deactivated_owner.id_):
+        sut.add_membership(
+            _build_membership(
+                organization_id=organization.id_,
+                user_id=user_id,
+                invited_by_user_id=active_owner_id,
+                role=OrganizationRole.OWNER,
+            )
+        )
+    await it_session.commit()
+
+    count = await sut.count_owners(organization.id_)
+
+    assert count == 1
 
 
 @pytest.mark.asyncio
@@ -470,3 +507,67 @@ async def test_delete_membership_removes_only_that_row_once_committed(
 
     assert await sut.get_membership_by_id(organization.id_, invitation.id_) is None
     assert await sut.get_membership_by_id(organization.id_, owner_membership.id_) is not None
+
+
+# ---------------------------------------------------------------------------
+# delete -- backs DeleteOrganization (Step 11)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_delete_removes_the_organization_and_cascades_to_all_its_memberships(
+    it_session: AsyncSession,
+    it_user_service: UserService,
+) -> None:
+    # delete() removes only the organization row; the database's ON DELETE
+    # CASCADE on organization_memberships.organization_id must take every
+    # membership with it -- accepted, pending AND expired -- while another
+    # organization's rows stay exactly as they were.
+    owner_id = await _persist_user(it_session, it_user_service)
+    invitee_id = await _persist_user(it_session, it_user_service)
+    lapsed_invitee_id = await _persist_user(it_session, it_user_service)
+    other_owner_id = await _persist_user(it_session, it_user_service)
+    sut = SqlaOrganizationRepository(it_session)
+    organization = await _persist_organization(it_session, sut, created_by_user_id=owner_id, name="Avengers")
+    other_organization = await _persist_organization(it_session, sut, created_by_user_id=other_owner_id, name="X-Men")
+    owner_membership = _build_membership(
+        organization_id=organization.id_,
+        user_id=owner_id,
+        invited_by_user_id=owner_id,
+        role=OrganizationRole.OWNER,
+    )
+    pending_invitation = _build_membership(
+        organization_id=organization.id_,
+        user_id=invitee_id,
+        invited_by_user_id=owner_id,
+        accepted=False,
+    )
+    expired_invitation = _build_membership(
+        organization_id=organization.id_,
+        user_id=lapsed_invitee_id,
+        invited_by_user_id=owner_id,
+        accepted=False,
+    )
+    # Push its expiry into the past, so all three membership states are here.
+    expired_invitation.expires_at = UtcDatetime(datetime.now(UTC) - timedelta(days=1))
+    other_membership = _build_membership(
+        organization_id=other_organization.id_,
+        user_id=other_owner_id,
+        invited_by_user_id=other_owner_id,
+        role=OrganizationRole.OWNER,
+    )
+    for membership in (owner_membership, pending_invitation, expired_invitation, other_membership):
+        sut.add_membership(membership)
+    await it_session.commit()
+
+    await sut.delete(organization)
+    await it_session.commit()
+    # Forget everything in memory, so every check below reads Postgres.
+    it_session.expunge_all()
+
+    assert await sut.get_by_id(organization.id_) is None
+    for membership in (owner_membership, pending_invitation, expired_invitation):
+        assert await sut.get_membership_by_id(organization.id_, membership.id_) is None
+    # The cascade stopped at the deleted organization.
+    assert await sut.get_by_id(other_organization.id_) is not None
+    assert await sut.get_membership_by_id(other_organization.id_, other_membership.id_) is not None

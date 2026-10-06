@@ -9,6 +9,7 @@ from app.core.common.entities.types_ import UserId
 from app.core.common.factories.organization_id_factory import create_organization_id
 from app.core.common.factories.organization_membership_id_factory import create_organization_membership_id
 from app.core.common.services.user import UserService
+from app.core.common.value_objects.description import Description
 from app.core.common.value_objects.organization_name import OrganizationName
 from app.core.common.value_objects.utc_datetime import UtcDatetime
 from app.outbound.adapters.sqla_membership_checker import SqlaMembershipChecker
@@ -36,6 +37,7 @@ async def _persist_organization(
     organization = Organization(
         id_=create_organization_id(),
         name=OrganizationName(name),
+        description=Description(f"The {name}."),
         created_by_user_id=created_by_user_id,
         created_at=UtcDatetime(datetime.now(UTC)),
     )

@@ -31,10 +31,10 @@ TODO:
 - [ ] Harden for production use: password policy, rate limiting, secrets management, TLS, backups, a real deploy pipeline, self-service password reset, email verification, and more — full prioritized backlog in `docs/plans/0-production-readiness-roadmap.md`
 - [x] Add an organizations/multi-tenancy bounded context (`Organization`/`OrganizationMembership`, `OWNER`/`ADMIN`/`MEMBER` roles, expiring invitations with an invitation email, shared membership-based authorization) — see `docs/plans/9-organizations.md`
 - [ ] Enforce Postgres Row-Level Security on organization-owned tables (needs the app to connect as a non-superuser database role first), sequenced before search and file storage -- see `docs/plans/0-production-readiness-roadmap.md`
-- [ ] Expose the read-only organization queries (list my organizations, list members, list my invitations) on the public API, after Organizations completes; organization writes stay off the public API until API keys can be scoped -- see `docs/plans/0-production-readiness-roadmap.md`
+- [x] Expose read-only organization queries (list my organizations, list members) on the public API with an API key; the invitation list and organization writes stay off the public API until API keys can be scoped -- see `docs/plans/0-production-readiness-roadmap.md`
 - [ ] Add scoped API keys (organization-scoped, read vs. write) -- the prerequisite for any organization write over the public API -- see `docs/plans/0-production-readiness-roadmap.md`
 - [ ] Add paginated user and organization text search (prefix/search-as-you-type and keyword) -- Postgres built-in full-text search by default, Elasticsearch optional -- not yet started, full design in `docs/plans/11-search.md`
-- [ ] Add profile editing on the private API: a `description` on users and organizations, self-service and admin user-profile editing, and organization name/description editing by OWNER/ADMIN -- not yet started, full design in `docs/plans/10-profile-editing.md`
+- [ ] Add profile editing on the private API: a `description` on users, and self-service and admin user-profile editing (organization name/description editing shipped with Organizations) -- not yet started, full design in `docs/plans/10-profile-editing.md`
 - [ ] Add file storage on the private API: image galleries on users and organizations and private documents (PDFs, images), local disk by default or any S3-compatible service (AWS S3, Cloudflare R2, MinIO) -- not yet started, full design in `docs/plans/12-file-storage.md`
 - [ ] Restructure into a modular monolith (one folder per bounded context — Users/Organizations/Notifications, possibly more) once there's more than one real bounded context — decided, not yet started, see `docs/plans/0-production-readiness-roadmap.md`
 - [ ] Add Sentry error tracking (automatic error grouping/fingerprinting, release correlation) alongside the existing Prometheus/Loki/Grafana stack and email alerting — not yet started, full design in `docs/plans/13-sentry-error-tracking.md`
@@ -117,7 +117,7 @@ Adminer is included in the docker-compose stack and starts automatically with `m
 - **Loki**: Log aggregation system that stores and indexes structured logs from all application containers. Enables powerful log querying and filtering via Grafana.
 - **Promtail**: Log agent that scrapes logs from Docker containers, parses them as JSON, and sends them to Loki for storage and indexing.
 
-`make upd` starts a local observability stack alongside the app and automatically opens the key dashboards in your browser:
+`make upd` starts a local observability stack alongside the app and automatically opens the key dashboards in your browser (`OPEN_DASHBOARDS` in `.secrets` picks which: a comma-separated list such as `docs,grafana,wiki`, or empty for none; `make open-dashboards` opens the same list on demand):
 
 **Key URLs for Developers:**
 - **Grafana Dashboards**: **http://localhost:3000** (login: `admin` / `admin`) - Main visualization interface with pre-configured dashboards for metrics and logs

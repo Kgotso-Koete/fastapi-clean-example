@@ -29,6 +29,7 @@ from app.core.common.events.domain_event import DomainEvent
 from app.core.common.events.organization_invitation_created import OrganizationInvitationCreatedEvent
 from app.core.common.factories.organization_id_factory import create_organization_id
 from app.core.common.ports.event_dispatcher import EventDispatcher
+from app.core.common.value_objects.description import Description
 from app.core.common.value_objects.organization_name import OrganizationName
 from app.core.common.value_objects.username import Username
 from app.core.common.value_objects.utc_datetime import UtcDatetime
@@ -78,6 +79,9 @@ class _FakeOrganizationRepository(OrganizationRepository):
 
     async def get_by_id(self, organization_id: OrganizationId) -> Organization | None:
         return self._organization
+
+    async def delete(self, organization: Organization) -> None:
+        raise NotImplementedError
 
     def add_membership(self, membership: OrganizationMembership) -> None:
         self.added_memberships.append(membership)
@@ -138,6 +142,7 @@ class _Harness:
         self.organization = Organization(
             id_=self.organization_id,
             name=OrganizationName("Avengers"),
+            description=Description("Earth's mightiest heroes."),
             created_by_user_id=self.caller.id_,
             created_at=_NOW,
         )

@@ -89,6 +89,7 @@ class SqlaOrganizationReader(OrganizationReader):
             select(
                 _organizations.c.id,
                 _organizations.c.name,
+                _organizations.c.description,
                 _organizations.c.created_at,
                 _memberships.c.role,
                 member_count.label("member_count"),
@@ -108,6 +109,7 @@ class SqlaOrganizationReader(OrganizationReader):
                 OrganizationQm(
                     id=row.id,
                     name=row.name,
+                    description=row.description,
                     role=row.role,
                     member_count=row.member_count,
                     created_at=row.created_at,
@@ -206,6 +208,7 @@ class SqlaOrganizationReader(OrganizationReader):
                 _memberships.c.id,
                 _memberships.c.organization_id,
                 _organizations.c.name.label("organization_name"),
+                _organizations.c.description.label("organization_description"),
                 _memberships.c.role,
                 inviter.c.username.label("invited_by_username"),
                 _memberships.c.created_at,
@@ -227,6 +230,7 @@ class SqlaOrganizationReader(OrganizationReader):
                     membership_id=row.id,
                     organization_id=row.organization_id,
                     organization_name=row.organization_name,
+                    organization_description=row.organization_description,
                     role=row.role,
                     invited_by_username=row.invited_by_username,
                     created_at=row.created_at,

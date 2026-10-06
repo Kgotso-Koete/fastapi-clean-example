@@ -27,7 +27,7 @@ INVITATIONS_ENDPOINT = f"{ORGANIZATIONS_ENDPOINT}invitations/"
 # --- GET /organizations/ (ListMyOrganizations) ---------------------------------
 
 
-async def test_list_my_organizations_returns_200_with_my_role_and_member_count(
+async def test_list_my_organizations_returns_200_with_the_description_my_role_and_member_count(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
     it_user_service: UserService,
@@ -49,6 +49,8 @@ async def test_list_my_organizations_returns_200_with_my_role_and_member_count(
     assert body["total"] == 1
     [organization] = body["organizations"]
     assert UUID(organization["id"]) == organization_id
+    # What create_organization_as describes every organization as.
+    assert organization["description"] == "Earth's mightiest heroes."
     assert organization["role"] == "member"
     # The owner and this member: two accepted memberships.
     assert organization["member_count"] == 2
@@ -63,7 +65,7 @@ async def test_list_my_organizations_returns_401_when_not_authenticated(it_clien
 # --- GET /organizations/invitations/ (ListMyInvitations) -----------------------
 
 
-async def test_list_my_invitations_returns_200_with_the_ids_the_accept_route_needs(
+async def test_list_my_invitations_returns_200_with_the_description_and_the_ids_the_accept_route_needs(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
     it_user_service: UserService,
@@ -82,6 +84,9 @@ async def test_list_my_invitations_returns_200_with_the_ids_the_accept_route_nee
     [invitation] = body["invitations"]
     assert UUID(invitation["organization_id"]) == organization_id
     assert UUID(invitation["membership_id"]) == membership_id
+    # What the invitee reads before deciding to accept -- the description
+    # create_organization_as gives every organization.
+    assert invitation["organization_description"] == "Earth's mightiest heroes."
     assert invitation["role"] == "admin"
     assert invitation["expires_at"] is not None
 

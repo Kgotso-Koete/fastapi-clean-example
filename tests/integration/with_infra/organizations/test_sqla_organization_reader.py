@@ -9,6 +9,7 @@ from app.core.common.entities.types_ import UserId
 from app.core.common.factories.organization_id_factory import create_organization_id
 from app.core.common.factories.organization_membership_id_factory import create_organization_membership_id
 from app.core.common.services.user import UserService
+from app.core.common.value_objects.description import Description
 from app.core.common.value_objects.organization_name import OrganizationName
 from app.core.common.value_objects.utc_datetime import UtcDatetime
 from app.core.queries.query_support.offset_pagination import OffsetPaginationParams
@@ -50,6 +51,7 @@ async def _persist_organization(
     organization = Organization(
         id_=create_organization_id(),
         name=OrganizationName(name),
+        description=Description(f"The {name}."),
         created_by_user_id=created_by_user_id,
         created_at=UtcDatetime(created_at or datetime.now(UTC)),
     )
@@ -120,7 +122,7 @@ async def test_list_for_user_returns_only_organizations_with_an_accepted_members
 
 
 @pytest.mark.asyncio
-async def test_list_for_user_includes_the_callers_role_and_member_count(
+async def test_list_for_user_includes_the_description_the_callers_role_and_member_count(
     it_session: AsyncSession,
     it_user_service: UserService,
 ) -> None:
@@ -158,6 +160,9 @@ async def test_list_for_user_includes_the_callers_role_and_member_count(
     assert len(result["organizations"]) == 1
     organization = result["organizations"][0]
     assert organization["id"] == org_a.id_
+    # Every organization explains itself, so the list carries it --
+    # _persist_organization describes org A as "The Avengers.".
+    assert organization["description"] == "The Avengers."
     assert organization["role"] == OrganizationRole.ADMIN
     # 3 accepted members (caller, member_2, member_3) -- the pending invite
     # and org B's owner don't count.
@@ -420,6 +425,9 @@ async def test_list_invitations_for_user_returns_only_the_callers_pending_invita
     assert row["membership_id"] == invitation.id_
     assert row["organization_id"] == org_a.id_
     assert row["organization_name"] == "Avengers"
+    # The invitee isn't a member yet, so this is where they learn what the
+    # organization is before deciding to accept.
+    assert row["organization_description"] == "The Avengers."
     assert row["role"] == OrganizationRole.ADMIN
     assert row["invited_by_username"] == "nick_fury"
 

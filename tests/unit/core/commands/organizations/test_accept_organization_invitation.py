@@ -55,6 +55,9 @@ class _FakeOrganizationRepository(OrganizationRepository):
     async def get_by_id(self, organization_id: OrganizationId) -> Organization | None:
         raise NotImplementedError
 
+    async def delete(self, organization: Organization) -> None:
+        raise NotImplementedError
+
     def add_membership(self, membership: OrganizationMembership) -> None:
         raise NotImplementedError
 

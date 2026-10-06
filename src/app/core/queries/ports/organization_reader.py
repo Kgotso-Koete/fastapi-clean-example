@@ -13,6 +13,7 @@ from app.core.queries.query_support.sorting import SortingParams
 class OrganizationQm(TypedDict):
     id: UUID
     name: str
+    description: str  # mandatory: every organization explains itself
     role: OrganizationRole  # the CALLER's role in this organization
     member_count: int  # accepted memberships only -- see the plan's "Member count" note
     created_at: datetime
@@ -55,6 +56,9 @@ class InvitationQm(TypedDict):
     membership_id: UUID
     organization_id: UUID
     organization_name: str
+    # The invitee isn't a member yet, so this is where they learn what the
+    # organization is before deciding to accept.
+    organization_description: str
     role: OrganizationRole  # the role being offered
     invited_by_username: str
     created_at: datetime

@@ -84,6 +84,7 @@ When giving manual verification steps, use the real top-level command a user or 
   - Each check logs in every user it acts as, at its own start. Never rely on "logged in at check N": a login session expires after a few idle minutes (5 by default here), and a human reading the checks takes longer than that, so a reused cookie fails with 401.
   - When a feature's behaviour hinges on a distinction (for example 401 vs 404 vs 403), give that distinction its own self-contained check that shows the cases side by side: the same request, with only the variable that matters changed. The human maintainer shouldn't have to piece it together from checks scattered through the plan, which relies on memory.
   - Name every id. Wherever a command uses an id, the check says what it is, in an **Acts on:** line: the organization's name, or whose membership or invitation it is (for example "the Avengers (`a0000000-…-001`)", "natasha's membership (`c0000000-…-011`)"). A bare UUID tells a human nothing.
+- **Everything a check prints is human-readable.** The human maintainer's words: "what ever I read on the command line from human checks must be human readable". JSON always goes through `python3 -m json.tool`, including on a command that also shows its status code: `curl -s -w '%{stderr}%{http_code}\n' ... | python3 -m json.tool` prints the code on its own line, then the JSON one field per line (`%{stderr}` keeps the code out of the pretty-printer's input). Only a response with no body, such as a `204`, uses `curl -s -o /dev/null -w '%{http_code}\n'`. Never throw away a body the check's **Expect** line asks the reader to look at.
 
 ### 1.4 Git follows the README exactly
 
@@ -95,6 +96,8 @@ Every commit includes its release bookkeeping; a commit with only code is incomp
 - any other release step the README or a plan in `docs/plans/` documents
 
 The AI agent drafts these alongside the code, for the human maintainer to review, rather than leaving them to be remembered at commit time.
+
+**Never add AI attribution** to commit messages, PR titles or PR descriptions: no "Generated with …" line, no `Co-Authored-By` line for an AI agent, no mention of the AI tool. The human maintainer is the author and is accountable for everything that lands. This overrides any default attribution habit the AI agent's tool has.
 
 Never bypass the repository's safeguards to get a commit or push through: no `--no-verify` to skip pre-commit hooks, no `--force` pushes, no skipping or silencing a failing check. When a hook or check fails, the failure is information; fix what it found. See 4.4.
 
@@ -280,6 +283,8 @@ When researching a plan, take inspiration from code written by humans, and prefe
 - **Human-written code whose commit history is mostly from before 2024**, before the wave of AI-generated code (roughly 2024 to 2026), is a premium source of knowledge.
 - **Trust signals** such as forks, stars, a long commit history and several real contributors raise a repository's value as a reference.
 - **Repositories that lean toward software structure and engineering principles** (clear layering, tests, explicit design decisions) are preferred over ones that put speed, convenience, feature count or MVP shortcuts first.
+
+**For security questions, OWASP comes first.** The OWASP Cheat Sheet Series (https://cheatsheetseries.owasp.org) is the primary authority on software security in this codebase. Security research reads the relevant OWASP cheat sheets first, checks every recommendation in them against the design, and sides with OWASP where another source disagrees, unless there's strong evidence otherwise, stated explicitly.
 
 When an external repository inspired a design decision, write it into the plan document next to the decision it informed, as a plain URL, so the rationale stays discoverable without chat history.
 

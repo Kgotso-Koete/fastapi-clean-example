@@ -12,6 +12,7 @@ from app.core.common.entities.organization_membership import (
 from app.core.common.entities.types_ import UserId
 from app.outbound.exceptions import StorageError
 from app.outbound.persistence_sqla.mappings.organization_membership import organization_memberships_table
+from app.outbound.persistence_sqla.mappings.user import users_table
 
 
 class SqlaOrganizationRepository(OrganizationRepository):
@@ -27,6 +28,17 @@ class SqlaOrganizationRepository(OrganizationRepository):
     async def get_by_id(self, organization_id: OrganizationId) -> Organization | None:
         try:
             return await self._session.get(Organization, organization_id)
+        except SQLAlchemyError as e:
+            raise StorageError from e
+
+    async def delete(self, organization: Organization) -> None:
+        # Staged like delete_membership(): the DELETE runs on the caller's
+        # commit. There's no SQLAlchemy relationship() to memberships, so this
+        # is the only statement sent -- Postgres's ON DELETE CASCADE on
+        # organization_memberships.organization_id removes every membership
+        # and invitation in the same statement.
+        try:
+            await self._session.delete(organization)
         except SQLAlchemyError as e:
             raise StorageError from e
 
@@ -88,13 +100,18 @@ class SqlaOrganizationRepository(OrganizationRepository):
 
     async def count_owners(self, organization_id: OrganizationId) -> int:
         # A plain read-only COUNT, like SqlaApiKeyRepository.count_active_for_user().
-        # accepted_at IS NOT NULL excludes pending OWNER invitations.
+        # accepted_at IS NOT NULL excludes pending OWNER invitations, and the
+        # join to users excludes owners whose account is deactivated: they
+        # can't log in, so they can't run the organization, and counting them
+        # would let the last ACTIVE owner leave or be demoted.
         stmt = (
             select(func.count())
             .select_from(organization_memberships_table)
+            .join(users_table, users_table.c.id == organization_memberships_table.c.user_id)
             .where(organization_memberships_table.c.organization_id == organization_id)
             .where(organization_memberships_table.c.role == OrganizationRole.OWNER)
             .where(organization_memberships_table.c.accepted_at.is_not(None))
+            .where(users_table.c.is_active.is_(True))
         )
         try:
             result = await self._session.execute(stmt)

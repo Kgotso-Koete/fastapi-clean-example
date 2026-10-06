@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] - 2026-10-07: Organizations close-out: delete, edit, mandatory description, public API reads
+
+### Added
+- **Deleting an organization:** `DeleteOrganization`, OWNER only, at `DELETE /api/v1/organizations/{organization_id}/` (`204`; an ADMIN or MEMBER gets `403`, an outsider `404`). `organization_memberships.organization_id` is `ON DELETE CASCADE`, so every membership and invitation goes in the same statement. New `OrganizationRepository.delete()`.
+- **Describing and renaming an organization:**
+  - A new `Description` value object (`src/app/core/common/value_objects/description.py`): trimmed, 1 to 1000 characters, line breaks and tabs allowed, other control characters rejected.
+  - `Organization.description` is mandatory (decided by the human maintainer: "Every org needs to explain itself to the user"). New migration `1a001c1d415f` (`add_description_to_organizations`) adds it as `NOT NULL`, with no backfill, since nothing is deployed yet.
+  - `UpdateOrganization`, ADMIN or higher, at `PATCH /api/v1/organizations/{organization_id}/`: a partial update of `name` and/or `description`. Both values are validated before either changes, and neither can be cleared.
+  - `ListMyOrganizations` returns each organization's `description`, and `ListMyInvitations` its `organization_description`, so an invitee knows what they're being asked to join.
+- **Organization reads on the public API:** `GET /public/v1/organizations/` and `GET /public/v1/organizations/{organization_id}/members/` (`src/app/inbound/http/public_api/organizations/`), authenticated by `X-API-Key`. They serve the same `ListMyOrganizations`/`ListOrganizationMembers` classes as the cookie routes, unchanged, and return the same JSON; `PublicApiProvider` gains `OrganizationReader`, `MembershipChecker`, `CurrentOrganizationService` and the two queries. Read-only on purpose: organization writes and `ListMyInvitations` stay on the cookie app until API keys can be scoped. Tests: `tests/integration/with_infra/api_keys/test_organization_reads.py`.
+- **Dev-only DB seeding:** every seeded API key now has a fixed id and raw value (for example `ak_seed-peter-parker-valid`), so human checks paste a key straight into an `X-API-Key` header; new seeded keys for `wade-wilson` (the outsider) and `matt-murdock` (a pending invitee). Every seeded organization has a description.
+- **Documentation:**
+  - `docs/plans/9-organizations.md`: the close-out Steps 11 to 15, each with its human checks, and a user story for the public API reads.
+  - Added `docs/plans/14-row-level-security.md`, the plan for enforcing Postgres Row-Level Security.
+  - Wiki: `core-patterns/organizations.md`, `core-patterns/public-api.md`, `api-reference.md`, the three Data Models pages and `infrastructure-services/database.md` now cover deleting, editing, the description, the active-owner rule and the public API reads; `database.md`'s stale table and migration counts were corrected.
+
+### Changed
+- **Breaking:** `POST /api/v1/organizations/` now requires a `description`: leaving it out is `422`, a blank one `400`.
+- **`make upd` dashboards:** a new `OPEN_DASHBOARDS` setting (`env.example`, read by the `Makefile` only) lists which dev dashboards to open, comma-separated, e.g. `docs,grafana,wiki`; empty opens none, and an unknown name is reported. `make open-dashboards` opens the same list. Every dashboard opens by default, as before.
+- **Human checks:** everything a check prints is human-readable (`docs/plans/agents.md` 1.3). Plan 9's commands print the status code on its own line, then the JSON through `python3 -m json.tool`, and no longer discard a response body the check asks you to read.
+- **Documentation:** `README.md`'s TODO checklist and `docs/plans/0-production-readiness-roadmap.md` mark the public API organization reads done, and move organization name and description editing out of the profile-editing item (`docs/plans/10-profile-editing.md`), which keeps the user-profile part.
+
+### Fixed
+- **The last-owner rule counted deactivated owners:** `SqlaOrganizationRepository.count_owners()` counted accepted OWNER rows without checking the account was active, so with one of two owners deactivated, the other could leave or be demoted, leaving an organization nobody could log in to run. It now counts only active accounts. Regression tests in `test_sqla_organization_repository.py` and `test_membership_management.py`.
+
 ## [0.16.0] - 2026-10-01: Organizations (multi-tenancy) bounded context
 
 ### Added

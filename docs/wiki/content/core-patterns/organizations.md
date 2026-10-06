@@ -1,12 +1,12 @@
 # Organizations (Multi-Tenancy)
 
 !!! sourcefiles "Relevant Source Files/Folders"
-    - [`src/app/core/common/entities/organization.py`](../../../../src/app/core/common/entities/organization.py) — `Organization`: a tenant boundary, deliberately minimal (a name and who created it)
+    - [`src/app/core/common/entities/organization.py`](../../../../src/app/core/common/entities/organization.py) — `Organization`: a tenant boundary, deliberately minimal (a name, a mandatory description, and who created it)
     - [`src/app/core/common/entities/organization_membership.py`](../../../../src/app/core/common/entities/organization_membership.py) — `OrganizationMembership` and `OrganizationRole` (`OWNER`/`ADMIN`/`MEMBER`): one row per (organization, user), pending or accepted
     - [`src/app/core/common/authorization/organization_ports.py`](../../../../src/app/core/common/authorization/organization_ports.py) — `MembershipChecker`, the one shared port every organization-scoped check depends on
     - [`src/app/core/common/authorization/organization_permissions.py`](../../../../src/app/core/common/authorization/organization_permissions.py) — `ORGANIZATION_ROLE_HIERARCHY` and `CanAccessOrganization`
     - [`src/app/core/common/authorization/current_organization_service.py`](../../../../src/app/core/common/authorization/current_organization_service.py) — `CurrentOrganizationService.require_role()`: "is the caller at least this role in this organization?"
-    - [`src/app/core/commands/`](../../../../src/app/core/commands/) — `create_organization.py`, `invite_organization_member.py`, `accept_organization_invitation.py`, `decline_organization_invitation.py`, `remove_organization_member.py`, `change_organization_member_role.py`, `organization_exceptions.py`
+    - [`src/app/core/commands/`](../../../../src/app/core/commands/) — `create_organization.py`, `update_organization.py`, `delete_organization.py`, `invite_organization_member.py`, `accept_organization_invitation.py`, `decline_organization_invitation.py`, `remove_organization_member.py`, `change_organization_member_role.py`, `organization_exceptions.py`
     - [`src/app/core/queries/`](../../../../src/app/core/queries/) — `list_my_organizations.py`, `list_organization_members.py`, `list_my_invitations.py`
     - [`src/app/core/common/events/organization_invitation_created.py`](../../../../src/app/core/common/events/organization_invitation_created.py) / [`handlers/send_organization_invitation_email.py`](../../../../src/app/core/common/events/handlers/send_organization_invitation_email.py) — the invitation email, as a background domain event
     - [`src/app/outbound/adapters/`](../../../../src/app/outbound/adapters/) — `sqla_organization_repository.py`, `sqla_organization_reader.py`, `sqla_membership_checker.py`
@@ -39,10 +39,12 @@ A platform role and an organization role are unrelated facts about the same acco
 Roles rank `OWNER` > `ADMIN` > `MEMBER`, and a higher role can do everything a lower one can (`ORGANIZATION_ROLE_HIERARCHY`).
 
 - **MEMBER:** see the organization and its member list, and leave it.
-- **ADMIN:** also invite people (as `MEMBER` or `ADMIN`), revoke pending invitations, remove members and admins, and change a non-owner's role.
-- **OWNER:** also invite or promote someone to `OWNER`, and remove or change another owner.
-- **Every organization always keeps at least one accepted OWNER.** Removing, demoting or leaving as the last owner fails with `LastOwnerError` (409). Ownership is handed over by promoting someone else first.
+- **ADMIN:** also edit the organization's name and description, invite people (as `MEMBER` or `ADMIN`), revoke pending invitations, remove members and admins, and change a non-owner's role.
+- **OWNER:** also invite or promote someone to `OWNER`, remove or change another owner, and delete the organization.
+- **Every organization always keeps at least one accepted, active OWNER.** Removing, demoting or leaving as the last owner fails with `LastOwnerError` (409). An owner whose account a platform admin has deactivated doesn't count, since they can't log in to run it. Ownership is handed over by promoting someone else first.
 - **Anyone logged in can create an organization,** and becomes its owner in the same transaction: an organization can never exist without one.
+- **Every organization explains itself.** The description is mandatory: trimmed, 1 to 1000 characters, line breaks and tabs allowed, other control characters rejected (the `Description` value object). It can be changed but never cleared. It's shown in the member's organization list and, as `organization_description`, in an invitee's invitation list, so they know what they're being asked to join.
+- **Deleting an organization deletes everything in it.** `organization_memberships.organization_id` is `ON DELETE CASCADE`, so the database removes every membership and invitation in the same statement.
 
 ## Outsiders get 404, not 403
 
@@ -104,13 +106,15 @@ Renewing an invitation was the first time this codebase recorded an event on an 
 
 ## Endpoints
 
-All under the private app, cookie-authenticated. The organizations routes aren't on the public API yet; see the roadmap.
+All under the private app, cookie-authenticated. The two lists `GET /api/v1/organizations/` and `GET .../{organization_id}/members/` are also on the public API, read-only, at `/public/v1/organizations/` with an `X-API-Key` (see [Public API](public-api.md#endpoints)); every write, and the invitation list, stays here.
 
 | Method + path | Interactor | Minimum role |
 |---|---|---|
-| `POST /api/v1/organizations/` | `CreateOrganization` | any logged-in user |
-| `GET /api/v1/organizations/` | `ListMyOrganizations` | none: only the caller's own accepted organizations, with their role and `member_count` |
-| `GET /api/v1/organizations/invitations/` | `ListMyInvitations` | none: the caller's own pending, unexpired invitations |
+| `POST /api/v1/organizations/` | `CreateOrganization` | any logged-in user; `name` and `description` both required |
+| `GET /api/v1/organizations/` | `ListMyOrganizations` | none: only the caller's own accepted organizations, with their description, role and `member_count` |
+| `GET /api/v1/organizations/invitations/` | `ListMyInvitations` | none: the caller's own pending, unexpired invitations, with the organization's name and description |
+| `PATCH /api/v1/organizations/{organization_id}/` | `UpdateOrganization` | ADMIN; a partial update of `name` and/or `description`, returning `200` with both |
+| `DELETE /api/v1/organizations/{organization_id}/` | `DeleteOrganization` | OWNER |
 | `POST /api/v1/organizations/{organization_id}/members/` | `InviteOrganizationMember` | ADMIN (OWNER to invite as owner) |
 | `GET /api/v1/organizations/{organization_id}/members/` | `ListOrganizationMembers` | MEMBER; usernames and roles only, never email or phone |
 | `POST /api/v1/organizations/{organization_id}/members/{membership_id}/accept/` | `AcceptOrganizationInvitation` | the invitee |
@@ -122,7 +126,7 @@ All under the private app, cookie-authenticated. The organizations routes aren't
 
 ## Not yet: Row-Level Security
 
-Scoping is enforced in the application layer today: every query filters by organization, and every organization-scoped use case calls `require_role()`. Postgres Row-Level Security, as a second layer so a forgotten filter can't leak another organization's rows, was proven feasible by a spike (`tests/integration/with_infra/organizations/test_rls_spike.py`) but isn't enforced yet. Two things block it: superusers bypass RLS, so the app must first connect as a separate non-superuser role, and the cross-organization queries need a user-keyed condition. It has its own roadmap entry, sequenced before search and file storage.
+Scoping is enforced in the application layer today: every query filters by organization, and every organization-scoped use case calls `require_role()`. Postgres Row-Level Security, as a second layer so a forgotten filter can't leak another organization's rows, was proven feasible by a spike (`tests/integration/with_infra/organizations/test_rls_spike.py`) but isn't enforced yet. Two things block it: superusers bypass RLS, so the app must first connect as a separate non-superuser role, and the cross-organization queries need a user-keyed condition. It has its own plan, `docs/plans/14-row-level-security.md`, sequenced before search and file storage.
 
 ## Testing
 
@@ -134,5 +138,5 @@ Scoping is enforced in the application layer today: every query filters by organ
 
 - [Authorization & RBAC](authorization-rbac.md) — the platform-role side, and the `Permission`/`authorize()` shape `CanAccessOrganization` follows.
 - [Domain Events & the Transactional Outbox](domain-events-outbox.md) — how the invitation email is delivered.
-- [Public API (Server-to-Server Clients)](public-api.md) — the API-key entrypoint organizations aren't on yet.
+- [Public API (Server-to-Server Clients)](public-api.md) — the API-key entrypoint, which serves the two organization lists read-only.
 - `docs/plans/9-organizations.md` — the complete implementation record and human checks.

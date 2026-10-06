@@ -12,6 +12,7 @@ from app.core.common.entities.organization import Organization
 from app.core.common.entities.organization_membership import OrganizationMembership, OrganizationRole
 from app.core.common.factories.organization_id_factory import create_organization_id
 from app.core.common.factories.organization_membership_id_factory import create_organization_membership_id
+from app.core.common.value_objects.description import Description
 from app.core.common.value_objects.organization_name import OrganizationName
 
 logger = logging.getLogger(__name__)
@@ -20,11 +21,13 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True, slots=True, kw_only=True)
 class CreateOrganizationRequest:
     name: str
+    description: str
 
 
 class CreateOrganizationResponse(TypedDict):
     id: UUID
     name: str
+    description: str
     created_at: datetime
 
 
@@ -56,13 +59,16 @@ class CreateOrganization:
         # AuthorizationError here, before anything else happens.
         current_user = await self._current_user_service.get_current_user()
         # Validated (and trimmed) BEFORE anything is staged -- an invalid
-        # name raises BusinessTypeError and leaves no partial write.
+        # name or description raises BusinessTypeError and leaves no
+        # partial write.
         name = OrganizationName(request.name)
+        description = Description(request.description)
         now = self._utc_timer.now
 
         organization = Organization(
             id_=create_organization_id(),
             name=name,
+            description=description,
             created_by_user_id=current_user.id_,
             created_at=now,
         )
@@ -88,5 +94,6 @@ class CreateOrganization:
         return CreateOrganizationResponse(
             id=organization.id_,
             name=organization.name.value,
+            description=organization.description.value,
             created_at=now.value,
         )
