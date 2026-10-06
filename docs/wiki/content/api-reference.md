@@ -5,7 +5,7 @@
     - [`src/app/main/run_public_api.py`](../../../src/app/main/run_public_api.py) — `make_app_with_public_api()`: mounts a second, always-docs-reachable FastAPI app at `/public` alongside `make_app()`'s own — the actual entrypoint `docker-entrypoint.sh` boots; see [Public API (Server-to-Server Clients)](core-patterns/public-api.md)
     - [`src/app/main/config/settings.py`](../../../src/app/main/config/settings.py) — `AppSettings` (`SERVICE_NAME`, `VERSION`, `ENVIRONMENT`, `ROOT_PATH`) — the values plugged into the constructor above
     - [`src/app/inbound/http/root_router.py`](../../../src/app/inbound/http/root_router.py) — mounts every router below `/`
-    - [`src/app/inbound/http/api_v1_router.py`](../../../src/app/inbound/http/api_v1_router.py) — mounts `account`/`users` under `/api/v1`
+    - [`src/app/inbound/http/api_v1_router.py`](../../../src/app/inbound/http/api_v1_router.py) — mounts `account`/`users`/`organizations` under `/api/v1` (the organization routes are listed in [Organizations (Multi-Tenancy)](core-patterns/organizations.md#endpoints))
     - [`src/app/inbound/http/errors/openapi_responses.py`](../../../src/app/inbound/http/errors/openapi_responses.py) — shared error-response schemas shown in the generated docs
     - [`docs/wiki/content/getting-started/quick-start-docker.md`](getting-started/quick-start-docker.md) / [`quick-start-local.md`](getting-started/quick-start-local.md) — the commands referenced below
 

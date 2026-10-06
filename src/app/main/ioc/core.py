@@ -10,6 +10,7 @@ from app.core.commands.create_organization import CreateOrganization
 from app.core.commands.create_user import CreateUser
 from app.core.commands.deactivate_user import DeactivateUser
 from app.core.commands.decline_organization_invitation import DeclineOrganizationInvitation
+from app.core.commands.delete_organization import DeleteOrganization
 from app.core.commands.grant_admin import GrantAdmin
 from app.core.commands.invite_organization_member import InviteOrganizationMember
 from app.core.commands.ports.flusher import Flusher
@@ -21,6 +22,7 @@ from app.core.commands.ports.utc_timer import UtcTimer
 from app.core.commands.remove_organization_member import RemoveOrganizationMember
 from app.core.commands.revoke_admin import RevokeAdmin
 from app.core.commands.set_user_password import SetUserPassword
+from app.core.commands.update_organization import UpdateOrganization
 from app.core.common.authorization.current_organization_service import CurrentOrganizationService
 from app.core.common.authorization.current_user_service import CurrentUserService
 from app.core.common.authorization.organization_ports import MembershipChecker
@@ -142,6 +144,10 @@ class CoreProvider(Provider):
     list_my_organizations = provide(ListMyOrganizations)
     list_my_invitations = provide(ListMyInvitations)
     list_organization_members = provide(ListOrganizationMembers)
+    # Deleting an organization (close-out, Step 11).
+    delete_organization = provide(DeleteOrganization)
+    # Renaming and describing an organization (close-out, Step 13).
+    update_organization = provide(UpdateOrganization)
 
     @provide
     def provide_invite_organization_member(

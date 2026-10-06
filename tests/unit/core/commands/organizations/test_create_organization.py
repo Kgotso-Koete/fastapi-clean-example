@@ -15,6 +15,7 @@ from app.core.common.entities.organization_membership import (
 )
 from app.core.common.entities.types_ import UserId
 from app.core.common.exceptions import BusinessTypeError
+from app.core.common.value_objects.description import Description
 from app.core.common.value_objects.organization_name import OrganizationName
 from app.core.common.value_objects.utc_datetime import UtcDatetime
 from tests.unit.core.commands.api_keys.factories import FakeTransactionManager, FakeUtcTimer
@@ -27,6 +28,8 @@ from tests.unit.core.common.authorization.factories import (
 from tests.unit.core.common.services.factories import create_user
 
 _NOW = UtcDatetime(datetime(2026, 6, 1, tzinfo=UTC))
+# Every organization must explain itself, so every request carries one.
+_DESCRIPTION = "Earth's mightiest heroes."
 
 
 class FakeOrganizationRepository(OrganizationRepository):
@@ -48,6 +51,9 @@ class FakeOrganizationRepository(OrganizationRepository):
         self.added.append(organization)
 
     async def get_by_id(self, organization_id: OrganizationId) -> Organization | None:
+        raise NotImplementedError
+
+    async def delete(self, organization: Organization) -> None:
         raise NotImplementedError
 
     def add_membership(self, membership: OrganizationMembership) -> None:
@@ -105,11 +111,12 @@ async def test_creates_the_organization_named_and_owned_by_the_current_user() ->
     repository = FakeOrganizationRepository()
     sut = _make_sut(current_user_service=create_current_user_service(user), organization_repository=repository)
 
-    await sut.execute(CreateOrganizationRequest(name="Avengers"))
+    await sut.execute(CreateOrganizationRequest(name="Avengers", description=_DESCRIPTION))
 
     assert len(repository.added) == 1
     organization = repository.added[0]
     assert organization.name == OrganizationName("Avengers")
+    assert organization.description == Description(_DESCRIPTION)
     assert organization.created_by_user_id == user.id_
     assert organization.created_at == _NOW
 
@@ -122,7 +129,7 @@ async def test_the_creator_becomes_an_accepted_owner_in_the_same_organization() 
     repository = FakeOrganizationRepository()
     sut = _make_sut(current_user_service=create_current_user_service(user), organization_repository=repository)
 
-    await sut.execute(CreateOrganizationRequest(name="Avengers"))
+    await sut.execute(CreateOrganizationRequest(name="Avengers", description=_DESCRIPTION))
 
     assert len(repository.added_memberships) == 1
     membership = repository.added_memberships[0]
@@ -146,22 +153,24 @@ async def test_organization_and_owner_membership_are_committed_together_once() -
         transaction_manager=_RecordingTransactionManager(log),
     )
 
-    await sut.execute(CreateOrganizationRequest(name="Avengers"))
+    await sut.execute(CreateOrganizationRequest(name="Avengers", description=_DESCRIPTION))
 
     assert log == ["add", "add_membership", "commit"]
 
 
 @pytest.mark.asyncio
-async def test_returns_the_new_organizations_id_name_and_created_at() -> None:
+async def test_returns_the_new_organizations_id_name_description_and_created_at() -> None:
     user = create_user()
     repository = FakeOrganizationRepository()
     sut = _make_sut(current_user_service=create_current_user_service(user), organization_repository=repository)
 
-    response = await sut.execute(CreateOrganizationRequest(name="  Avengers  "))
+    response = await sut.execute(CreateOrganizationRequest(name="  Avengers  ", description=f"  {_DESCRIPTION}\n"))
 
     assert response["id"] == repository.added[0].id_
-    # The response carries the normalized (trimmed) name, as stored.
+    # The response carries the normalized (trimmed) name and description,
+    # as stored.
     assert response["name"] == "Avengers"
+    assert response["description"] == _DESCRIPTION
     assert response["created_at"] == _NOW.value
 
 
@@ -184,17 +193,26 @@ async def test_an_unresolvable_current_user_creates_nothing() -> None:
     )
 
     with pytest.raises(AuthorizationError):
-        await sut.execute(CreateOrganizationRequest(name="Avengers"))
+        await sut.execute(CreateOrganizationRequest(name="Avengers", description=_DESCRIPTION))
 
     assert repository.added == []
     assert repository.added_memberships == []
     assert transaction_manager.commit_call_count == 0
 
 
+@pytest.mark.parametrize(
+    ("name", "description"),
+    [
+        # OrganizationName's own rules (tested in test_organization_name.py).
+        pytest.param("   ", _DESCRIPTION, id="blank_name"),
+        # Description's own rules (tested in test_description.py): mandatory,
+        # so a blank one is as invalid as a blank name.
+        pytest.param("Avengers", "   ", id="blank_description"),
+    ],
+)
 @pytest.mark.asyncio
-async def test_an_invalid_name_creates_nothing() -> None:
-    # OrganizationName's own rules (tested in test_organization_name.py)
-    # reject the name before anything is staged or committed.
+async def test_an_invalid_name_or_description_creates_nothing(name: str, description: str) -> None:
+    # Both are validated before anything is staged or committed.
     user = create_user()
     repository = FakeOrganizationRepository()
     transaction_manager = FakeTransactionManager()
@@ -205,7 +223,7 @@ async def test_an_invalid_name_creates_nothing() -> None:
     )
 
     with pytest.raises(BusinessTypeError):
-        await sut.execute(CreateOrganizationRequest(name="   "))
+        await sut.execute(CreateOrganizationRequest(name=name, description=description))
 
     assert repository.added == []
     assert repository.added_memberships == []

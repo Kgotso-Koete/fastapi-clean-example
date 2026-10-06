@@ -5,7 +5,9 @@ from app.core.commands.ports.api_key_repository import ApiKeyRepository
 from app.core.commands.ports.transaction_manager import TransactionManager
 from app.core.commands.ports.utc_timer import UtcTimer
 from app.core.commands.revoke_api_key import RevokeApiKey
+from app.core.common.authorization.current_organization_service import CurrentOrganizationService
 from app.core.common.authorization.current_user_service import CurrentUserService
+from app.core.common.authorization.organization_ports import MembershipChecker
 from app.core.common.authorization.ports import AuthzUserFinder
 from app.core.common.ports.access_revoker import AccessRevoker
 from app.core.common.ports.api_key_hasher import ApiKeyHasher
@@ -16,7 +18,10 @@ from app.core.common.services.user import UserService
 from app.core.queries.get_api_key_usage_stats import GetApiKeyUsageStats
 from app.core.queries.get_own_profile import GetOwnProfile
 from app.core.queries.list_api_keys import ListApiKeys
+from app.core.queries.list_my_organizations import ListMyOrganizations
+from app.core.queries.list_organization_members import ListOrganizationMembers
 from app.core.queries.ports.api_key_reader import ApiKeyReader
+from app.core.queries.ports.organization_reader import OrganizationReader
 from app.main.config.settings import ApiKeySettings, PasswordHasherSettings
 from app.main.ioc.outbound import HasherThreadPoolProvider, PersistenceSqlaProvider, RequestProvider
 from app.outbound.adapters.api_key_access_revoker import ApiKeyAccessRevoker
@@ -29,6 +34,8 @@ from app.outbound.adapters.bcrypt_password_hasher import (
 from app.outbound.adapters.hmac_sha256_api_key_hasher import HmacSha256ApiKeyHasher
 from app.outbound.adapters.sqla_api_key_reader import SqlaApiKeyReader
 from app.outbound.adapters.sqla_api_key_repository import SqlaApiKeyRepository
+from app.outbound.adapters.sqla_membership_checker import SqlaMembershipChecker
+from app.outbound.adapters.sqla_organization_reader import SqlaOrganizationReader
 from app.outbound.adapters.sqla_transaction_manager import SqlaTransactionManager
 from app.outbound.adapters.sqla_user_finder import SqlaUserFinder
 from app.outbound.adapters.sqla_user_tx_storage import SqlaUserTxStorage
@@ -142,6 +149,17 @@ class PublicApiProvider(Provider):
 
     # Entrypoint-agnostic -- also bound, unmodified, into CoreProvider.
     get_own_profile = provide(GetOwnProfile)
+
+    # Organizations, read-only (docs/plans/9-organizations.md, Step 15).
+    # The same bindings as CoreProvider's, so the same query classes serve
+    # both apps; only IdentityProvider above differs. No OrganizationRepository
+    # and no organization command: writes stay off the public API until API
+    # keys can be scoped.
+    organization_reader = provide(SqlaOrganizationReader, provides=OrganizationReader)
+    membership_checker = provide(SqlaMembershipChecker, provides=MembershipChecker)
+    current_organization_service = provide(CurrentOrganizationService)
+    list_my_organizations = provide(ListMyOrganizations)
+    list_organization_members = provide(ListOrganizationMembers)
 
 
 def get_public_api_providers() -> tuple[Provider, ...]:

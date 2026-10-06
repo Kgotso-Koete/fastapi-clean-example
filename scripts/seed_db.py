@@ -40,7 +40,7 @@ import asgi_lifespan
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.core.common.entities.api_key import ApiKey
+from app.core.common.entities.api_key import ApiKey, ApiKeyId
 from app.core.common.entities.organization import Organization, OrganizationId
 from app.core.common.entities.organization_membership import (
     OrganizationMembership,
@@ -48,11 +48,10 @@ from app.core.common.entities.organization_membership import (
     OrganizationRole,
 )
 from app.core.common.entities.types_ import UserId, UserRole
-from app.core.common.factories.api_key_id_factory import create_api_key_id
 from app.core.common.factories.id_factory import create_user_id
 from app.core.common.factories.organization_membership_id_factory import create_organization_membership_id
-from app.core.common.factories.raw_api_key_factory import generate_raw_api_key
 from app.core.common.services.user import UserService
+from app.core.common.value_objects.description import Description
 from app.core.common.value_objects.email import Email
 from app.core.common.value_objects.organization_name import OrganizationName
 from app.core.common.value_objects.phone_number import PhoneNumber
@@ -117,19 +116,72 @@ class SeedApiKey:
     username: str  # must match a SeedUser.username above
     label: str
     is_expired: bool
+    # A FIXED id and raw key (not generated), like SeedOrganization's ids, so
+    # the human checks in docs/plans/9-organizations.md can paste a key
+    # straight into an X-API-Key header. Only the hash is stored, as for any
+    # key; publicly known values are fine here for the same reason as
+    # SEED_USERS' plaintext passwords: seeding never runs in production.
+    id: UUID
+    raw_key: str
 
 
-# 3 valid, 2 already expired -- exercises both the "key works" and "key
+# 5 valid, 2 already expired -- exercises both the "key works" and "key
 # expired" paths in the public API without anyone having to issue a key by
 # hand first. Raw keys are shown exactly once, so they're logged below at
 # seeding time (see _seed_api_key) -- fine for dev-only fixture data, same
 # reasoning as SEED_USERS' plaintext passwords above.
+# wade-wilson's key is the outsider's (he belongs to no organization), and
+# matt-murdock's is a pending invitee's (X-Men), for the Step 15 checks.
 SEED_API_KEYS: list[SeedApiKey] = [
-    SeedApiKey("peter-parker", "Spider-Sense Dev Key", is_expired=False),
-    SeedApiKey("tony-stark", "Stark Industries CI Key", is_expired=False),
-    SeedApiKey("natasha-romanoff", "SHIELD Field Ops Key", is_expired=False),
-    SeedApiKey("diana-prince", "Themyscira Legacy Key", is_expired=True),
-    SeedApiKey("bruce-wayne", "Wayne Enterprises Night Key", is_expired=True),
+    SeedApiKey(
+        "peter-parker",
+        "Spider-Sense Dev Key",
+        is_expired=False,
+        id=UUID("d0000000-0000-4000-8000-000000000001"),
+        raw_key="ak_seed-peter-parker-valid",
+    ),
+    SeedApiKey(
+        "tony-stark",
+        "Stark Industries CI Key",
+        is_expired=False,
+        id=UUID("d0000000-0000-4000-8000-000000000002"),
+        raw_key="ak_seed-tony-stark-valid",
+    ),
+    SeedApiKey(
+        "natasha-romanoff",
+        "SHIELD Field Ops Key",
+        is_expired=False,
+        id=UUID("d0000000-0000-4000-8000-000000000003"),
+        raw_key="ak_seed-natasha-romanoff-valid",
+    ),
+    SeedApiKey(
+        "diana-prince",
+        "Themyscira Legacy Key",
+        is_expired=True,
+        id=UUID("d0000000-0000-4000-8000-000000000004"),
+        raw_key="ak_seed-diana-prince-expired",
+    ),
+    SeedApiKey(
+        "bruce-wayne",
+        "Wayne Enterprises Night Key",
+        is_expired=True,
+        id=UUID("d0000000-0000-4000-8000-000000000005"),
+        raw_key="ak_seed-bruce-wayne-expired",
+    ),
+    SeedApiKey(
+        "wade-wilson",
+        "Merc With A Mouth Key",
+        is_expired=False,
+        id=UUID("d0000000-0000-4000-8000-000000000006"),
+        raw_key="ak_seed-wade-wilson-valid",
+    ),
+    SeedApiKey(
+        "matt-murdock",
+        "Nelson and Murdock Key",
+        is_expired=False,
+        id=UUID("d0000000-0000-4000-8000-000000000007"),
+        raw_key="ak_seed-matt-murdock-valid",
+    ),
 ]
 
 
@@ -139,6 +191,8 @@ class SeedOrganization:
     # docs/plans/9-organizations.md can use copy-pasteable curl commands.
     id: UUID
     name: str
+    # Mandatory, as for every organization: what invitees read about it.
+    description: str
     owner_username: str  # must match a SeedUser.username above
     # The owner's own membership row, also fixed, so the Step 7 human checks
     # (the last owner can't leave or be demoted) can name it in a curl.
@@ -167,10 +221,34 @@ SEED_ORG_DAILY_BUGLE = UUID("a0000000-0000-4000-8000-000000000004")
 # Each owner becomes that organization's accepted OWNER automatically (as
 # CreateOrganization does), so owners are not repeated in SEED_MEMBERSHIPS.
 SEED_ORGANIZATIONS: list[SeedOrganization] = [
-    SeedOrganization(SEED_ORG_AVENGERS, "Avengers", "tony-stark", UUID("c0000000-0000-4000-8000-000000000001")),
-    SeedOrganization(SEED_ORG_X_MEN, "X-Men", "charles-xavier", UUID("c0000000-0000-4000-8000-000000000002")),
-    SeedOrganization(SEED_ORG_DEFENDERS, "Defenders", "jessica-jones", UUID("c0000000-0000-4000-8000-000000000003")),
-    SeedOrganization(SEED_ORG_DAILY_BUGLE, "Daily Bugle", "peter-parker", UUID("c0000000-0000-4000-8000-000000000004")),
+    SeedOrganization(
+        SEED_ORG_AVENGERS,
+        "Avengers",
+        "Earth's mightiest heroes.",
+        "tony-stark",
+        UUID("c0000000-0000-4000-8000-000000000001"),
+    ),
+    SeedOrganization(
+        SEED_ORG_X_MEN,
+        "X-Men",
+        "Mutants sworn to protect a world that fears and hates them.",
+        "charles-xavier",
+        UUID("c0000000-0000-4000-8000-000000000002"),
+    ),
+    SeedOrganization(
+        SEED_ORG_DEFENDERS,
+        "Defenders",
+        "Street-level heroes keeping Hell's Kitchen safe.",
+        "jessica-jones",
+        UUID("c0000000-0000-4000-8000-000000000003"),
+    ),
+    SeedOrganization(
+        SEED_ORG_DAILY_BUGLE,
+        "Daily Bugle",
+        "New York's finest tabloid newspaper.",
+        "peter-parker",
+        UUID("c0000000-0000-4000-8000-000000000004"),
+    ),
 ]
 
 # Covers every state the invitation routes can reach:
@@ -282,9 +360,9 @@ async def _seed_api_key(
     # knows which user it's minting for.
     now = UtcDatetime(datetime.now(UTC))
     expires_at = UtcDatetime(now.value + timedelta(days=-1 if seed.is_expired else 30))
-    raw_key = generate_raw_api_key()
+    raw_key = seed.raw_key
     api_key = ApiKey(
-        id_=create_api_key_id(),
+        id_=ApiKeyId(seed.id),
         user_id=user_id,
         key_hash=api_key_hasher.hash(raw_key),
         key_prefix=raw_key[:11],
@@ -321,6 +399,7 @@ async def _seed_organization(
         Organization(
             id_=OrganizationId(seed.id),
             name=OrganizationName(seed.name),
+            description=Description(seed.description),
             created_by_user_id=owner_id,
             created_at=now,
         )

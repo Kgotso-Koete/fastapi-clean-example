@@ -19,6 +19,16 @@ PROJECT_NAME ?= $(or $(shell grep -h '^APP_SERVICE_NAME=' env.example .secrets 2
 # Same read pattern as PROJECT_NAME above -- used to skip open-dashboards
 # (see `upd` below) when this isn't a dev deployment.
 ENVIRONMENT ?= $(or $(shell grep -h '^ENVIRONMENT=' env.example .secrets 2>/dev/null | tail -1 | cut -d= -f2),development)
+# Every dashboard `open-dashboards` knows, by name; each name's URL is the
+# DASHBOARD_URL_<name> variable defined below the port variables.
+DASHBOARDS := docs public-docs adminer coverage coverage-docker grafana prometheus metrics flower redis-commander wiki
+# Which of DASHBOARDS to open, as a comma-separated list (env files have no
+# arrays): e.g. "docs,grafana,wiki". An EMPTY value means none, so this
+# can't use the $(or ...) fallback above, which treats empty as unset:
+# it falls back to every dashboard only when no OPEN_DASHBOARDS line exists
+# at all in env.example/.secrets.
+OPEN_DASHBOARDS ?= $(shell line=$$(grep -h '^OPEN_DASHBOARDS=' env.example .secrets 2>/dev/null | tail -1); \
+	if [ -n "$$line" ]; then echo "$${line#*=}"; else echo "$(DASHBOARDS)"; fi)
 # Same read pattern again -- so `make wiki` (plain `mkdocs serve`, no Docker)
 # serves on the same port as the `wiki` Compose service, instead of
 # mkdocs' own default (8000, which collides with `app`'s host port during
@@ -34,6 +44,21 @@ GRAFANA_PORT ?= $(or $(shell grep -h '^GRAFANA_PORT=' env.example .secrets 2>/de
 PROMETHEUS_PORT ?= $(or $(shell grep -h '^PROMETHEUS_PORT=' env.example .secrets 2>/dev/null | tail -1 | cut -d= -f2),9090)
 FLOWER_PORT ?= $(or $(shell grep -h '^FLOWER_PORT=' env.example .secrets 2>/dev/null | tail -1 | cut -d= -f2),5555)
 REDIS_COMMANDER_PORT ?= $(or $(shell grep -h '^REDIS_COMMANDER_PORT=' env.example .secrets 2>/dev/null | tail -1 | cut -d= -f2),8081)
+# One URL per name in DASHBOARDS (see OPEN_DASHBOARDS above).
+DASHBOARD_URL_docs := http://127.0.0.1:$(UVICORN_PORT)/docs
+DASHBOARD_URL_public-docs := http://127.0.0.1:$(UVICORN_PORT)/public/docs
+DASHBOARD_URL_adminer := http://localhost:$(ADMINER_PORT)
+DASHBOARD_URL_coverage := http://127.0.0.1:5500/htmlcov/index.html
+DASHBOARD_URL_coverage-docker := http://127.0.0.1:5500/htmlcov-docker/index.html
+DASHBOARD_URL_grafana := http://localhost:$(GRAFANA_PORT)
+DASHBOARD_URL_prometheus := http://localhost:$(PROMETHEUS_PORT)
+DASHBOARD_URL_metrics := http://localhost:$(UVICORN_PORT)/metrics
+DASHBOARD_URL_flower := http://localhost:$(FLOWER_PORT)
+DASHBOARD_URL_redis-commander := http://localhost:$(REDIS_COMMANDER_PORT)
+DASHBOARD_URL_wiki := http://localhost:$(WIKI_PORT)
+# OPEN_DASHBOARDS as a space-separated list, so $(foreach) can walk it.
+COMMA := ,
+OPEN_DASHBOARD_LIST := $(strip $(subst $(COMMA), ,$(OPEN_DASHBOARDS)))
 INFRA_SERVICES ?= db_pg redis
 INFRA_INIT_SERVICES ?=
 MIGRATION_DB_SERVICE ?= db_pg
@@ -152,25 +177,19 @@ local-env:
 
 upd: docker-env
 	$(DOCKER_COMPOSE) up -d --build --force-recreate
-	if [ "$(ENVIRONMENT)" = "development" ]; then $(MAKE) open-dashboards; fi
+	if [ "$(ENVIRONMENT)" = "development" ] && [ -n "$(OPEN_DASHBOARD_LIST)" ]; then $(MAKE) open-dashboards; fi
 
 up: docker-env
 	$(DOCKER_COMPOSE) up --build --force-recreate
 
+# Opens each dashboard named in OPEN_DASHBOARDS, in its listed order. An
+# unknown name is reported, with the valid names, rather than silently
+# skipped, so a typo is visible.
 open-dashboards:
-	@echo "Opening dashboards in browser..."
+	@if [ -z "$(OPEN_DASHBOARD_LIST)" ]; then echo "OPEN_DASHBOARDS is empty: no dashboards to open."; exit 0; fi
+	@echo "Opening dashboards in browser: $(OPEN_DASHBOARD_LIST)"
 	@sleep 2
-	@xdg-open http://127.0.0.1:$(UVICORN_PORT)/docs >/dev/null 2>&1 || true
-	@xdg-open http://127.0.0.1:$(UVICORN_PORT)/public/docs >/dev/null 2>&1 || true
-	@xdg-open http://localhost:$(ADMINER_PORT) >/dev/null 2>&1 || true
-	@xdg-open http://127.0.0.1:5500/htmlcov/index.html >/dev/null 2>&1 || true
-	@xdg-open http://127.0.0.1:5500/htmlcov-docker/index.html >/dev/null 2>&1 || true
-	@xdg-open http://localhost:$(GRAFANA_PORT) >/dev/null 2>&1 || true
-	@xdg-open http://localhost:$(PROMETHEUS_PORT) >/dev/null 2>&1 || true
-	@xdg-open http://localhost:$(UVICORN_PORT)/metrics >/dev/null 2>&1 || true
-	@xdg-open http://localhost:$(FLOWER_PORT) >/dev/null 2>&1 || true
-	@xdg-open http://localhost:$(REDIS_COMMANDER_PORT) >/dev/null 2>&1 || true
-	@xdg-open http://localhost:$(WIKI_PORT) >/dev/null 2>&1 || true
+	@$(foreach d,$(OPEN_DASHBOARD_LIST),$(if $(DASHBOARD_URL_$(d)),xdg-open $(DASHBOARD_URL_$(d)) >/dev/null 2>&1 || true;,echo "Unknown dashboard '$(d)', skipped. Known: $(DASHBOARDS)";)) true
 
 upd-local: local-env
 	$(DOCKER_COMPOSE) up -d --build --force-recreate $(INFRA_SERVICES) $(INFRA_INIT_SERVICES)

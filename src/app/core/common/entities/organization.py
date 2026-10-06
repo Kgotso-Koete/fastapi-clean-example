@@ -3,6 +3,7 @@ from uuid import UUID
 
 from app.core.common.entities.base import Entity
 from app.core.common.entities.types_ import UserId
+from app.core.common.value_objects.description import Description
 from app.core.common.value_objects.organization_name import OrganizationName
 from app.core.common.value_objects.utc_datetime import UtcDatetime
 
@@ -28,11 +29,15 @@ class Organization(Entity[OrganizationId]):
         *,
         id_: OrganizationId,
         name: OrganizationName,
+        description: Description,
         created_by_user_id: UserId,
         created_at: UtcDatetime,
     ) -> None:
         super().__init__(id_=id_)
         self.name = name
+        # Mandatory: every organization explains itself to the people it
+        # invites, so there is no "no description" state to model.
+        self.description = description
         # A plain foreign reference to Identity's User, the same kind of
         # reference ApiKey.user_id is -- Organizations depends on Identity,
         # never the other way round.

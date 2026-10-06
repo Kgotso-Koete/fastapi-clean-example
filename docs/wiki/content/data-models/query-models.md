@@ -8,6 +8,8 @@
     - [`src/app/core/queries/ports/user_reader.py`](../../../../src/app/core/queries/ports/user_reader.py) — the `UserReader` port and `ListUsersQm`, which return/compose `UserQm`
     - [`src/app/core/queries/list_users.py`](../../../../src/app/core/queries/list_users.py) — the use case that consumes these models
     - [`src/app/outbound/adapters/sqla_user_reader.py`](../../../../src/app/outbound/adapters/sqla_user_reader.py) — the adapter that actually builds `UserQm` instances from SQL (Structured Query Language) rows
+    - [`src/app/core/queries/ports/organization_reader.py`](../../../../src/app/core/queries/ports/organization_reader.py) — the `OrganizationReader` port and the organization query models: `OrganizationQm`, `OrganizationMemberQm`, `InvitationQm` and their `List*Qm` pages
+    - [`src/app/outbound/adapters/sqla_organization_reader.py`](../../../../src/app/outbound/adapters/sqla_organization_reader.py) — the adapter that builds them
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
 
@@ -89,6 +91,18 @@ This is also why the query side is flatter than the command side: a single `List
 `SortingParams` ([`sorting.py`](../../../../src/app/core/queries/query_support/sorting.py)) is even simpler: a `field: str` plus an `order: SortingOrder` (`ASC`/`DESC`, i.e. ascending/descending, `StrEnum`). Notice `field` is a plain `str`, not a `StrEnum` — the *set* of valid sortable fields (`UserSortingField` in [`list_users.py`](../../../../src/app/core/queries/list_users.py)) is defined at the use-case layer, one level up, and `SortingParams` itself stays generic enough to be reused by a future query that sorts something other than users. Validity of the field name against the real table is actually enforced one layer further out still, in [`SqlaUserReader.list_users`](../../../../src/app/outbound/adapters/sqla_user_reader.py) (`users_table.c.get(sorting.field)` returning `None` raises `SortingError`) — a case of the same validation responsibility (`SortingError`) being enforced at the adapter, since only the adapter actually knows which columns exist on the real table.
 
 Both params objects are assembled inside a use case's `execute()` (see `ListUsers.execute` in [`list_users.py`](../../../../src/app/core/queries/list_users.py)) from a `ListUsersRequest`, then passed straight through the `UserReader` port — see [Core Patterns → Ports and Adapters](../core-patterns/ports-and-adapters.md) for what a port/adapter pair actually is — to whatever adapter implements it. The result, `ListUsersQm` (a `TypedDict` in [`ports/user_reader.py`](../../../../src/app/core/queries/ports/user_reader.py)), bundles the page of `UserQm` results together with `total`/`limit`/`offset` — everything an inbound HTTP handler needs to also emit pagination metadata, without a second round trip.
+
+## The organization query models
+
+The Organizations context's read side ([`organization_reader.py`](../../../../src/app/core/queries/ports/organization_reader.py)) uses `TypedDict`s rather than a dataclass, but follows the same rules: plain types, no behavior, built straight from SQL rows by [`SqlaOrganizationReader`](../../../../src/app/outbound/adapters/sqla_organization_reader.py). Each is shaped for one caller:
+
+| Query model | Returned by | Fields | Shaped for |
+|---|---|---|---|
+| `OrganizationQm` | `ListMyOrganizations` | `id`, `name`, `description`, `role`, `member_count`, `created_at` | a member: `role` is the *caller's* own role, and `member_count` counts accepted memberships only |
+| `OrganizationMemberQm` | `ListOrganizationMembers` | `membership_id`, `username`, `role`, `accepted_at`, `expires_at`, `created_at` | any member of the organization, so `username` is the only personal detail; email and phone number are never selected |
+| `InvitationQm` | `ListMyInvitations` | `membership_id`, `organization_id`, `organization_name`, `organization_description`, `role`, `invited_by_username`, `created_at`, `expires_at` | an invitee who isn't a member yet: the two ids are exactly what the accept and decline routes need, and the description says what they're being asked to join |
+
+Each comes wrapped in a `List*Qm` page with `total`, `limit` and `offset`. `ListOrganizationMembersQm` also carries `member_count`, which counts accepted members while `total` counts every listed row, pending invitations included; the two differ on purpose.
 
 ## Where to go next
 

@@ -4,6 +4,7 @@ import httpx2
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.common.entities.organization_membership import OrganizationRole
+from app.core.common.entities.user import User
 from app.core.common.services.user import UserService
 from tests.integration.with_infra.organizations.helpers import (
     add_membership,
@@ -72,6 +73,33 @@ async def test_remove_returns_409_when_the_last_owner_tries_to_leave(
     owner = await new_account(it_session, it_user_service)
     organization_id = await create_organization_as(it_client, owner)
     owner_membership_id = await find_membership_id_for_user(it_session, organization_id, owner.user_id)
+
+    r = await it_client.delete(member_url(organization_id, owner_membership_id))
+
+    assert r.status_code == 409
+    assert "The organization's last owner cannot be removed or demoted." in r.text
+    assert await find_membership(it_session, owner_membership_id) is not None
+
+
+async def test_remove_returns_409_when_the_only_other_owner_is_deactivated(
+    it_client: httpx2.AsyncClient,
+    it_session: AsyncSession,
+    it_user_service: UserService,
+) -> None:
+    # Two OWNER rows, but one belongs to an account a platform admin has
+    # deactivated -- it can't log in, so it can't run the organization. The
+    # active owner is therefore the LAST real owner and mustn't be able to
+    # leave, or the organization is left with nobody able to manage it.
+    owner = await new_account(it_session, it_user_service)
+    deactivated_owner = await new_account(it_session, it_user_service)
+    organization_id = await create_organization_as(it_client, owner)
+    await add_membership(it_session, organization_id, deactivated_owner, OrganizationRole.OWNER)
+    deactivated = await it_session.get(User, deactivated_owner.user_id)
+    assert deactivated is not None
+    deactivated.is_active = False
+    await it_session.commit()
+    owner_membership_id = await find_membership_id_for_user(it_session, organization_id, owner.user_id)
+    # create_organization_as() leaves the active owner logged in.
 
     r = await it_client.delete(member_url(organization_id, owner_membership_id))
 

@@ -32,7 +32,8 @@ def make_create_organization_router() -> APIRouter:
             StorageError: HTTP_503_SERVICE_UNAVAILABLE_RULE,
             # An unknown/inactive current user (CurrentUserService).
             AuthorizationError: status.HTTP_403_FORBIDDEN,
-            # OrganizationName's rules -- blank, disallowed characters, etc.
+            # OrganizationName's or Description's rules -- blank, disallowed
+            # characters, etc.
             BusinessTypeError: status.HTTP_400_BAD_REQUEST,
         },
         status_code=status.HTTP_201_CREATED,

@@ -8,6 +8,7 @@ from app.core.common.entities.organization import Organization
 from app.core.common.entities.organization_membership import OrganizationRole
 from app.core.common.factories.organization_id_factory import create_organization_id
 from app.core.common.services.user import UserService
+from app.core.common.value_objects.description import Description
 from app.core.common.value_objects.organization_name import OrganizationName
 from app.core.common.value_objects.utc_datetime import UtcDatetime
 from tests.integration.with_infra.organizations.helpers import Account, add_membership, new_account
@@ -33,6 +34,7 @@ async def _persist_organization(it_session: AsyncSession, owner: Account, name: 
     organization = Organization(
         id_=create_organization_id(),
         name=OrganizationName(name),
+        description=Description(f"The {name}."),
         created_by_user_id=owner.user_id,
         created_at=UtcDatetime(datetime.now(UTC)),
     )

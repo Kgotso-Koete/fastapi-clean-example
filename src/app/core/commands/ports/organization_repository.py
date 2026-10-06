@@ -16,6 +16,15 @@ class OrganizationRepository(Protocol):
     async def get_by_id(self, organization_id: OrganizationId) -> Organization | None: ...
 
     @abstractmethod
+    async def delete(self, organization: Organization) -> None:
+        """Staged like delete_membership(): the row is only gone once the
+        caller commits. Deletes the organization row ONLY -- its memberships
+        and invitations are removed by the database's ON DELETE CASCADE on
+        organization_memberships.organization_id, so this never has to know
+        what else belongs to an organization."""
+        ...
+
+    @abstractmethod
     def add_membership(self, membership: OrganizationMembership) -> None: ...
 
     @abstractmethod
@@ -59,7 +68,9 @@ class OrganizationRepository(Protocol):
 
     @abstractmethod
     async def count_owners(self, organization_id: OrganizationId) -> int:
-        """Counts this organization's ACCEPTED OWNER memberships only -- a
-        pending OWNER invite doesn't count. Used by RemoveOrganizationMember
-        to refuse removing the last real owner."""
+        """Counts this organization's ACCEPTED OWNER memberships whose
+        account is ACTIVE -- a pending OWNER invite doesn't count, and nor
+        does a deactivated owner, who can't log in to run the organization.
+        Used by RemoveOrganizationMember and ChangeOrganizationMemberRole to
+        refuse removing or demoting the last real owner."""
         ...

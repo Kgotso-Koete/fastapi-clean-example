@@ -27,6 +27,7 @@ A single deployment can have both at once (a personal "my saved settings" resour
 | 4. Stay private | outsider | not to be able to tell an organization exists | organizations stay private | Every organization-scoped request from a non-member gets 404, never 403 |
 | 5. See organizations and members (Steps 7/8) | member | to see my organizations and their members | I know who I work with | Only organizations I've accepted, each with my role and its member count, paginated<br>Members are listed by username only; no email or phone number |
 | 6. Remove, leave, change roles (Step 7) | OWNER or ADMIN, or any member for leaving | to remove members, change roles, and leave | membership stays current | Only an OWNER can remove or change another OWNER<br>The last OWNER can never be removed, demoted or leave |
+| 7. Read organizations with an API key (Step 15) | integrating developer | to list my organizations and their members with my API key | my backend can show them without a cookie | The same JSON as the cookie routes<br>An outsider's key gets 404; no key, or a bad or revoked one, gets 401<br>No organization writes, and no invitations |
 
 ### Lessons pulled in from researching three real multi-tenancy implementations
 
@@ -447,6 +448,59 @@ Test file(s) before production file(s) per step, per this project's TDD conventi
 - Add wiki documentation for the organizations concept, the membership/invite flow, and the two resource-ownership shapes.
 - Extend `scripts/seed_db.py` with example organizations named after superhero teams (e.g. `Avengers`, `X-Men`, `Midnight Suns`), assigning several of the already-seeded `SEED_USERS` superheroes as members across more than one organization each, with a mix of `OWNER`/`ADMIN`/`MEMBER` roles and at least one still-pending (`accepted_at=None`) invitation -- giving the manual verification below ready-made fixture data instead of requiring fresh sign-ups and invitations by hand every time. Seed data is dev fixture data, not something to test-drive itself. **Update:** the organization seed data was moved forward and added alongside Step 6, as soon as the invitation routes existed (`docs/plans/agents.md` 1.3: seed data comes before the human check). It uses fixed ids so the human checks below can be copy-pasted, and Step 10 now only extends it for Steps 7 to 9.
 
+### Close-out (Steps 11 to 15)
+
+Added after v0.16.0 shipped, in the human maintainer's order. Each step is test first, confirmed RED, then code, confirmed GREEN, and lands its own human checks. Postgres Row-Level Security is **not** part of this plan: it changes database roles, connection handling and deployment for every organization-owned table, so it gets its own plan, `docs/plans/14-row-level-security.md`, informed by the Step 9 spike.
+
+**Step 11 -- `DeleteOrganization` (OWNER only). Done.**
+- An OWNER deletes the organization: `DELETE /api/v1/organizations/{organization_id}/`, `204`. Today nothing can delete one, and with the last-owner rule an organization could never go away.
+- The database does the cleanup: `organization_memberships.organization_id` is `ON DELETE CASCADE`, so deleting the organization row removes every membership and invitation (accepted, pending and expired) in the same statement. Past invitation-email outbox rows aren't foreign-keyed to it and stay, as delivery history.
+- Rules: an ADMIN or MEMBER gets `403`, and an outsider `404`, through `CurrentOrganizationService.require_role(organization_id, OWNER)` as everywhere else. Afterwards, every former member gets `404` for it.
+- Test: unit (an owner deletes; an admin and a member are refused; an outsider is told it doesn't exist; nothing is deleted on refusal), then integration through HTTP (`204`; the organization and all its rows are gone; former members get `404`).
+- Production: an `OrganizationRepository.delete()` port method and its adapter, the command, the route, the `CoreProvider` binding.
+- Built as three TDD cycles: the command (unit tests); the adapter (an integration test proving the cascade removes accepted, pending and expired memberships, and leaves another organization's rows alone); the route (HTTP integration tests for 204, 403, 404 and 401). Files: `src/app/core/commands/delete_organization.py`, `src/app/inbound/http/organizations/delete_organization.py`, `tests/unit/core/commands/organizations/test_delete_organization.py`, `tests/integration/with_infra/organizations/test_delete_organization.py`, and a new test in `test_sqla_organization_repository.py`.
+
+**Step 12 -- The last-owner rule counts only active owners. Done:** `count_owners()` joins `users` and counts only active accounts; regression tests in `test_sqla_organization_repository.py` and `test_membership_management.py`.
+- Bug: `SqlaOrganizationRepository.count_owners()` counts accepted OWNER rows without checking the user is active. With two owners, one of them deactivated by a platform admin, the active owner may leave or be demoted, leaving an organization whose only owner can't log in.
+- Fix: count only owners whose account is active.
+- Test first: the adapter's count excludes a deactivated owner, and through HTTP the active owner is refused (`409`) when the only other owner is deactivated.
+
+**Step 13 -- `UpdateOrganization`: name and description. Done** (moved here from `docs/plans/10-profile-editing.md`, which keeps the user-profile part).
+- A `Description` value object, designed first (`agents.md` 2.2), following plan 10 with two refinements:
+  - trimmed, then 1 to 1000 characters; never empty (blank input is rejected);
+  - tab, newline **and carriage return** allowed (browsers send textarea line breaks as `\r\n`), and every other control character rejected.
+
+  Plan 10's user profiles will reuse it.
+- **The description is mandatory** (decided by the human maintainer, 2026-10-02: "Every org needs to explain itself to the user"). `Organization` gains a required `description: Description`, stored in a `NOT NULL` column. User descriptions in plan 10 stay optional.
+  - `CreateOrganization` requires it: `POST /api/v1/organizations/` with a missing or blank `description` is `400`/`422`.
+  - The migration adds the column as `NOT NULL` with no backfill (decided 2026-10-02): nothing is deployed yet, and dev databases are destroyed with `make down` and re-seeded with `make upd`.
+  - The seeded organizations, the `create_organization_as` test helper, the create tests and every human-check `curl` that creates an organization send a description.
+- `PATCH /api/v1/organizations/{organization_id}/`, ADMIN or higher (MEMBER `403`, outsider `404`). A partial update: a field left out is unchanged; neither the name nor the description can be cleared (`"description": ""` is `400`), and each is validated by its value object. Returns `200` with the organization's `id`, `name` and `description`.
+- `ListMyOrganizations` returns each organization's `description`.
+- `ListMyInvitations` returns each invitation's `organization_description` (decided by the human maintainer, 2026-10-03). The invitee isn't a member yet, so this is where they learn what the organization is before deciding to accept.
+- Test: the value object, the entity, the mapping round trip, the command (unit), then the route (integration). Every seeded organization gets a description.
+- **Built (2026-10-03 to 2026-10-06),** each part test first:
+  - the `Description` value object, then the entity field;
+  - `CreateOrganization` requires, validates and returns it;
+  - the mapping, plus migration `1a001c1d415f`, generated with `make migration` and passing the stairway test;
+  - the seed descriptions, and every test helper that builds an organization;
+  - `description` in `ListMyOrganizations`, and `organization_description` in `ListMyInvitations`;
+  - `UpdateOrganization` (`src/app/core/commands/update_organization.py`) and its route (`src/app/inbound/http/organizations/update_organization.py`). Both values are validated before either changes, so an invalid description never leaves a half-applied rename.
+
+  Final runs: `make check` 476 passed; `make test-docker` 727 passed, plus the 8-step migration stairway.
+
+**Step 14 -- Wiki pages that list everything. Done.** `api-reference.md`, the three Data Models pages and `infrastructure-services/database.md` gain the organization endpoints, entities, query models and tables. Docs only.
+- `core-patterns/organizations.md` also gained delete, edit, the mandatory description and the active-owner rule.
+- `database.md`'s table and migration counts were stale from before plan 8, so they now list all six tables and all eight migrations.
+
+**Step 15 -- Two organization reads on the public API. Done.**
+- `ListMyOrganizations` and `ListOrganizationMembers`, read-only, under `/public/v1/organizations/` with an `X-API-Key`. Decided by the human maintainer: these two only, for now. `ListMyInvitations` and every organization write stay private. User-scoped keys are kept, though OWASP prefers keys tied to explicit organizations, because both routes are read-only and limited to the key owner's own memberships. The decision is recorded in `docs/plans/14-row-level-security.md` as Decision 7.
+- Both queries reach the caller through `CurrentUserService`, so the same classes serve both entrypoints (like `GetOwnProfile`). `PublicApiProvider` gains `OrganizationReader`, `MembershipChecker`, `CurrentOrganizationService` and the two queries, additively.
+- Test: integration through the public app: the same JSON as the cookie routes for the same account; an outsider's key gets `404`; no key gets `401`.
+- **Built (2026-10-06),** test first: `tests/integration/with_infra/api_keys/test_organization_reads.py` (RED: 404 from the unmounted routes), then the routes in `src/app/inbound/http/public_api/organizations/`, their router in `public_api/router.py`, and the five bindings in `PublicApiProvider`. The routes reuse the cookie routes' query-parameter schemas, so both apps share one set of paging and sorting defaults. `AuthorizationError` maps to `401` here, as in `public_api/api_keys/list_api_keys.py`: on these two routes it can only mean the key's account was deactivated.
+
+  Final runs: `make check` 476 passed; `make test-docker` 732 passed.
+
 ---
 
 ## File Summary
@@ -492,7 +546,7 @@ Simple checks a human runs by hand against the seeded data (`docs/plans/agents.m
    ```
    Re-run these two commands to reset the seeded state, because several checks below change it (accepting, declining).
 3. Each user gets their own cookie file in `/tmp` (for example `/tmp/wade-wilson.cookies`), so you can switch between users without logging out. Every check starts by logging in each user it acts as, with the exact command and password. That's because a session lasts only **5 minutes** without use (`SessionSettings.TTL_MIN` in `src/app/main/config/settings.py`), so a cookie from a few checks earlier may already have expired. An expired cookie gets `401 Not authenticated.`, and logging in again fixes it. A login answers `200` with the user's profile. Run every command in the same terminal, top to bottom.
-4. No check takes its starting state on trust. Each one first runs its own read-only **Prove** command showing the state it relies on (who holds which role, which invitation is pending or expired, whose id is whose), even if an earlier check already showed it. A check that changes something ends with a command that shows the change. Each check's **Acts on:** line names every id its commands use. Those commands pipe the JSON through `python3 -m json.tool`, which just prints it one field per line.
+4. No check takes its starting state on trust. Each one first runs its own read-only **Prove** command showing the state it relies on (who holds which role, which invitation is pending or expired, whose id is whose), even if an earlier check already showed it. A check that changes something ends with a command that shows the change. Each check's **Acts on:** line names every id its commands use. Every command's output is human-readable: JSON is piped through `python3 -m json.tool`, which prints it one field per line. A command that also shows the status code prints the code first, on its own line, then the JSON (`-w '%{stderr}%{http_code}\n'` sends the code straight to the terminal, so the pretty-printer only sees the JSON). A response with no body, such as a `204`, prints just the code.
 
 ### Seeded data (from `scripts/seed_db.py`)
 
@@ -515,6 +569,7 @@ The users and passwords are the existing `SEED_USERS`.
   - `danny-rand` (`Iron$Fist_KunLun1!`) and `peter-parker` are MEMBERs.
 - **Daily Bugle** (`a0000000-0000-4000-8000-000000000004`): `peter-parker` is OWNER. That puts him in all four organizations, for the list and pagination checks once the Step 7/8 list routes exist.
 - `wade-wilson` (`MaximumEffort2024!!!`) belongs to **no** organization: he's the outsider.
+- Every organization has a description (Step 13). The Avengers' is `Earth's mightiest heroes.`
 
 ### Who can do what (the rules these checks test)
 
@@ -558,9 +613,9 @@ The three codes answer three different questions about the caller:
 
    **Acts on:** the Avengers (`a0000000-0000-4000-8000-000000000001`). The body names `danny-rand`, the user being invited.
    ```shell
-   curl -s -w '\n%{http_code}\n' -X POST \
+   curl -s -w '%{stderr}%{http_code}\n' -X POST \
      http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/ \
-     -H 'Content-Type: application/json' -d '{"username": "danny-rand"}'
+     -H 'Content-Type: application/json' -d '{"username": "danny-rand"}' | python3 -m json.tool
    ```
    Expect `401`. There's no `-b`, so no cookie is sent.
 
@@ -572,9 +627,9 @@ The three codes answer three different questions about the caller:
 
    Log in as `wade-wilson`:
    ```shell
-   curl -s -w '\n%{http_code}\n' -c /tmp/wade-wilson.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/wade-wilson.cookies -X POST http://localhost:8000/api/v1/account/login/ \
      -H 'Content-Type: application/json' \
-     -d '{"identifier": "wade-wilson", "password": "MaximumEffort2024!!!"}'
+     -d '{"identifier": "wade-wilson", "password": "MaximumEffort2024!!!"}' | python3 -m json.tool
    ```
    Expect `200`. **Prove** he belongs to no organization:
    ```shell
@@ -582,9 +637,9 @@ The three codes answer three different questions about the caller:
    ```
    Expect `"organizations": []` and `"total": 0`. Then send the same request as him:
    ```shell
-   curl -s -w '\n%{http_code}\n' -b /tmp/wade-wilson.cookies -X POST \
+   curl -s -w '%{stderr}%{http_code}\n' -b /tmp/wade-wilson.cookies -X POST \
      http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/ \
-     -H 'Content-Type: application/json' -d '{"username": "danny-rand"}'
+     -H 'Content-Type: application/json' -d '{"username": "danny-rand"}' | python3 -m json.tool
    ```
    Expect `404`, with `Organization not found.`
 
@@ -596,9 +651,9 @@ The three codes answer three different questions about the caller:
 
    Log in as `peter-parker`:
    ```shell
-   curl -s -w '\n%{http_code}\n' -c /tmp/peter-parker.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/peter-parker.cookies -X POST http://localhost:8000/api/v1/account/login/ \
      -H 'Content-Type: application/json' \
-     -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}'
+     -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}' | python3 -m json.tool
    ```
    Expect `200`. **Prove** his role in the Avengers:
    ```shell
@@ -607,9 +662,9 @@ The three codes answer three different questions about the caller:
    ```
    Expect a `peter-parker` row with `"role": "member"`. Then send the same request as him:
    ```shell
-   curl -s -w '\n%{http_code}\n' -b /tmp/peter-parker.cookies -X POST \
+   curl -s -w '%{stderr}%{http_code}\n' -b /tmp/peter-parker.cookies -X POST \
      http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/ \
-     -H 'Content-Type: application/json' -d '{"username": "danny-rand"}'
+     -H 'Content-Type: application/json' -d '{"username": "danny-rand"}' | python3 -m json.tool
    ```
    Expect `403`. Same URL and same body as checks 1 and 2; only who's asking changed.
 
@@ -621,11 +676,11 @@ The three codes answer three different questions about the caller:
 
    **Acts on:** the Avengers (`a0000000-0000-4000-8000-000000000001`).
    ```shell
-   curl -s -o /dev/null -w '%{http_code}\n' -X POST \
+   curl -s -w '%{stderr}%{http_code}\n' -X POST \
      http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/ \
-     -H 'Content-Type: application/json' -d '{"username": "wade-wilson"}'
+     -H 'Content-Type: application/json' -d '{"username": "wade-wilson"}' | python3 -m json.tool
    ```
-   Expect `401`.
+   Expect `401`, with `"message": "Not authenticated."`.
 
 2. **An outsider can't even see the organization: 404.**
 
@@ -635,9 +690,9 @@ The three codes answer three different questions about the caller:
 
    Log in as `wade-wilson`:
    ```shell
-   curl -s -w '\n%{http_code}\n' -c /tmp/wade-wilson.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/wade-wilson.cookies -X POST http://localhost:8000/api/v1/account/login/ \
      -H 'Content-Type: application/json' \
-     -d '{"identifier": "wade-wilson", "password": "MaximumEffort2024!!!"}'
+     -d '{"identifier": "wade-wilson", "password": "MaximumEffort2024!!!"}' | python3 -m json.tool
    ```
    Expect `200`. **Prove** wade belongs to no organization, by listing his organizations:
    ```shell
@@ -659,9 +714,9 @@ The three codes answer three different questions about the caller:
 
    Log in as `peter-parker`:
    ```shell
-   curl -s -w '\n%{http_code}\n' -c /tmp/peter-parker.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/peter-parker.cookies -X POST http://localhost:8000/api/v1/account/login/ \
      -H 'Content-Type: application/json' \
-     -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}'
+     -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}' | python3 -m json.tool
    ```
    Expect `200`. **Prove** peter is a MEMBER of the Avengers, not an ADMIN or OWNER, by listing the Avengers' members as him:
    ```shell
@@ -675,9 +730,9 @@ The three codes answer three different questions about the caller:
 
    Then, as `peter-parker`, try to invite wade:
    ```shell
-   curl -s -w '\n%{http_code}\n' -b /tmp/peter-parker.cookies -X POST \
+   curl -s -w '%{stderr}%{http_code}\n' -b /tmp/peter-parker.cookies -X POST \
      http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/ \
-     -H 'Content-Type: application/json' -d '{"username": "wade-wilson"}'
+     -H 'Content-Type: application/json' -d '{"username": "wade-wilson"}' | python3 -m json.tool
    ```
    Expect `403`.
 
@@ -689,9 +744,9 @@ The three codes answer three different questions about the caller:
 
    Log in as `natasha-romanoff`:
    ```shell
-   curl -s -w '\n%{http_code}\n' -c /tmp/natasha-romanoff.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/natasha-romanoff.cookies -X POST http://localhost:8000/api/v1/account/login/ \
      -H 'Content-Type: application/json' \
-     -d '{"identifier": "natasha-romanoff", "password": "BlackWidow!!Red1"}'
+     -d '{"identifier": "natasha-romanoff", "password": "BlackWidow!!Red1"}' | python3 -m json.tool
    ```
    Expect `200`. **Prove** natasha is an ADMIN of the Avengers, not an OWNER, by listing her organizations:
    ```shell
@@ -703,9 +758,9 @@ The three codes answer three different questions about the caller:
 
    Then, as `natasha-romanoff`, try to invite danny as an owner:
    ```shell
-   curl -s -w '\n%{http_code}\n' -b /tmp/natasha-romanoff.cookies -X POST \
+   curl -s -w '%{stderr}%{http_code}\n' -b /tmp/natasha-romanoff.cookies -X POST \
      http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/ \
-     -H 'Content-Type: application/json' -d '{"username": "danny-rand", "role": "owner"}'
+     -H 'Content-Type: application/json' -d '{"username": "danny-rand", "role": "owner"}' | python3 -m json.tool
    ```
    Expect `403`, with `Only an owner can grant the owner role.`
 
@@ -717,9 +772,9 @@ The three codes answer three different questions about the caller:
 
    Log in as `natasha-romanoff`:
    ```shell
-   curl -s -w '\n%{http_code}\n' -c /tmp/natasha-romanoff.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/natasha-romanoff.cookies -X POST http://localhost:8000/api/v1/account/login/ \
      -H 'Content-Type: application/json' \
-     -d '{"identifier": "natasha-romanoff", "password": "BlackWidow!!Red1"}'
+     -d '{"identifier": "natasha-romanoff", "password": "BlackWidow!!Red1"}' | python3 -m json.tool
    ```
    Expect `200`. **Prove** natasha is an ADMIN of the Avengers, and that danny isn't in it yet, by listing the Avengers' members as her:
    ```shell
@@ -728,9 +783,9 @@ The three codes answer three different questions about the caller:
    ```
    Expect `natasha-romanoff` with `"role": "admin"`, and no `danny-rand` row. Then, as `natasha-romanoff`, invite danny to the Avengers as an admin:
    ```shell
-   curl -s -w '\n%{http_code}\n' -b /tmp/natasha-romanoff.cookies -X POST \
+   curl -s -w '%{stderr}%{http_code}\n' -b /tmp/natasha-romanoff.cookies -X POST \
      http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/ \
-     -H 'Content-Type: application/json' -d '{"username": "danny-rand", "role": "admin"}'
+     -H 'Content-Type: application/json' -d '{"username": "danny-rand", "role": "admin"}' | python3 -m json.tool
    ```
    Expect `201`, with a `membership_id` and an `expires_at` about 7 days from now. **Prove** the invitation exists, by listing the Avengers' members as natasha:
    ```shell
@@ -747,9 +802,9 @@ The three codes answer three different questions about the caller:
 
    Log in as `tony-stark`:
    ```shell
-   curl -s -w '\n%{http_code}\n' -c /tmp/tony-stark.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/tony-stark.cookies -X POST http://localhost:8000/api/v1/account/login/ \
      -H 'Content-Type: application/json' \
-     -d '{"identifier": "tony-stark", "password": "ImIronMan#3000"}'
+     -d '{"identifier": "tony-stark", "password": "ImIronMan#3000"}' | python3 -m json.tool
    ```
    Expect `200`. **Prove** tony is the OWNER and peter is already an accepted member, by listing the Avengers' members as tony:
    ```shell
@@ -758,9 +813,9 @@ The three codes answer three different questions about the caller:
    ```
    Expect `tony-stark` with `"role": "owner"`, and `peter-parker` with an `accepted_at` date. Then, as `tony-stark`, try to invite peter again:
    ```shell
-   curl -s -w '\n%{http_code}\n' -b /tmp/tony-stark.cookies -X POST \
+   curl -s -w '%{stderr}%{http_code}\n' -b /tmp/tony-stark.cookies -X POST \
      http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/ \
-     -H 'Content-Type: application/json' -d '{"username": "peter-parker"}'
+     -H 'Content-Type: application/json' -d '{"username": "peter-parker"}' | python3 -m json.tool
    ```
    Expect `409`.
 
@@ -772,9 +827,9 @@ The three codes answer three different questions about the caller:
 
    Log in as `tony-stark`:
    ```shell
-   curl -s -w '\n%{http_code}\n' -c /tmp/tony-stark.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/tony-stark.cookies -X POST http://localhost:8000/api/v1/account/login/ \
      -H 'Content-Type: application/json' \
-     -d '{"identifier": "tony-stark", "password": "ImIronMan#3000"}'
+     -d '{"identifier": "tony-stark", "password": "ImIronMan#3000"}' | python3 -m json.tool
    ```
    Expect `200`. **Prove** tony is the Avengers' OWNER, so the 404 below can only be about the username and not about his permissions. List his organizations:
    ```shell
@@ -796,17 +851,17 @@ The three codes answer three different questions about the caller:
 
    Log in as `tony-stark`:
    ```shell
-   curl -s -w '\n%{http_code}\n' -c /tmp/tony-stark.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/tony-stark.cookies -X POST http://localhost:8000/api/v1/account/login/ \
      -H 'Content-Type: application/json' \
-     -d '{"identifier": "tony-stark", "password": "ImIronMan#3000"}'
+     -d '{"identifier": "tony-stark", "password": "ImIronMan#3000"}' | python3 -m json.tool
    ```
    Expect `200`. Then, as `tony-stark`, send the malformed id:
    ```shell
-   curl -s -o /dev/null -w '%{http_code}\n' -b /tmp/tony-stark.cookies -X POST \
+   curl -s -w '%{stderr}%{http_code}\n' -b /tmp/tony-stark.cookies -X POST \
      http://localhost:8000/api/v1/organizations/not-a-uuid/members/ \
-     -H 'Content-Type: application/json' -d '{"username": "wade-wilson"}'
+     -H 'Content-Type: application/json' -d '{"username": "wade-wilson"}' | python3 -m json.tool
    ```
-   Expect `422`.
+   Expect `422`, with a `detail` saying `organization_id` isn't a valid UUID.
 
 9. **Someone else's invitation looks like it doesn't exist: 404.**
 
@@ -816,9 +871,9 @@ The three codes answer three different questions about the caller:
 
    Log in as `danny-rand`:
    ```shell
-   curl -s -w '\n%{http_code}\n' -c /tmp/danny-rand.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/danny-rand.cookies -X POST http://localhost:8000/api/v1/account/login/ \
      -H 'Content-Type: application/json' \
-     -d '{"identifier": "danny-rand", "password": "Iron$Fist_KunLun1!"}'
+     -d '{"identifier": "danny-rand", "password": "Iron$Fist_KunLun1!"}' | python3 -m json.tool
    ```
    Expect `200`. **Prove** danny's own invitations don't include matt's, by listing danny's pending invitations:
    ```shell
@@ -828,9 +883,9 @@ The three codes answer three different questions about the caller:
 
    Next, **prove** that `b0000000-0000-4000-8000-000000000003` really is matt's. Log in as `matt-murdock`:
    ```shell
-   curl -s -w '\n%{http_code}\n' -c /tmp/matt-murdock.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/matt-murdock.cookies -X POST http://localhost:8000/api/v1/account/login/ \
      -H 'Content-Type: application/json' \
-     -d '{"identifier": "matt-murdock", "password": "Daredevil1!!"}'
+     -d '{"identifier": "matt-murdock", "password": "Daredevil1!!"}' | python3 -m json.tool
    ```
    Expect `200`. Then list matt's pending invitations:
    ```shell
@@ -838,8 +893,8 @@ The three codes answer three different questions about the caller:
    ```
    Expect one invitation: `"membership_id": "b0000000-0000-4000-8000-000000000003"`, `"organization_name": "X-Men"`. So the invitation exists; it just isn't danny's. Then, as `danny-rand`, try to accept matt's invitation:
    ```shell
-   curl -s -w '\n%{http_code}\n' -b /tmp/danny-rand.cookies -X POST \
-     http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000002/members/b0000000-0000-4000-8000-000000000003/accept/
+   curl -s -w '%{stderr}%{http_code}\n' -b /tmp/danny-rand.cookies -X POST \
+     http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000002/members/b0000000-0000-4000-8000-000000000003/accept/ | python3 -m json.tool
    ```
    Expect `404`, with `Membership not found.`
 
@@ -851,9 +906,9 @@ The three codes answer three different questions about the caller:
 
     Log in as `bruce-wayne`:
     ```shell
-    curl -s -w '\n%{http_code}\n' -c /tmp/bruce-wayne.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+    curl -s -w '%{stderr}%{http_code}\n' -c /tmp/bruce-wayne.cookies -X POST http://localhost:8000/api/v1/account/login/ \
       -H 'Content-Type: application/json' \
-      -d '{"identifier": "bruce-wayne", "password": "IAmTheNight2024!!"}'
+      -d '{"identifier": "bruce-wayne", "password": "IAmTheNight2024!!"}' | python3 -m json.tool
     ```
     Expect `200`. **Prove** bruce has a pending invitation to the Avengers, by listing his invitations:
     ```shell
@@ -880,9 +935,9 @@ The three codes answer three different questions about the caller:
 
     Log in as `bruce-wayne`:
     ```shell
-    curl -s -w '\n%{http_code}\n' -c /tmp/bruce-wayne.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+    curl -s -w '%{stderr}%{http_code}\n' -c /tmp/bruce-wayne.cookies -X POST http://localhost:8000/api/v1/account/login/ \
       -H 'Content-Type: application/json' \
-      -d '{"identifier": "bruce-wayne", "password": "IAmTheNight2024!!"}'
+      -d '{"identifier": "bruce-wayne", "password": "IAmTheNight2024!!"}' | python3 -m json.tool
     ```
     Expect `200`. **Prove** bruce is now a MEMBER of the Avengers, by listing his organizations:
     ```shell
@@ -890,9 +945,9 @@ The three codes answer three different questions about the caller:
     ```
     Expect the Avengers with `"role": "member"`. Then, as `bruce-wayne`, try to invite wade to the Avengers:
     ```shell
-    curl -s -w '\n%{http_code}\n' -b /tmp/bruce-wayne.cookies -X POST \
+    curl -s -w '%{stderr}%{http_code}\n' -b /tmp/bruce-wayne.cookies -X POST \
       http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/ \
-      -H 'Content-Type: application/json' -d '{"username": "wade-wilson"}'
+      -H 'Content-Type: application/json' -d '{"username": "wade-wilson"}' | python3 -m json.tool
     ```
     Expect `403`, not the 404 an outsider gets.
 
@@ -904,15 +959,15 @@ The three codes answer three different questions about the caller:
 
     Log in as `diana-prince`:
     ```shell
-    curl -s -w '\n%{http_code}\n' -c /tmp/diana-prince.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+    curl -s -w '%{stderr}%{http_code}\n' -c /tmp/diana-prince.cookies -X POST http://localhost:8000/api/v1/account/login/ \
       -H 'Content-Type: application/json' \
-      -d '{"identifier": "diana-prince", "password": "AmazonWarrior$99"}'
+      -d '{"identifier": "diana-prince", "password": "AmazonWarrior$99"}' | python3 -m json.tool
     ```
     Expect `200`. Log in as `tony-stark` too, who will do the proving:
     ```shell
-    curl -s -w '\n%{http_code}\n' -c /tmp/tony-stark.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+    curl -s -w '%{stderr}%{http_code}\n' -c /tmp/tony-stark.cookies -X POST http://localhost:8000/api/v1/account/login/ \
       -H 'Content-Type: application/json' \
-      -d '{"identifier": "tony-stark", "password": "ImIronMan#3000"}'
+      -d '{"identifier": "tony-stark", "password": "ImIronMan#3000"}' | python3 -m json.tool
     ```
     Expect `200`. **Prove** diana's invitation exists but has expired, by listing the Avengers' members as `tony-stark`:
     ```shell
@@ -921,8 +976,8 @@ The three codes answer three different questions about the caller:
     ```
     Expect a `diana-prince` row with `"membership_id": "b0000000-0000-4000-8000-000000000002"`, `"accepted_at": null`, and an `expires_at` date in the past. Then, as `diana-prince`, try to accept it:
     ```shell
-    curl -s -w '\n%{http_code}\n' -b /tmp/diana-prince.cookies -X POST \
-      http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/b0000000-0000-4000-8000-000000000002/accept/
+    curl -s -w '%{stderr}%{http_code}\n' -b /tmp/diana-prince.cookies -X POST \
+      http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/b0000000-0000-4000-8000-000000000002/accept/ | python3 -m json.tool
     ```
     Expect `410`, with `This invitation has expired.`
 
@@ -934,12 +989,12 @@ The three codes answer three different questions about the caller:
 
     Log in as `tony-stark`, then as `diana-prince`:
     ```shell
-    curl -s -w '\n%{http_code}\n' -c /tmp/tony-stark.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+    curl -s -w '%{stderr}%{http_code}\n' -c /tmp/tony-stark.cookies -X POST http://localhost:8000/api/v1/account/login/ \
       -H 'Content-Type: application/json' \
-      -d '{"identifier": "tony-stark", "password": "ImIronMan#3000"}'
-    curl -s -w '\n%{http_code}\n' -c /tmp/diana-prince.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+      -d '{"identifier": "tony-stark", "password": "ImIronMan#3000"}' | python3 -m json.tool
+    curl -s -w '%{stderr}%{http_code}\n' -c /tmp/diana-prince.cookies -X POST http://localhost:8000/api/v1/account/login/ \
       -H 'Content-Type: application/json' \
-      -d '{"identifier": "diana-prince", "password": "AmazonWarrior$99"}'
+      -d '{"identifier": "diana-prince", "password": "AmazonWarrior$99"}' | python3 -m json.tool
     ```
     Expect `200` both times. **Prove** tony is the Avengers' OWNER and diana's invitation is still expired, by listing the Avengers' members as `tony-stark`:
     ```shell
@@ -948,9 +1003,9 @@ The three codes answer three different questions about the caller:
     ```
     Expect `tony-stark` with `"role": "owner"`, and a `diana-prince` row with `"membership_id": "b0000000-0000-4000-8000-000000000002"`, `"accepted_at": null` and an `expires_at` in the past. Then, as `tony-stark`, re-invite diana to the Avengers:
     ```shell
-    curl -s -w '\n%{http_code}\n' -b /tmp/tony-stark.cookies -X POST \
+    curl -s -w '%{stderr}%{http_code}\n' -b /tmp/tony-stark.cookies -X POST \
       http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/ \
-      -H 'Content-Type: application/json' -d '{"username": "diana-prince"}'
+      -H 'Content-Type: application/json' -d '{"username": "diana-prince"}' | python3 -m json.tool
     ```
     Expect `201`, with `membership_id` equal to the **same** `b0000000-0000-4000-8000-000000000002` and a fresh `expires_at`. **Prove** diana can now see it, by listing her invitations:
     ```shell
@@ -975,9 +1030,9 @@ The three codes answer three different questions about the caller:
 
     Log in as `matt-murdock`:
     ```shell
-    curl -s -w '\n%{http_code}\n' -c /tmp/matt-murdock.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+    curl -s -w '%{stderr}%{http_code}\n' -c /tmp/matt-murdock.cookies -X POST http://localhost:8000/api/v1/account/login/ \
       -H 'Content-Type: application/json' \
-      -d '{"identifier": "matt-murdock", "password": "Daredevil1!!"}'
+      -d '{"identifier": "matt-murdock", "password": "Daredevil1!!"}' | python3 -m json.tool
     ```
     Expect `200`. **Prove** matt has that pending invitation, by listing his invitations:
     ```shell
@@ -987,10 +1042,10 @@ The three codes answer three different questions about the caller:
     ```shell
     curl -s -o /dev/null -w '%{http_code}\n' -b /tmp/matt-murdock.cookies -X POST \
       http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000002/members/b0000000-0000-4000-8000-000000000003/decline/
-    curl -s -o /dev/null -w '%{http_code}\n' -b /tmp/matt-murdock.cookies -X POST \
-      http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000002/members/b0000000-0000-4000-8000-000000000003/decline/
+    curl -s -w '%{stderr}%{http_code}\n' -b /tmp/matt-murdock.cookies -X POST \
+      http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000002/members/b0000000-0000-4000-8000-000000000003/decline/ | python3 -m json.tool
     ```
-    Expect `204`, then `404`: the first call deleted the invitation. **Prove** it's gone, by listing matt's invitations again:
+    Expect `204`, then `404` with `"message": "Membership not found."`: the first call deleted the invitation. **Prove** it's gone, by listing matt's invitations again:
     ```shell
     curl -s -b /tmp/matt-murdock.cookies http://localhost:8000/api/v1/organizations/invitations/ | python3 -m json.tool
     ```
@@ -1004,26 +1059,26 @@ The three codes answer three different questions about the caller:
 
     Log in as `wade-wilson`:
     ```shell
-    curl -s -w '\n%{http_code}\n' -c /tmp/wade-wilson.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+    curl -s -w '%{stderr}%{http_code}\n' -c /tmp/wade-wilson.cookies -X POST http://localhost:8000/api/v1/account/login/ \
       -H 'Content-Type: application/json' \
-      -d '{"identifier": "wade-wilson", "password": "MaximumEffort2024!!!"}'
+      -d '{"identifier": "wade-wilson", "password": "MaximumEffort2024!!!"}' | python3 -m json.tool
     ```
     Expect `200`. Then, as `wade-wilson`, create "Mercs For Money". The new organization's id is random, so this saves it in the shell variable `ORG_ID` and prints it:
     ```shell
     ORG_ID=$(curl -s -b /tmp/wade-wilson.cookies -X POST http://localhost:8000/api/v1/organizations/ \
-      -H 'Content-Type: application/json' -d '{"name": "Mercs For Money"}' \
+      -H 'Content-Type: application/json' -d '{"name": "Mercs For Money", "description": "Mercenaries with a sense of humour."}' \
       | python3 -c 'import sys, json; print(json.load(sys.stdin)["id"])')
     echo "$ORG_ID"
     ```
-    Expect a UUID to be printed. A Python `KeyError` traceback means the create failed. **Prove** wade is its OWNER, by listing his organizations:
+    Expect a UUID to be printed. A Python `KeyError` traceback means the create failed. The `description` is required: leaving it out gets `422`, and a blank one gets `400` (Step 13). **Prove** wade is its OWNER, by listing his organizations:
     ```shell
     curl -s -b /tmp/wade-wilson.cookies http://localhost:8000/api/v1/organizations/ | python3 -m json.tool
     ```
     Expect one organization, `"name": "Mercs For Money"`, with the printed id, `"role": "owner"` and `"member_count": 1`. Then, still as `wade-wilson`, invite `luke-cage` to it:
     ```shell
-    curl -s -w '\n%{http_code}\n' -b /tmp/wade-wilson.cookies -X POST \
+    curl -s -w '%{stderr}%{http_code}\n' -b /tmp/wade-wilson.cookies -X POST \
       "http://localhost:8000/api/v1/organizations/$ORG_ID/members/" \
-      -H 'Content-Type: application/json' -d '{"username": "luke-cage"}'
+      -H 'Content-Type: application/json' -d '{"username": "luke-cage"}' | python3 -m json.tool
     ```
     Expect `201`. **Prove** the invitation exists, by listing the new organization's members:
     ```shell
@@ -1046,9 +1101,9 @@ Several checks below build on each other, so run them in order. The list checks 
 
    Log in as `peter-parker`:
    ```shell
-   curl -s -w '\n%{http_code}\n' -c /tmp/peter-parker.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/peter-parker.cookies -X POST http://localhost:8000/api/v1/account/login/ \
      -H 'Content-Type: application/json' \
-     -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}'
+     -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}' | python3 -m json.tool
    ```
    Expect `200`. Then, as `peter-parker`:
    ```shell
@@ -1062,9 +1117,9 @@ Several checks below build on each other, so run them in order. The list checks 
 
    Log in as `peter-parker`:
    ```shell
-   curl -s -w '\n%{http_code}\n' -c /tmp/peter-parker.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/peter-parker.cookies -X POST http://localhost:8000/api/v1/account/login/ \
      -H 'Content-Type: application/json' \
-     -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}'
+     -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}' | python3 -m json.tool
    ```
    Expect `200`. Then, as `peter-parker`, ask for the first page of two:
    ```shell
@@ -1080,9 +1135,9 @@ Several checks below build on each other, so run them in order. The list checks 
 
    Log in as `peter-parker`:
    ```shell
-   curl -s -w '\n%{http_code}\n' -c /tmp/peter-parker.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/peter-parker.cookies -X POST http://localhost:8000/api/v1/account/login/ \
      -H 'Content-Type: application/json' \
-     -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}'
+     -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}' | python3 -m json.tool
    ```
    Expect `200`. Then, as `peter-parker`, list the Avengers' members:
    ```shell
@@ -1099,9 +1154,9 @@ Several checks below build on each other, so run them in order. The list checks 
 
    Log in as `wade-wilson`:
    ```shell
-   curl -s -w '\n%{http_code}\n' -c /tmp/wade-wilson.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/wade-wilson.cookies -X POST http://localhost:8000/api/v1/account/login/ \
      -H 'Content-Type: application/json' \
-     -d '{"identifier": "wade-wilson", "password": "MaximumEffort2024!!!"}'
+     -d '{"identifier": "wade-wilson", "password": "MaximumEffort2024!!!"}' | python3 -m json.tool
    ```
    Expect `200`. **Prove** wade belongs to no organization:
    ```shell
@@ -1109,8 +1164,8 @@ Several checks below build on each other, so run them in order. The list checks 
    ```
    Expect `"total": 0`. Then, as `wade-wilson`, try to list the Avengers' members:
    ```shell
-   curl -s -w '\n%{http_code}\n' -b /tmp/wade-wilson.cookies \
-     http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/
+   curl -s -w '%{stderr}%{http_code}\n' -b /tmp/wade-wilson.cookies \
+     http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/ | python3 -m json.tool
    ```
    Expect `404`, with `Organization not found.`
 
@@ -1120,9 +1175,9 @@ Several checks below build on each other, so run them in order. The list checks 
 
    Log in as `bruce-wayne`:
    ```shell
-   curl -s -w '\n%{http_code}\n' -c /tmp/bruce-wayne.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/bruce-wayne.cookies -X POST http://localhost:8000/api/v1/account/login/ \
      -H 'Content-Type: application/json' \
-     -d '{"identifier": "bruce-wayne", "password": "IAmTheNight2024!!"}'
+     -d '{"identifier": "bruce-wayne", "password": "IAmTheNight2024!!"}' | python3 -m json.tool
    ```
    Expect `200`. Then, as `bruce-wayne`:
    ```shell
@@ -1136,9 +1191,9 @@ Several checks below build on each other, so run them in order. The list checks 
 
    Log in as `diana-prince`:
    ```shell
-   curl -s -w '\n%{http_code}\n' -c /tmp/diana-prince.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/diana-prince.cookies -X POST http://localhost:8000/api/v1/account/login/ \
      -H 'Content-Type: application/json' \
-     -d '{"identifier": "diana-prince", "password": "AmazonWarrior$99"}'
+     -d '{"identifier": "diana-prince", "password": "AmazonWarrior$99"}' | python3 -m json.tool
    ```
    Expect `200`. Then, as `diana-prince`:
    ```shell
@@ -1146,9 +1201,9 @@ Several checks below build on each other, so run them in order. The list checks 
    ```
    Expect `total: 0`. Next, log in as `peter-parker`, who will do the proving:
    ```shell
-   curl -s -w '\n%{http_code}\n' -c /tmp/peter-parker.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/peter-parker.cookies -X POST http://localhost:8000/api/v1/account/login/ \
      -H 'Content-Type: application/json' \
-     -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}'
+     -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}' | python3 -m json.tool
    ```
    Expect `200`. **Prove** her invitation still exists and is only hidden from her own list, by listing the Avengers' (`a0000000-0000-4000-8000-000000000001`) members as `peter-parker`:
    ```shell
@@ -1165,9 +1220,9 @@ Several checks below build on each other, so run them in order. The list checks 
 
    Log in as `peter-parker`:
    ```shell
-   curl -s -w '\n%{http_code}\n' -c /tmp/peter-parker.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/peter-parker.cookies -X POST http://localhost:8000/api/v1/account/login/ \
      -H 'Content-Type: application/json' \
-     -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}'
+     -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}' | python3 -m json.tool
    ```
    Expect `200`. **Prove** peter is a MEMBER and that `c0000000-0000-4000-8000-000000000011` is natasha's, by listing the Avengers' members as him:
    ```shell
@@ -1176,8 +1231,8 @@ Several checks below build on each other, so run them in order. The list checks 
    ```
    Expect `peter-parker` with `"role": "member"`, and `natasha-romanoff` with `"role": "admin"` and `"membership_id": "c0000000-0000-4000-8000-000000000011"`. Then, as `peter-parker`, try to remove natasha from the Avengers:
    ```shell
-   curl -s -w '\n%{http_code}\n' -b /tmp/peter-parker.cookies -X DELETE \
-     http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/c0000000-0000-4000-8000-000000000011/
+   curl -s -w '%{stderr}%{http_code}\n' -b /tmp/peter-parker.cookies -X DELETE \
+     http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/c0000000-0000-4000-8000-000000000011/ | python3 -m json.tool
    ```
    Expect `403`. **Prove** nothing changed, by listing the Avengers' members again:
    ```shell
@@ -1194,9 +1249,9 @@ Several checks below build on each other, so run them in order. The list checks 
 
    Log in as `natasha-romanoff`:
    ```shell
-   curl -s -w '\n%{http_code}\n' -c /tmp/natasha-romanoff.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/natasha-romanoff.cookies -X POST http://localhost:8000/api/v1/account/login/ \
      -H 'Content-Type: application/json' \
-     -d '{"identifier": "natasha-romanoff", "password": "BlackWidow!!Red1"}'
+     -d '{"identifier": "natasha-romanoff", "password": "BlackWidow!!Red1"}' | python3 -m json.tool
    ```
    Expect `200`. **Prove** natasha is an ADMIN, not an OWNER, and that `c0000000-0000-4000-8000-000000000001` is tony's, by listing the Avengers' members as her:
    ```shell
@@ -1205,8 +1260,8 @@ Several checks below build on each other, so run them in order. The list checks 
    ```
    Expect `natasha-romanoff` with `"role": "admin"`, and `tony-stark` with `"role": "owner"` and `"membership_id": "c0000000-0000-4000-8000-000000000001"`. Then, as `natasha-romanoff`, try to remove tony from the Avengers:
    ```shell
-   curl -s -w '\n%{http_code}\n' -b /tmp/natasha-romanoff.cookies -X DELETE \
-     http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/c0000000-0000-4000-8000-000000000001/
+   curl -s -w '%{stderr}%{http_code}\n' -b /tmp/natasha-romanoff.cookies -X DELETE \
+     http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/c0000000-0000-4000-8000-000000000001/ | python3 -m json.tool
    ```
    Expect `403`, with `Only an owner can remove or change another owner.`
 
@@ -1218,9 +1273,9 @@ Several checks below build on each other, so run them in order. The list checks 
 
    Log in as `natasha-romanoff`:
    ```shell
-   curl -s -w '\n%{http_code}\n' -c /tmp/natasha-romanoff.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/natasha-romanoff.cookies -X POST http://localhost:8000/api/v1/account/login/ \
      -H 'Content-Type: application/json' \
-     -d '{"identifier": "natasha-romanoff", "password": "BlackWidow!!Red1"}'
+     -d '{"identifier": "natasha-romanoff", "password": "BlackWidow!!Red1"}' | python3 -m json.tool
    ```
    Expect `200`. **Prove** natasha is still an ADMIN and that `c0000000-0000-4000-8000-000000000012` is peter's, by listing the Avengers' members as her:
    ```shell
@@ -1229,9 +1284,9 @@ Several checks below build on each other, so run them in order. The list checks 
    ```
    Expect `natasha-romanoff` with `"role": "admin"`, and `peter-parker` with `"role": "member"` and `"membership_id": "c0000000-0000-4000-8000-000000000012"`. Then, as `natasha-romanoff`, try to promote peter to owner:
    ```shell
-   curl -s -w '\n%{http_code}\n' -b /tmp/natasha-romanoff.cookies -X PATCH \
+   curl -s -w '%{stderr}%{http_code}\n' -b /tmp/natasha-romanoff.cookies -X PATCH \
      http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/c0000000-0000-4000-8000-000000000012/ \
-     -H 'Content-Type: application/json' -d '{"role": "owner"}'
+     -H 'Content-Type: application/json' -d '{"role": "owner"}' | python3 -m json.tool
    ```
    Expect `403`, with `Only an owner can grant the owner role.` **Prove** peter is still a member, by listing the Avengers' members as natasha:
    ```shell
@@ -1248,9 +1303,9 @@ Several checks below build on each other, so run them in order. The list checks 
 
     Log in as `tony-stark`:
     ```shell
-    curl -s -w '\n%{http_code}\n' -c /tmp/tony-stark.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+    curl -s -w '%{stderr}%{http_code}\n' -c /tmp/tony-stark.cookies -X POST http://localhost:8000/api/v1/account/login/ \
       -H 'Content-Type: application/json' \
-      -d '{"identifier": "tony-stark", "password": "ImIronMan#3000"}'
+      -d '{"identifier": "tony-stark", "password": "ImIronMan#3000"}' | python3 -m json.tool
     ```
     Expect `200`. **Prove** tony is the Avengers' only OWNER, by listing the members as him:
     ```shell
@@ -1259,11 +1314,11 @@ Several checks below build on each other, so run them in order. The list checks 
     ```
     Expect exactly one row with `"role": "owner"`: `tony-stark`, `membership_id` `c0000000-0000-4000-8000-000000000001`. Then, as `tony-stark`, try to leave, then try to demote himself:
     ```shell
-    curl -s -w '\n%{http_code}\n' -b /tmp/tony-stark.cookies -X DELETE \
-      http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/c0000000-0000-4000-8000-000000000001/
-    curl -s -w '\n%{http_code}\n' -b /tmp/tony-stark.cookies -X PATCH \
+    curl -s -w '%{stderr}%{http_code}\n' -b /tmp/tony-stark.cookies -X DELETE \
+      http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/c0000000-0000-4000-8000-000000000001/ | python3 -m json.tool
+    curl -s -w '%{stderr}%{http_code}\n' -b /tmp/tony-stark.cookies -X PATCH \
       http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/c0000000-0000-4000-8000-000000000001/ \
-      -H 'Content-Type: application/json' -d '{"role": "admin"}'
+      -H 'Content-Type: application/json' -d '{"role": "admin"}' | python3 -m json.tool
     ```
     Expect `409` both times, with `The organization's last owner cannot be removed or demoted.`
 
@@ -1275,17 +1330,17 @@ Several checks below build on each other, so run them in order. The list checks 
 
     Log in as `tony-stark`:
     ```shell
-    curl -s -w '\n%{http_code}\n' -c /tmp/tony-stark.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+    curl -s -w '%{stderr}%{http_code}\n' -c /tmp/tony-stark.cookies -X POST http://localhost:8000/api/v1/account/login/ \
       -H 'Content-Type: application/json' \
-      -d '{"identifier": "tony-stark", "password": "ImIronMan#3000"}'
+      -d '{"identifier": "tony-stark", "password": "ImIronMan#3000"}' | python3 -m json.tool
     ```
     Expect `200`. Then, as `tony-stark`, try to give peter a made-up role:
     ```shell
-    curl -s -o /dev/null -w '%{http_code}\n' -b /tmp/tony-stark.cookies -X PATCH \
+    curl -s -w '%{stderr}%{http_code}\n' -b /tmp/tony-stark.cookies -X PATCH \
       http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/c0000000-0000-4000-8000-000000000012/ \
-      -H 'Content-Type: application/json' -d '{"role": "emperor"}'
+      -H 'Content-Type: application/json' -d '{"role": "emperor"}' | python3 -m json.tool
     ```
-    Expect `422`.
+    Expect `422`, with a `detail` listing the allowed roles: `owner`, `admin` and `member`.
 
 12. **Ownership is transferred by promoting someone else first: 204, then the old owner can leave: 204.**
 
@@ -1295,12 +1350,12 @@ Several checks below build on each other, so run them in order. The list checks 
 
     Log in as `tony-stark`, and as `peter-parker`, who checks the result:
     ```shell
-    curl -s -w '\n%{http_code}\n' -c /tmp/tony-stark.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+    curl -s -w '%{stderr}%{http_code}\n' -c /tmp/tony-stark.cookies -X POST http://localhost:8000/api/v1/account/login/ \
       -H 'Content-Type: application/json' \
-      -d '{"identifier": "tony-stark", "password": "ImIronMan#3000"}'
-    curl -s -w '\n%{http_code}\n' -c /tmp/peter-parker.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+      -d '{"identifier": "tony-stark", "password": "ImIronMan#3000"}' | python3 -m json.tool
+    curl -s -w '%{stderr}%{http_code}\n' -c /tmp/peter-parker.cookies -X POST http://localhost:8000/api/v1/account/login/ \
       -H 'Content-Type: application/json' \
-      -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}'
+      -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}' | python3 -m json.tool
     ```
     Expect `200` both times. **Prove** tony is still the only OWNER, and which membership is whose, by listing the Avengers' members as `tony-stark`:
     ```shell
@@ -1330,12 +1385,12 @@ Several checks below build on each other, so run them in order. The list checks 
 
     Log in as `natasha-romanoff`, and as `bruce-wayne`, who checks the result:
     ```shell
-    curl -s -w '\n%{http_code}\n' -c /tmp/natasha-romanoff.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+    curl -s -w '%{stderr}%{http_code}\n' -c /tmp/natasha-romanoff.cookies -X POST http://localhost:8000/api/v1/account/login/ \
       -H 'Content-Type: application/json' \
-      -d '{"identifier": "natasha-romanoff", "password": "BlackWidow!!Red1"}'
-    curl -s -w '\n%{http_code}\n' -c /tmp/bruce-wayne.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+      -d '{"identifier": "natasha-romanoff", "password": "BlackWidow!!Red1"}' | python3 -m json.tool
+    curl -s -w '%{stderr}%{http_code}\n' -c /tmp/bruce-wayne.cookies -X POST http://localhost:8000/api/v1/account/login/ \
       -H 'Content-Type: application/json' \
-      -d '{"identifier": "bruce-wayne", "password": "IAmTheNight2024!!"}'
+      -d '{"identifier": "bruce-wayne", "password": "IAmTheNight2024!!"}' | python3 -m json.tool
     ```
     Expect `200` both times. **Prove** natasha is now an OWNER and bruce's invitation is pending, by listing the Avengers' members as `natasha-romanoff`:
     ```shell
@@ -1361,9 +1416,9 @@ Several checks below build on each other, so run them in order. The list checks 
 
     Log in as `peter-parker`:
     ```shell
-    curl -s -w '\n%{http_code}\n' -c /tmp/peter-parker.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+    curl -s -w '%{stderr}%{http_code}\n' -c /tmp/peter-parker.cookies -X POST http://localhost:8000/api/v1/account/login/ \
       -H 'Content-Type: application/json' \
-      -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}'
+      -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}' | python3 -m json.tool
     ```
     Expect `200`. **Prove** peter is a MEMBER and that `c0000000-0000-4000-8000-000000000012` is his, by listing the Avengers' members as him:
     ```shell
@@ -1389,9 +1444,9 @@ Several checks below build on each other, so run them in order. The list checks 
 
     Log in as `jean-grey`:
     ```shell
-    curl -s -w '\n%{http_code}\n' -c /tmp/jean-grey.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+    curl -s -w '%{stderr}%{http_code}\n' -c /tmp/jean-grey.cookies -X POST http://localhost:8000/api/v1/account/login/ \
       -H 'Content-Type: application/json' \
-      -d '{"identifier": "jean-grey", "password": "Phoenix19864202!"}'
+      -d '{"identifier": "jean-grey", "password": "Phoenix19864202!"}' | python3 -m json.tool
     ```
     Expect `200`. **Prove** jean is an ADMIN of the X-Men, by listing its members as her:
     ```shell
@@ -1412,8 +1467,8 @@ Several checks below build on each other, so run them in order. The list checks 
     ```
     Expect `204`. **Prove** she's gone and is now an outsider, by trying to list the X-Men's members as her again:
     ```shell
-    curl -s -w '\n%{http_code}\n' -b /tmp/jean-grey.cookies \
-      http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000002/members/
+    curl -s -w '%{stderr}%{http_code}\n' -b /tmp/jean-grey.cookies \
+      http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000002/members/ | python3 -m json.tool
     ```
     Expect `404`, with `Organization not found.`, the same as wade gets.
 
@@ -1448,17 +1503,17 @@ make upd
    ```
    Sign up `invite-tester` with that email. The username, password and phone number are fixed test values that pass the validation rules:
    ```shell
-   curl -s -w '\n%{http_code}\n' -X POST http://localhost:8000/api/v1/account/signup/ \
+   curl -s -w '%{stderr}%{http_code}\n' -X POST http://localhost:8000/api/v1/account/signup/ \
      -H 'Content-Type: application/json' \
-     -d '{"username": "invite-tester", "password": "InviteTester2024!", "email": "'"$MY_EMAIL"'", "phone_number": "27821000099"}'
+     -d '{"username": "invite-tester", "password": "InviteTester2024!", "email": "'"$MY_EMAIL"'", "phone_number": "27821000099"}' | python3 -m json.tool
    ```
    The JSON is in single quotes, because inside double quotes bash would treat the password's `!` as history expansion (`event not found`). The `'"$MY_EMAIL"'` part closes the single quotes, inserts your email, and reopens them. Expect `201`, with `"username": "invite-tester"` and your email. Signing up also sends a **welcome email** to the same address, so you'll get two emails in all. (Usernames and phone numbers must be unique: to run this check again, reset first with `make down` and `make upd`.)
 
    Log in as `tony-stark`, the Avengers' owner:
    ```shell
-   curl -s -w '\n%{http_code}\n' -c /tmp/tony-stark.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/tony-stark.cookies -X POST http://localhost:8000/api/v1/account/login/ \
      -H 'Content-Type: application/json' \
-     -d '{"identifier": "tony-stark", "password": "ImIronMan#3000"}'
+     -d '{"identifier": "tony-stark", "password": "ImIronMan#3000"}' | python3 -m json.tool
    ```
    Expect `200`. **Prove** tony is the owner and invite-tester isn't in the Avengers yet, by listing its members:
    ```shell
@@ -1467,9 +1522,9 @@ make upd
    ```
    Expect `tony-stark` with `"role": "owner"`, and no `invite-tester` row. Then invite `invite-tester` to the Avengers:
    ```shell
-   curl -s -w '\n%{http_code}\n' -b /tmp/tony-stark.cookies -X POST \
+   curl -s -w '%{stderr}%{http_code}\n' -b /tmp/tony-stark.cookies -X POST \
      http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/ \
-     -H 'Content-Type: application/json' -d '{"username": "invite-tester"}'
+     -H 'Content-Type: application/json' -d '{"username": "invite-tester"}' | python3 -m json.tool
    ```
    Expect `201`, with a `membership_id` and an `expires_at` 7 days out.
 
@@ -1481,3 +1536,518 @@ make upd
    docker compose -p "$PROJECT" logs --no-log-prefix worker | grep -i 'invitation email'
    ```
    Expect `Sending organization invitation email to` and `Organization invitation email sent to`, each followed by your email. With SMTP set up, the email arrives with the subject "You're invited to join Avengers", saying tony-stark invited you as member and when the invitation expires. In console mode, the full email is in the worker log: `make logs service=worker tail=100`, then Ctrl-C.
+
+### Step 11: deleting an organization
+
+Start from a freshly seeded database (`make down`, then `make upd`): check 3 deletes the seeded X-Men for good. Run the checks in order.
+
+1. **An outsider can't delete it: 404.**
+
+   **Why:** an outsider can't even confirm the organization exists, so a delete attempt gets the same `404` as any other request (see "401 vs 404 vs 403").
+
+   **Acts on:** the X-Men (`a0000000-0000-4000-8000-000000000002`).
+
+   Log in as `wade-wilson`:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/wade-wilson.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "wade-wilson", "password": "MaximumEffort2024!!!"}' | python3 -m json.tool
+   ```
+   Expect `200`. **Prove** he belongs to no organization:
+   ```shell
+   curl -s -b /tmp/wade-wilson.cookies http://localhost:8000/api/v1/organizations/ | python3 -m json.tool
+   ```
+   Expect `"total": 0`. Then, as `wade-wilson`, try to delete the X-Men:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' -b /tmp/wade-wilson.cookies -X DELETE \
+     http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000002/ | python3 -m json.tool
+   ```
+   Expect `404`, with `Organization not found.`
+
+2. **An ADMIN can't delete it: 403.**
+
+   **Why:** deleting is irreversible and removes every member, so it's the OWNER's call alone. An ADMIN can manage people, not end the organization.
+
+   **Acts on:** the X-Men (`a0000000-0000-4000-8000-000000000002`).
+
+   Log in as `jean-grey`:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/jean-grey.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "jean-grey", "password": "Phoenix19864202!"}' | python3 -m json.tool
+   ```
+   Expect `200`. **Prove** she's an ADMIN of the X-Men, by listing its members as her:
+   ```shell
+   curl -s -b /tmp/jean-grey.cookies \
+     http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000002/members/ | python3 -m json.tool
+   ```
+   Expect `jean-grey` with `"role": "admin"`, and `charles-xavier` as `owner`. Then, as `jean-grey`, try to delete the X-Men:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' -b /tmp/jean-grey.cookies -X DELETE \
+     http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000002/ | python3 -m json.tool
+   ```
+   Expect `403`. **Prove** nothing was deleted, by listing the members again:
+   ```shell
+   curl -s -b /tmp/jean-grey.cookies \
+     http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000002/members/ | python3 -m json.tool
+   ```
+   Expect the same rows as before.
+
+3. **The OWNER deletes it: 204, and every membership and invitation goes with it.**
+
+   **Why:** the owner can end the organization. The database's `ON DELETE CASCADE` removes every row that belongs to it, accepted members and pending invitations alike, so nothing is left pointing at an organization that no longer exists.
+
+   **Acts on:** the X-Men (`a0000000-0000-4000-8000-000000000002`), its admin `jean-grey`, and matt-murdock's pending invitation to it (`b0000000-0000-4000-8000-000000000003`).
+
+   Log in as `charles-xavier`, as `jean-grey` and as `matt-murdock`, who check the result:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/charles-xavier.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "charles-xavier", "password": "Cerebro#Mutant42"}' | python3 -m json.tool
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/jean-grey.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "jean-grey", "password": "Phoenix19864202!"}' | python3 -m json.tool
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/matt-murdock.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "matt-murdock", "password": "Daredevil1!!"}' | python3 -m json.tool
+   ```
+   Expect `200` three times. **Prove** charles is the owner, and matt has a pending invitation to the X-Men:
+   ```shell
+   curl -s -b /tmp/charles-xavier.cookies http://localhost:8000/api/v1/organizations/ | python3 -m json.tool
+   curl -s -b /tmp/matt-murdock.cookies http://localhost:8000/api/v1/organizations/invitations/ | python3 -m json.tool
+   ```
+   Expect the X-Men with `"role": "owner"` for charles, and matt's invitation `b0000000-0000-4000-8000-000000000003` to the X-Men. Then, as `charles-xavier`, delete the X-Men:
+   ```shell
+   curl -s -o /dev/null -w '%{http_code}\n' -b /tmp/charles-xavier.cookies -X DELETE \
+     http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000002/
+   ```
+   Expect `204`. **Prove** it's gone for everyone:
+   ```shell
+   curl -s -b /tmp/charles-xavier.cookies http://localhost:8000/api/v1/organizations/ | python3 -m json.tool
+   curl -s -w '%{stderr}%{http_code}\n' -b /tmp/jean-grey.cookies \
+     http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000002/members/ | python3 -m json.tool
+   curl -s -b /tmp/matt-murdock.cookies http://localhost:8000/api/v1/organizations/invitations/ | python3 -m json.tool
+   ```
+   Expect no X-Men in charles's list; `404` with `Organization not found.` for jean, its former admin; and `"total": 0` for matt, whose invitation went with it.
+
+### Step 12: a deactivated owner doesn't count
+
+Start from a freshly seeded database (`make down`, then `make upd`): this check promotes natasha and deactivates her account.
+
+1. **The last ACTIVE owner can't leave, even with a deactivated co-owner: 409.**
+
+   **Why:** a platform admin can deactivate any USER-role account, and a deactivated account can't log in. If its OWNER row still counted, the remaining active owner could leave, and the organization would be left with nobody able to run it. So the last-owner rule counts only owners whose account is active.
+
+   **Acts on:** the Avengers (`a0000000-0000-4000-8000-000000000001`), natasha's membership in it (`c0000000-0000-4000-8000-000000000011`), tony's (`c0000000-0000-4000-8000-000000000001`), and natasha's user id, saved in `$NATASHA_ID`.
+
+   Log in as `tony-stark`, the owner, and as `miles-morales`, a platform ADMIN:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/tony-stark.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "tony-stark", "password": "ImIronMan#3000"}' | python3 -m json.tool
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/miles-morales.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "miles-morales", "password": "WebSlingerHero1!"}' | python3 -m json.tool
+   ```
+   Expect `200` both times. As `tony-stark`, make natasha a second owner:
+   ```shell
+   curl -s -o /dev/null -w '%{http_code}\n' -b /tmp/tony-stark.cookies -X PATCH \
+     http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/c0000000-0000-4000-8000-000000000011/ \
+     -H 'Content-Type: application/json' -d '{"role": "owner"}'
+   ```
+   Expect `204`. As `miles-morales`, save natasha's user id from the users list, then deactivate her account:
+   ```shell
+   NATASHA_ID=$(curl -s -b /tmp/miles-morales.cookies 'http://localhost:8000/api/v1/users/?limit=100' \
+     | python3 -c 'import sys, json; print(next(u["id"] for u in json.load(sys.stdin)["users"] if u["username"] == "natasha-romanoff"))')
+   echo "$NATASHA_ID"
+   curl -s -o /dev/null -w '%{http_code}\n' -b /tmp/miles-morales.cookies -X DELETE \
+     "http://localhost:8000/api/v1/users/$NATASHA_ID/activation/"
+   ```
+   Expect a UUID, then `204`. **Prove** the starting state: two OWNER rows in the Avengers, and natasha unable to log in:
+   ```shell
+   curl -s -b /tmp/tony-stark.cookies \
+     http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/ | python3 -m json.tool
+   curl -s -w '%{stderr}%{http_code}\n' -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "natasha-romanoff", "password": "BlackWidow!!Red1"}' | python3 -m json.tool
+   ```
+   Expect both `tony-stark` and `natasha-romanoff` with `"role": "owner"`, then a refused login for natasha (not `200`). Then, as `tony-stark`, try to leave the Avengers:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' -b /tmp/tony-stark.cookies -X DELETE \
+     http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/c0000000-0000-4000-8000-000000000001/ | python3 -m json.tool
+   ```
+   Expect `409`, with `The organization's last owner cannot be removed or demoted.`: natasha's OWNER row doesn't count while her account is deactivated.
+
+### Step 13: describing and renaming an organization
+
+Start from a freshly seeded database (`make down`, then `make upd`): checks 5 and 6 change the Avengers' name and description, and check 7 creates an organization for danny-rand. Run the checks in order; the first four change nothing.
+
+1. **Every organization explains itself, to members and to invitees.**
+
+   **Why:** a description is mandatory, so every list shows one. An invitee isn't a member yet, so their invitation list is where they learn what the organization is before deciding to accept.
+
+   **Acts on:** the Avengers (`a0000000-0000-4000-8000-000000000001`), and bruce-wayne's pending invitation to it (`b0000000-0000-4000-8000-000000000001`).
+
+   Log in as `peter-parker`, a member, and as `bruce-wayne`, an invitee:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/peter-parker.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}' | python3 -m json.tool
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/bruce-wayne.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "bruce-wayne", "password": "IAmTheNight2024!!"}' | python3 -m json.tool
+   ```
+   Expect `200` both times. Then list peter's organizations, and bruce's invitations:
+   ```shell
+   curl -s -b /tmp/peter-parker.cookies http://localhost:8000/api/v1/organizations/ | python3 -m json.tool
+   curl -s -b /tmp/bruce-wayne.cookies http://localhost:8000/api/v1/organizations/invitations/ | python3 -m json.tool
+   ```
+   Expect each of peter's four organizations with a `description`, the Avengers' being `"Earth's mightiest heroes."`. Then bruce's invitation `b0000000-0000-4000-8000-000000000001` with `"organization_name": "Avengers"` and `"organization_description": "Earth's mightiest heroes."`.
+
+2. **A MEMBER can't rename it: 403.**
+
+   **Why:** the name and description are what every member and invitee sees, so changing them needs at least ADMIN. peter is a member, so it's 403, not 404.
+
+   **Acts on:** the Avengers (`a0000000-0000-4000-8000-000000000001`).
+
+   Log in as `peter-parker`:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/peter-parker.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}' | python3 -m json.tool
+   ```
+   Expect `200`. **Prove** he's a MEMBER of the Avengers, by listing its members as him:
+   ```shell
+   curl -s -b /tmp/peter-parker.cookies \
+     http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/ | python3 -m json.tool
+   ```
+   Expect `peter-parker` with `"role": "member"`. Then, as `peter-parker`, try to rename the Avengers:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' -b /tmp/peter-parker.cookies -X PATCH \
+     http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/ \
+     -H 'Content-Type: application/json' -d '{"name": "Spider Avengers"}' | python3 -m json.tool
+   ```
+   Expect `403`. **Prove** nothing changed, by listing his organizations:
+   ```shell
+   curl -s -b /tmp/peter-parker.cookies http://localhost:8000/api/v1/organizations/ | python3 -m json.tool
+   ```
+   Expect the Avengers still named `"Avengers"`.
+
+3. **An outsider can't rename it: 404.**
+
+   **Why:** the same privacy rule as everywhere (see "401 vs 404 vs 403"): an outsider can't confirm the organization exists.
+
+   **Acts on:** the Avengers (`a0000000-0000-4000-8000-000000000001`).
+
+   Log in as `wade-wilson`:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/wade-wilson.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "wade-wilson", "password": "MaximumEffort2024!!!"}' | python3 -m json.tool
+   ```
+   Expect `200`. **Prove** he belongs to no organization:
+   ```shell
+   curl -s -b /tmp/wade-wilson.cookies http://localhost:8000/api/v1/organizations/ | python3 -m json.tool
+   ```
+   Expect `"total": 0`. Then, as `wade-wilson`, try to rename the Avengers:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' -b /tmp/wade-wilson.cookies -X PATCH \
+     http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/ \
+     -H 'Content-Type: application/json' -d '{"name": "Deadpool Corps"}' | python3 -m json.tool
+   ```
+   Expect `404`, with `Organization not found.`
+
+4. **The description can't be cleared: 400, and nothing changes.**
+
+   **Why:** every organization must explain itself, so a blank description is invalid, not "no description". Both values are checked before either changes, so the valid new name sent with it isn't applied either. tony is the OWNER, so this isn't about permissions.
+
+   **Acts on:** the Avengers (`a0000000-0000-4000-8000-000000000001`).
+
+   Log in as `tony-stark`:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/tony-stark.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "tony-stark", "password": "ImIronMan#3000"}' | python3 -m json.tool
+   ```
+   Expect `200`. **Prove** he's the OWNER, and the current name and description, by listing his organizations:
+   ```shell
+   curl -s -b /tmp/tony-stark.cookies http://localhost:8000/api/v1/organizations/ | python3 -m json.tool
+   ```
+   Expect the Avengers with `"role": "owner"`, `"name": "Avengers"` and `"description": "Earth's mightiest heroes."`. Then, as `tony-stark`, send a new name with a blank description:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' -b /tmp/tony-stark.cookies -X PATCH \
+     http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/ \
+     -H 'Content-Type: application/json' -d '{"name": "New Avengers", "description": "   "}' | python3 -m json.tool
+   ```
+   Expect `400`. **Prove** nothing changed, by listing his organizations again:
+   ```shell
+   curl -s -b /tmp/tony-stark.cookies http://localhost:8000/api/v1/organizations/ | python3 -m json.tool
+   ```
+   Expect `"name": "Avengers"` and `"description": "Earth's mightiest heroes."`, as before.
+
+5. **An ADMIN changes only the description: 200, and the name stays.**
+
+   **Why:** a PATCH changes only the fields it sends. natasha is an ADMIN, the lowest role allowed to edit.
+
+   **Acts on:** the Avengers (`a0000000-0000-4000-8000-000000000001`).
+
+   Log in as `natasha-romanoff`:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/natasha-romanoff.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "natasha-romanoff", "password": "BlackWidow!!Red1"}' | python3 -m json.tool
+   ```
+   Expect `200`. **Prove** she's an ADMIN of the Avengers, by listing her organizations:
+   ```shell
+   curl -s -b /tmp/natasha-romanoff.cookies http://localhost:8000/api/v1/organizations/ | python3 -m json.tool
+   ```
+   Expect the Avengers with `"role": "admin"`. Then, as `natasha-romanoff`, send only a new description, with surrounding spaces:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' -b /tmp/natasha-romanoff.cookies -X PATCH \
+     http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/ \
+     -H 'Content-Type: application/json' -d '{"description": "  Assembled again.  "}' | python3 -m json.tool
+   ```
+   Expect `200`, with `"name": "Avengers"` unchanged and `"description": "Assembled again."`, trimmed.
+
+6. **An ADMIN renames it: 200, and every member sees the new name.**
+
+   **Why:** the change is stored, not just echoed back, so another member's list shows it too.
+
+   **Acts on:** the Avengers (`a0000000-0000-4000-8000-000000000001`).
+
+   Log in as `natasha-romanoff`, and as `peter-parker`, who checks the result:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/natasha-romanoff.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "natasha-romanoff", "password": "BlackWidow!!Red1"}' | python3 -m json.tool
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/peter-parker.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}' | python3 -m json.tool
+   ```
+   Expect `200` both times. **Prove** the starting name, by listing peter's organizations:
+   ```shell
+   curl -s -b /tmp/peter-parker.cookies http://localhost:8000/api/v1/organizations/ | python3 -m json.tool
+   ```
+   Expect the Avengers (`a0000000-0000-4000-8000-000000000001`) named `"Avengers"`. Then, as `natasha-romanoff`, rename it:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' -b /tmp/natasha-romanoff.cookies -X PATCH \
+     http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/ \
+     -H 'Content-Type: application/json' -d '{"name": "New Avengers"}' | python3 -m json.tool
+   ```
+   Expect `200`, with `"name": "New Avengers"`. Then, as `peter-parker`, list his organizations again:
+   ```shell
+   curl -s -b /tmp/peter-parker.cookies http://localhost:8000/api/v1/organizations/ | python3 -m json.tool
+   ```
+   Expect the same id, now named `"New Avengers"`, with the description from check 5 (or `"Earth's mightiest heroes."` if you skipped it).
+
+7. **A new organization needs a description: 422 without one, 400 for a blank one, 201 with one.**
+
+   **Why:** every organization must explain itself from the moment it exists, so creating one without a description is refused. Leaving the field out entirely is a malformed request (`422`, from FastAPI's own validation); sending only spaces is a well-formed request that breaks the description's rule (`400`, from the `Description` value object). Neither creates anything. A valid description is trimmed and stored.
+
+   **Acts on:** danny-rand's organizations: the Defenders (`a0000000-0000-4000-8000-000000000003`), and a new one, "Heroes for Hire".
+
+   Log in as `danny-rand`:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/danny-rand.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "danny-rand", "password": "Iron$Fist_KunLun1!"}' | python3 -m json.tool
+   ```
+   Expect `200`. **Prove** his starting organizations:
+   ```shell
+   curl -s -b /tmp/danny-rand.cookies http://localhost:8000/api/v1/organizations/ | python3 -m json.tool
+   ```
+   Expect `"total": 1`: the Defenders, as a `member`. Then, as `danny-rand`, try to create "Heroes for Hire" with no description, then with a blank one:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' -b /tmp/danny-rand.cookies -X POST http://localhost:8000/api/v1/organizations/ \
+     -H 'Content-Type: application/json' -d '{"name": "Heroes for Hire"}' | python3 -m json.tool
+   curl -s -w '%{stderr}%{http_code}\n' -b /tmp/danny-rand.cookies -X POST http://localhost:8000/api/v1/organizations/ \
+     -H 'Content-Type: application/json' -d '{"name": "Heroes for Hire", "description": "   "}' | python3 -m json.tool
+   ```
+   Expect `422` naming the missing `description` field, then `400`. **Prove** nothing was created:
+   ```shell
+   curl -s -b /tmp/danny-rand.cookies http://localhost:8000/api/v1/organizations/ | python3 -m json.tool
+   ```
+   Expect `"total": 1`, as before. Then create it with a description, with surrounding spaces:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' -b /tmp/danny-rand.cookies -X POST http://localhost:8000/api/v1/organizations/ \
+     -H 'Content-Type: application/json' -d '{"name": "Heroes for Hire", "description": "  Fists for hire.  "}' | python3 -m json.tool
+   ```
+   Expect `201`, with `"name": "Heroes for Hire"` and `"description": "Fists for hire."`, trimmed. **Prove** it was stored, and that he owns it:
+   ```shell
+   curl -s -b /tmp/danny-rand.cookies http://localhost:8000/api/v1/organizations/ | python3 -m json.tool
+   ```
+   Expect `"total": 2`: the Defenders, and "Heroes for Hire" with `"description": "Fists for hire."`, `"role": "owner"` and `"member_count": 1`.
+
+### Step 14: the wiki pages
+
+Docs only, so these checks are reading, not requests. `make upd` also serves the wiki, at http://localhost:8001 (`WIKI_PORT` in `env.example`).
+
+1. **The organizations page lists every endpoint and rule.**
+
+   **Why:** Steps 11 to 15 added deleting, editing, the mandatory description, the active-owner rule and the public API reads; a reader of the wiki should find all of them without reading the plan.
+
+   Open http://localhost:8001/content/core-patterns/organizations/ and check:
+   - "Who can do what" says an ADMIN can edit the name and description, an OWNER can delete, and a deactivated owner doesn't count as the last owner.
+   - "Every organization explains itself" describes the mandatory description.
+   - "Endpoints" lists `PATCH` and `DELETE /api/v1/organizations/{organization_id}/`, and says the two lists are also on the public API.
+
+2. **The public API page lists the two organization reads.**
+
+   **Why:** the public API page is where an integrating developer looks for what a key can do.
+
+   Open http://localhost:8001/content/core-patterns/public-api/ and check that "Endpoints" lists `GET /public/v1/organizations/` and `GET /public/v1/organizations/{organization_id}/members/`, both read-only.
+
+3. **The data and database pages know about the description.**
+
+   **Why:** the description is a new column, entity field and query-model field, so the pages that list them must too.
+
+   Open these and check each mentions the organization `description`; the database page should also list eight migrations, ending with `add_description_to_organizations`:
+   - http://localhost:8001/content/data-models/domain-entities/
+   - http://localhost:8001/content/data-models/query-models/
+   - http://localhost:8001/content/data-models/database-models/
+   - http://localhost:8001/content/infrastructure-services/database/
+
+### Step 15: organization reads on the public API
+
+The public API is mounted at `/public` (`http://localhost:8000/public/v1/...`), and every request authenticates with an `X-API-Key` header instead of a cookie. It exposes exactly two organization routes, both read-only:
+- `GET /public/v1/organizations/`: the organizations the key's owner belongs to.
+- `GET /public/v1/organizations/{organization_id}/members/`: one organization's members, for any member.
+
+Everything else about organizations (creating, inviting, accepting, removing, changing roles, deleting, editing, and the invitation list) stays on the cookie app. An API key belongs to one user, so a leaked key would carry its owner's powers in every organization they're in.
+
+**The seeded keys.** Every seeded key has a fixed value (`SEED_API_KEYS` in `scripts/seed_db.py`), so the commands below use it as written:
+- `peter-parker`: `ak_seed-peter-parker-valid`, valid. A member of all four organizations.
+- `wade-wilson`: `ak_seed-wade-wilson-valid`, valid. In no organization: the outsider.
+- `matt-murdock`: `ak_seed-matt-murdock-valid`, valid. Has a pending invitation to the X-Men.
+- `natasha-romanoff`: `ak_seed-natasha-romanoff-valid`, valid, id `d0000000-0000-4000-8000-000000000003`. Check 4 revokes it.
+- `bruce-wayne`: `ak_seed-bruce-wayne-expired`, expired a day before seeding.
+
+Start from a freshly seeded database (`make down`, then `make upd`): check 4 revokes natasha's key for good. Run the checks in order. No check changes organization data.
+
+1. **Peter's organizations: the same JSON with a key as with a cookie.**
+
+   **Why:** both routes run the same `ListMyOrganizations` class; only how the caller is identified differs. So the two responses must be identical, field for field, not just similar.
+
+   **Acts on:** peter-parker's organizations: the Avengers, the X-Men, the Defenders and the Daily Bugle, through his cookie and his key `ak_seed-peter-parker-valid`.
+
+   Log in as `peter-parker` with a cookie:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/peter-parker.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}' | python3 -m json.tool
+   ```
+   Expect `200`. **Prove** what the cookie app shows him:
+   ```shell
+   curl -s -b /tmp/peter-parker.cookies http://localhost:8000/api/v1/organizations/ | python3 -m json.tool
+   ```
+   Expect `"total": 4`. Then compare both apps' answers line by line:
+   ```shell
+   diff <(curl -s -b /tmp/peter-parker.cookies http://localhost:8000/api/v1/organizations/ | python3 -m json.tool) \
+        <(curl -s -H 'X-API-Key: ak_seed-peter-parker-valid' http://localhost:8000/public/v1/organizations/ | python3 -m json.tool) \
+     && echo IDENTICAL
+   ```
+   Expect only `IDENTICAL`. `diff` prints nothing when the two are the same; any line it prints is a difference.
+
+2. **The Avengers' members: the same JSON with a key as with a cookie.**
+
+   **Why:** listing members runs the same `ListOrganizationMembers` class, with the same membership check, on both apps. peter is only a MEMBER, the lowest role allowed to list members.
+
+   **Acts on:** the Avengers (`a0000000-0000-4000-8000-000000000001`), through peter-parker's cookie and his key `ak_seed-peter-parker-valid`.
+
+   Log in as `peter-parker` with a cookie:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/peter-parker.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}' | python3 -m json.tool
+   ```
+   Expect `200`. **Prove** he's a MEMBER of the Avengers, through the cookie app:
+   ```shell
+   curl -s -b /tmp/peter-parker.cookies \
+     http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/ | python3 -m json.tool
+   ```
+   Expect a `peter-parker` row with `"role": "member"`, and pending rows for `bruce-wayne` and `diana-prince`. Then compare both apps' answers:
+   ```shell
+   diff <(curl -s -b /tmp/peter-parker.cookies \
+          http://localhost:8000/api/v1/organizations/a0000000-0000-4000-8000-000000000001/members/ | python3 -m json.tool) \
+        <(curl -s -H 'X-API-Key: ak_seed-peter-parker-valid' \
+          http://localhost:8000/public/v1/organizations/a0000000-0000-4000-8000-000000000001/members/ | python3 -m json.tool) \
+     && echo IDENTICAL
+   ```
+   Expect only `IDENTICAL`.
+
+3. **No key, an outsider's key, a member's key: 401, 404, 200.**
+
+   **Why:** the same three-way rule as the cookie app (see "401 vs 404 vs 403"), with a key in place of a cookie. No key means the server doesn't know who you are: `401`. wade's key is valid, but he isn't a member, so the organization "doesn't exist" for him: `404`, which gives nothing away. There's no `403` case here, because listing members needs only MEMBER, the lowest role. All three send the same request; only the key changes.
+
+   **Acts on:** the Avengers (`a0000000-0000-4000-8000-000000000001`), with no key, wade-wilson's key `ak_seed-wade-wilson-valid`, and peter-parker's key `ak_seed-peter-parker-valid`.
+
+   **Prove** wade belongs to no organization, with his own key:
+   ```shell
+   curl -s -H 'X-API-Key: ak_seed-wade-wilson-valid' http://localhost:8000/public/v1/organizations/ | python3 -m json.tool
+   ```
+   Expect `"organizations": []` and `"total": 0`. Then send the same request three times: with no key, with wade's, with peter's:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' \
+     http://localhost:8000/public/v1/organizations/a0000000-0000-4000-8000-000000000001/members/ | python3 -m json.tool
+   curl -s -w '%{stderr}%{http_code}\n' -H 'X-API-Key: ak_seed-wade-wilson-valid' \
+     http://localhost:8000/public/v1/organizations/a0000000-0000-4000-8000-000000000001/members/ | python3 -m json.tool
+   curl -s -w '%{stderr}%{http_code}\n' -H 'X-API-Key: ak_seed-peter-parker-valid' \
+     http://localhost:8000/public/v1/organizations/a0000000-0000-4000-8000-000000000001/members/ | python3 -m json.tool
+   ```
+   Expect `401` with `Invalid or expired API key.`; then `404` with `Organization not found.`; then `200` with the Avengers' member list (`peter-parker` among them).
+
+4. **A made-up, expired or revoked key: 401.**
+
+   **Why:** only a key that exists, hasn't expired and hasn't been revoked identifies anyone. A revoked key stops working at once, so its owner can shut down a key that leaked.
+
+   **Acts on:** a key that was never issued (`ak_does-not-exist`), bruce-wayne's expired key `ak_seed-bruce-wayne-expired`, and natasha-romanoff's key `ak_seed-natasha-romanoff-valid` (id `d0000000-0000-4000-8000-000000000003`).
+
+   First a key that was never issued, then bruce's expired one:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' -H 'X-API-Key: ak_does-not-exist' http://localhost:8000/public/v1/organizations/ | python3 -m json.tool
+   curl -s -w '%{stderr}%{http_code}\n' -H 'X-API-Key: ak_seed-bruce-wayne-expired' http://localhost:8000/public/v1/organizations/ | python3 -m json.tool
+   ```
+   Expect `401` both times, with `Invalid or expired API key.`. **Prove** natasha's key works, and that id `d0000000-0000-4000-8000-000000000003` is that key:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' -H 'X-API-Key: ak_seed-natasha-romanoff-valid' \
+     http://localhost:8000/public/v1/organizations/ | python3 -m json.tool
+   curl -s -H 'X-API-Key: ak_seed-natasha-romanoff-valid' http://localhost:8000/public/v1/api-keys/ | python3 -m json.tool
+   ```
+   Expect `200` with her organizations (the Avengers, where she's an `admin`), then her key list with id `d0000000-0000-4000-8000-000000000003`, label `"SHIELD Field Ops Key"` and `key_prefix` `"ak_seed-nat"`. Then revoke it, using the key itself, and send the same request again:
+   ```shell
+   curl -s -o /dev/null -w '%{http_code}\n' -H 'X-API-Key: ak_seed-natasha-romanoff-valid' -X DELETE \
+     http://localhost:8000/public/v1/api-keys/d0000000-0000-4000-8000-000000000003/
+   curl -s -w '%{stderr}%{http_code}\n' -H 'X-API-Key: ak_seed-natasha-romanoff-valid' http://localhost:8000/public/v1/organizations/ | python3 -m json.tool
+   ```
+   Expect `204`, then `401`.
+
+5. **Read-only: no creating, and no invitations, with a key.**
+
+   **Why:** these two reads are all the public API offers for organizations. Creating one is refused with `405 Method Not Allowed`: the URL exists, but only for reading. The invitation list isn't there at all, so it's `404` with FastAPI's own `Not Found`, not the app's `Organization not found.`. matt is used because he has a pending invitation, so there is something the route would have shown.
+
+   **Acts on:** matt-murdock's pending invitation to the X-Men (`b0000000-0000-4000-8000-000000000003`), through his cookie and his key `ak_seed-matt-murdock-valid`.
+
+   Log in as `matt-murdock` with a cookie:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' -c /tmp/matt-murdock.cookies -X POST http://localhost:8000/api/v1/account/login/ \
+     -H 'Content-Type: application/json' \
+     -d '{"identifier": "matt-murdock", "password": "Daredevil1!!"}' | python3 -m json.tool
+   ```
+   Expect `200`. **Prove** he has a pending invitation, through the cookie app, and belongs to no organization yet, through his key:
+   ```shell
+   curl -s -b /tmp/matt-murdock.cookies http://localhost:8000/api/v1/organizations/invitations/ | python3 -m json.tool
+   curl -s -H 'X-API-Key: ak_seed-matt-murdock-valid' http://localhost:8000/public/v1/organizations/ | python3 -m json.tool
+   ```
+   Expect his invitation `b0000000-0000-4000-8000-000000000003` to the X-Men, then `"total": 0`. Then, with his key, ask for his invitations, and try to create an organization:
+   ```shell
+   curl -s -w '%{stderr}%{http_code}\n' -H 'X-API-Key: ak_seed-matt-murdock-valid' \
+     http://localhost:8000/public/v1/organizations/invitations/ | python3 -m json.tool
+   curl -s -w '%{stderr}%{http_code}\n' -H 'X-API-Key: ak_seed-matt-murdock-valid' -X POST \
+     http://localhost:8000/public/v1/organizations/ \
+     -H 'Content-Type: application/json' -d '{"name": "Nelson and Murdock", "description": "Attorneys at law."}' | python3 -m json.tool
+   ```
+   Expect `404` with `"detail": "Not Found"`, then `405` with `"detail": "Method Not Allowed"`. **Prove** nothing was created:
+   ```shell
+   curl -s -H 'X-API-Key: ak_seed-matt-murdock-valid' http://localhost:8000/public/v1/organizations/ | python3 -m json.tool
+   ```
+   Expect `"total": 0`: matt is still in no organization.

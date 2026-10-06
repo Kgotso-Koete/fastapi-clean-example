@@ -77,6 +77,8 @@ The composition-root provider is named for the **entrypoint it serves** (the pub
 | `DELETE /public/v1/api-keys/{id}/` | `X-API-Key` | `RevokeApiKey` | Idempotent; owner-only (403 for someone else's key id) |
 | `GET /public/v1/api-keys/{id}/usage/` | `X-API-Key` | `GetApiKeyUsageStats` | `use_count`/`last_used_at`; owner-only |
 | `GET /public/v1/account/profile/` | `X-API-Key` | `GetOwnProfile` | Identical response shape to `GET /api/v1/account/profile/` for the same account — see below |
+| `GET /public/v1/organizations/` | `X-API-Key` | `ListMyOrganizations` | Same JSON as `GET /api/v1/organizations/`; the key owner's accepted organizations only |
+| `GET /public/v1/organizations/{organization_id}/members/` | `X-API-Key` | `ListOrganizationMembers` | Same JSON as the cookie route; a non-member's key gets `404`. Read-only: organization writes and invitations stay on the cookie app, since a key isn't scoped to one organization |
 | `GET /public/docs`, `/public/redoc`, `/public/openapi.json` | None | — | Always reachable, in every `ENVIRONMENT`, unlike the private app's dev-only-gated docs — this API is meant to be integrated against in production |
 
 ## The cookie-vs-API-key parity proof

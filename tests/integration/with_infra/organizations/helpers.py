@@ -60,7 +60,10 @@ async def create_organization_as(it_client: httpx2.AsyncClient, owner: Account) 
     # Through the real route, so the owner's membership is exactly what
     # production creates. Leaves `owner` logged in.
     await log_in(it_client, owner)
-    r = await it_client.post(ORGANIZATIONS_ENDPOINT, json={"name": "Avengers"})
+    r = await it_client.post(
+        ORGANIZATIONS_ENDPOINT,
+        json={"name": "Avengers", "description": "Earth's mightiest heroes."},
+    )
     assert r.status_code == 201
     return UUID(r.json()["id"])
 
