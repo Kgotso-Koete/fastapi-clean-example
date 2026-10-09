@@ -107,10 +107,10 @@ async def execute(self, request: CreateUserRequest) -> CreateUserResponse:
     user = await self._user_service.create_user_with_raw_password(...)
     self._user_tx_storage.add(user)
     events = user.collect_events()
-    await self._event_dispatcher.stage(events)      # BEFORE flush/commit
-    await self._flusher.flush()                       # surfaces uniqueness violations
+    await self._event_dispatcher.stage(events)  # BEFORE flush/commit
+    await self._flusher.flush()  # surfaces uniqueness violations
     await self._transaction_manager.commit()
-    await self._event_dispatcher.dispatch(events)      # AFTER commit
+    await self._event_dispatcher.dispatch(events)  # AFTER commit
 ```
 
 The `stage()`-before-`flush()`/`commit()`, `dispatch()`-after-`commit()` ordering is the transactional-outbox contract every command that raises events follows — see [Domain Events & the Transactional Outbox](../core-patterns/domain-events-outbox.md) for why the ordering matters. `ListUsers.execute()` (the one query) is simpler: authorize, then delegate straight to `UserReader.list_users()` — no transaction manager, no flusher, no events, since a read never mutates anything.

@@ -132,6 +132,7 @@ Every [`EventHandler`](../../../../src/app/core/common/ports/event_handler.py) d
 async def stage(self, events: list[DomainEvent]) -> None:
     """Call BEFORE the caller's own flush()/commit()."""
 
+
 async def dispatch(self, events: list[DomainEvent]) -> None:
     """Call AFTER the caller's own commit()."""
 ```

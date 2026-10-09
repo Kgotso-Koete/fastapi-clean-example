@@ -25,7 +25,7 @@ TODO:
 - [x] Wiki: generate the dependency-graph and complexity diagrams from real code (`grimp`/`radon`) instead of hand-drawing them, so they can't drift stale — see `docs/plans/5-self-hosted-docs-wiki.md`'s Steps 2/3/5
 - [x] Add an inbound CLI (`src/app/main/cli/`, `python -m app.main.cli` / `make cli args="..."`) so core commands/queries can be invoked directly from a terminal script for cron jobs, data seeding, and admin/ops actions, bypassing HTTP entirely — see `docs/plans/6-inbound-cli.md`
 - [x] Add a public-facing API with API-key authentication (issue/list/revoke keys, usage stats, shared `GetOwnProfile`), mounted at `/public` alongside the private app — see `docs/plans/8-public-api-key-auth.md`
-- [ ] Mount `GET /debug/test-error` only in `development` (it's reachable in production today) -- see `docs/plans/0-production-readiness-roadmap.md`
+- [ ] Mount `GET /debug/test-error/` only in `development` (it's reachable in production today) -- see `docs/plans/0-production-readiness-roadmap.md`
 - [ ] Investigate a possible username-enumeration leak in the inbound CLI (a rule-breaking password for an existing username may get a different message than for an unknown one) -- see `docs/plans/0-production-readiness-roadmap.md`
 - [ ] Investigate why `docker compose down`/`stop` can fail to remove `worker`/`redis` at all (confirmed in `make test-docker`'s teardown, only `docker kill` recovers it) — see `docs/plans/0-production-readiness-roadmap.md`
 - [ ] Harden for production use: password policy, rate limiting, secrets management, TLS, backups, a real deploy pipeline, self-service password reset, email verification, and more — full prioritized backlog in `docs/plans/0-production-readiness-roadmap.md`
@@ -38,6 +38,7 @@ TODO:
 - [ ] Add file storage on the private API: image galleries on users and organizations and private documents (PDFs, images), local disk by default or any S3-compatible service (AWS S3, Cloudflare R2, MinIO) -- not yet started, full design in `docs/plans/12-file-storage.md`
 - [ ] Restructure into a modular monolith (one folder per bounded context — Users/Organizations/Notifications, possibly more) once there's more than one real bounded context — decided, not yet started, see `docs/plans/0-production-readiness-roadmap.md`
 - [ ] Add Sentry error tracking (automatic error grouping/fingerprinting, release correlation) alongside the existing Prometheus/Loki/Grafana stack and email alerting — not yet started, full design in `docs/plans/13-sentry-error-tracking.md`
+- [x] Selectively bring in the original author's "Autumn 2026 Updates & Fixes" (dependency upgrades closing every `pip-audit` finding, a partial-update sentinel, cause-chain logging, a configurable DB connect timeout, session/authorization/OpenAPI-example tests, a 75% CI coverage floor), one small test-first change at a time -- see `docs/plans/15-upstream-autumn-2026.md`
 
 Prerequisites
 ```shell

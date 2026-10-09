@@ -86,7 +86,7 @@ Every settings group could, in principle, be a single class combining both the f
 |---|---|---|
 | `AppSettings` | `APP_` | `SERVICE_NAME`, `LOGGING_LEVEL`, `LOG_FORMAT` (`"human"` \| `"json"`); `ENVIRONMENT` is the one field on this model that reads the **bare** `ENVIRONMENT` variable (`validation_alias="ENVIRONMENT"`, not `APP_ENVIRONMENT`) since it's the same variable `docker-compose.yml`/`Dockerfile`/`scripts/makefile/*.sh` already read — restricted to the `Literal["development", "production"]` type, so an invalid value fails Pydantic validation at startup rather than silently falling through |
 | `PostgresSettings` | `POSTGRES_` | `DB`, `HOST`, `PORT`, `USER`, `PASSWORD`; exposes a `dsn` property that builds a `postgresql+psycopg://...` connection string via `PostgresDsn.build()` |
-| `SqlaSettings` | `SQLA_` | SQLAlchemy engine tuning: `ECHO`, `ECHO_POOL`, `POOL_SIZE`, `MAX_OVERFLOW` |
+| `SqlaSettings` | `SQLA_` | SQLAlchemy engine tuning: `ECHO`, `ECHO_POOL`, `POOL_SIZE`, `MAX_OVERFLOW`, and `CONNECT_TIMEOUT_S` (seconds a new database connection may take before the request fails with a 503; default 5, minimum 1, since Postgres reads 0 as "wait forever") |
 | `PasswordHasherSettings` | `PASSWORD_` | `PEPPER` has no default and `Field(min_length=32)` — omitting or under-sizing it fails validation immediately; `WORK_FACTOR`, `MAX_THREADS`, `SEMAPHORE_WAIT_TIMEOUT_S` tune the bcrypt-style hashing work |
 | `JwtSettings` | `JWT_` | `SECRET` has no default and `Field(min_length=32)`, same fail-fast pattern as the pepper above; `ALGORITHM` defaults to `HS256` |
 | `SessionSettings` | `SESSION_` | `TTL_MIN` (`Field(ge=1)`), `REFRESH_THRESHOLD_RATIO` (`Field(gt=0, lt=1)`); exposes a `ttl` property returning a `timedelta` |
@@ -115,7 +115,7 @@ All eleven `*EnvConfig` classes in [`loader.py`](../../../../src/app/main/config
 
 ```python
 _DEFAULT_CONFIG_DICT: Final[SettingsConfigDict] = SettingsConfigDict(
-    env_file=_ENV_FILE,       # BASE_DIR / ".env"
+    env_file=_ENV_FILE,  # BASE_DIR / ".env"
     env_file_encoding="utf-8",
     extra="ignore",
 )

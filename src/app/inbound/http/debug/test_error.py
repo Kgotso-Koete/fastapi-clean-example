@@ -3,7 +3,10 @@ from fastapi import APIRouter
 router = APIRouter()
 
 
-@router.get("/test-error")
+# Trailing slash like every other route, which
+# tests/sanity/inbound/http/test_openapi_trailing_slashes.py enforces
+# (docs/plans/15-upstream-autumn-2026.md, Step 5, item 10).
+@router.get("/test-error/")
 async def test_error() -> None:
     """Temporary endpoint to trigger 500 error for testing alerting.
 

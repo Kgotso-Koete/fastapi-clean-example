@@ -1,10 +1,10 @@
 from inspect import getdoc
-from typing import Annotated
+from typing import Annotated, Any, Final
 from uuid import UUID
 
 from dishka import FromDishka
 from dishka.integrations.fastapi import inject
-from fastapi import APIRouter, Path
+from fastapi import APIRouter, Body, Path
 from pydantic import BaseModel, ConfigDict
 from starlette import status
 
@@ -39,6 +39,17 @@ class InviteOrganizationMemberBody(BaseModel):
     role: OrganizationRole = OrganizationRole.MEMBER
 
 
+# Sample request body shown in Swagger (/docs); see create_organization.py
+# for why the values are chosen by hand. miles-morales is a seeded account
+# (scripts/seed_db.py); role is "owner", "admin" or "member".
+INVITE_ORGANIZATION_MEMBER_EXAMPLES: Final[dict[str, Any]] = {
+    "invite_member": {
+        "summary": "Invite a user as a member",
+        "value": {"username": "miles-morales", "role": "member"},
+    },
+}
+
+
 def make_invite_organization_member_router() -> APIRouter:
     router = make_error_aware_router(on_error=log_info)
 
@@ -68,7 +79,7 @@ def make_invite_organization_member_router() -> APIRouter:
     @inject
     async def invite_organization_member(
         organization_id: Annotated[UUID, Path()],
-        body: InviteOrganizationMemberBody,
+        body: Annotated[InviteOrganizationMemberBody, Body(openapi_examples=INVITE_ORGANIZATION_MEMBER_EXAMPLES)],
         interactor: FromDishka[InviteOrganizationMember],
     ) -> InviteOrganizationMemberResponse:
         request = InviteOrganizationMemberRequest(

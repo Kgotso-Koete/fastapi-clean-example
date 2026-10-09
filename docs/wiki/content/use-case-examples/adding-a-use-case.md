@@ -100,13 +100,18 @@ async def execute(self, request: CreateUserRequest) -> CreateUserResponse:
     phone_number = PhoneNumber(request.phone_number)
 
     user = await self._user_service.create_user_with_raw_password(
-        user_id=create_user_id(), username=username, email=email, phone_number=phone_number,
-        raw_password=password, now=self._utc_timer.now, role=role,
+        user_id=create_user_id(),
+        username=username,
+        email=email,
+        phone_number=phone_number,
+        raw_password=password,
+        now=self._utc_timer.now,
+        role=role,
     )
     self._user_tx_storage.add(user)
     events = user.collect_events()
     await self._event_dispatcher.stage(events)  # BEFORE flush()/commit()
-    await self._flusher.flush()                 # may raise *AlreadyExistsError
+    await self._flusher.flush()  # may raise *AlreadyExistsError
     await self._transaction_manager.commit()
     await self._event_dispatcher.dispatch(events)  # AFTER commit()
     return CreateUserResponse(id=user.id_, created_at=user.created_at.value)
@@ -133,6 +138,7 @@ This codebase's unit tests build their fixtures with small, composable **factory
 def create_username(value: str | None = None) -> Username:
     default = f"user_{uuid.uuid4().hex[:8]}"
     return Username(value if value is not None else default)
+
 
 def create_user_service(password_hasher: PasswordHasher | None = None) -> UserService:
     return UserService(password_hasher=password_hasher if password_hasher is not None else StubPasswordHasher())

@@ -78,8 +78,17 @@ class GlobalExceptionMiddleware:
     async def _handle(self, request: Request, exc: Exception) -> None:
         exception_type = type(exc).__name__
         user_context = await _try_get_request_user_context(request)
-        logger.exception(
+        # exc_info=exc attaches the traceback explicitly. This used to be
+        # logger.exception(...), which only works because _handle happens to
+        # run inside __call__'s `except` block; ruff's LOG004 rule can't see
+        # that, and its autofix turned it into a bare logger.error(...), which
+        # silently dropped the traceback. Passing the exception itself is
+        # correct wherever _handle is called from (the original author made
+        # the same change upstream), and
+        # test_unhandled_exception_is_logged_with_its_traceback pins it.
+        logger.error(
             "Unhandled exception",
+            exc_info=exc,
             extra={
                 "exception_type": exception_type,
                 "path": request.url.path,

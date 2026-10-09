@@ -10,20 +10,22 @@ authors = [
 ]
 dependencies = [
   "aiosmtplib==5.1.2",
-  "alembic==1.18.4",
+  "alembic==1.20.0",
   "bcrypt==5.0.0",
   "celery[redis]==5.6.3",
   "click==8.3.3",
   "dishka==1.10.1",
-  "fastapi==0.136.1",
+  "fastapi==0.142.2",
   "fastapi-error-map==1.0.0",
   "prometheus-fastapi-instrumentator==8.1.0",
-  "psycopg[binary]==3.3.4",
-  "pydantic-settings==2.14.1",
-  "pyjwt[crypto]==2.12.1",
-  "sqlalchemy[mypy]==2.0.49",
-  "uuid-utils==0.15.0",
-  "uvicorn==0.46.0",
+  "psycopg[binary]==3.3.6",
+  "pydantic==2.13.5",
+  "pydantic-settings==2.15.0",
+  "pyjwt[crypto]==2.15.1",
+  "sqlalchemy==2.0.54",
+  "starlette==1.7.0",
+  "uuid-utils==1.0.0",
+  "uvicorn==0.54.0",
 ]
 
 [dependency-groups]
@@ -31,23 +33,24 @@ dev = [
   "asgi-lifespan==2.1.0",
   "coverage==7.14.0",
   "deptry==0.25.1",
-  "httpx2==2.5.0",
-  "import-linter==2.11",
+  "httpx2==2.13.1",
+  "import-linter==2.15",
+  "jsonschema==4.26.0",
   "line-profiler==5.0.2",
   "mkdocs==1.6.1",
   "mkdocs-include-markdown-plugin==7.3.0",
   "mkdocs-material==9.7.7",
   "mkdocs-mermaid2-plugin==1.2.3",
-  "mypy==2.1.0",
-  "pip-audit==2.10.0",
+  "mypy==2.4.0",
+  "pip-audit==2.10.1",
   "pre-commit==4.6.0",
-  "pytest==9.0.3",
-  "pytest-asyncio==1.3.0",
+  "pytest==9.1.1",
+  "pytest-asyncio==1.4.0",
   "pytest-cov==7.1.0",
   "radon==6.0.1",
-  "ruff==0.15.12",
-  "slotscheck==0.19.1",
-  "tombi==0.11.3",
+  "ruff==0.16.10",
+  "slotscheck==0.21.0",
+  "tombi==1.7.3",
 ]
 
 [build-system]
@@ -174,7 +177,6 @@ enable_error_code = [
 ]
 plugins = [
   "pydantic.mypy",
-  "sqlalchemy.ext.mypy.plugin",
 ]
 
 [tool.pydantic-mypy]
@@ -296,3 +298,17 @@ extend-exclude = []
 
 [tool.uv]
 default-groups = ["dev"]
+# Exact versions for packages this codebase only uses indirectly (they come
+# in through FastAPI, pyjwt[crypto], Celery, pip-audit and pre-commit), set
+# to close the vulnerabilities `make pip-audit` reported on 2026-10-07
+# (docs/plans/15-upstream-autumn-2026.md, Step 1). A constraint fixes the
+# version without making the package a direct dependency, so deptry still
+# sees only what the code imports. Like every other pin here, bump by hand.
+constraint-dependencies = [
+  "anyio==4.14.2",
+  "cryptography==50.0.0",
+  "msgpack==1.2.1",
+  "pip==26.2",
+  "urllib3==2.8.0",
+  "virtualenv==21.7.13",
+]

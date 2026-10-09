@@ -174,7 +174,7 @@ def make_sign_up_router() -> APIRouter:
     )
     @inject
     async def sign_up(
-        request: SignUpRequest,
+        request: Annotated[SignUpRequest, Body(openapi_examples=SIGN_UP_EXAMPLES)],
         handler: FromDishka[SignUp],
     ) -> UserQm:
         return await handler.execute(request)
@@ -182,16 +182,29 @@ def make_sign_up_router() -> APIRouter:
     return router
 ```
 
+(`Annotated[..., Body(openapi_examples=...)]` only attaches the Swagger example; see [Adding a REST Endpoint](../use-case-examples/adding-a-rest-endpoint.md#request-body-examples).)
+
 The overlap is the point, not a coincidence: `StorageError`, `BusinessTypeError`, `PasswordHasherBusyError`, and the three `*AlreadyExistsError`s map to the exact same statuses in both routers, because they mean the exact same thing regardless of which use case (a **command**, in this codebase's terms — see [Adding a New Use Case (Command)](../use-case-examples/adding-a-use-case.md)) raised them. What differs is only what's *specific* to each endpoint's own authorization shape — `create_user`'s `AuthenticationError → 401` (an admin-only endpoint needs a valid session first) has no counterpart in `sign_up` (public, unauthenticated by design), while `sign_up`'s `AlreadyAuthenticatedError → 403` (an already-logged-in caller can't sign up again) has no counterpart in `create_user`. `HTTP_503_SERVICE_UNAVAILABLE_RULE` — the shared constant from `rules.py` — is reused by name in both, rather than each router rebuilding an equivalent `rule(...)` call from scratch.
 
 Both routers are also built with `on_error=log_info` ([`callbacks.py`](../../../../src/app/inbound/http/errors/callbacks.py)):
 
 ```python
 def log_info(err: Exception) -> None:
-    logger.info("Handled exception: %s — %s", type(err).__name__, err)
+    cause = err.__cause__
+    if cause is None:
+        logger.info("Handled exception: %s — %s", type(err).__name__, err)
+    else:
+        logger.info(
+            "Handled exception: %s — %s; caused by: %s",
+            type(err).__name__,
+            err,
+            type(cause).__name__,
+        )
 ```
 
-`on_error` is a `fastapi-error-map` hook: once a `Rule` resolves for a raised exception, its `on_error` (or, absent one, the router's own default `on_error` passed to `make_error_aware_router`) runs *before* the response is built. `log_info` is deliberately `logging.info`, not a warning or exception log — a mapped `409 Conflict` on a duplicate username is an ordinary, expected outcome of doing business, not a problem to be alerted on; that distinction is exactly what makes Tier 1 different from Tier 2, whose `GlobalExceptionMiddleware` logs at `logger.exception` and can trigger a real alert email. Because `on_error` is attached per `Rule`, a route could in principle give one specific exception type its own callback (e.g. `rule(503, on_error=page_oncall)`) without changing the router-wide default — this codebase doesn't currently need that, but the mechanism supports it.
+When the mapped error was raised `from` another one (a `503` `StorageError` raised from SQLAlchemy's `OperationalError`, say), the log line also names the cause, so it says what really went wrong: `Handled exception: StorageError — ; caused by: OperationalError`. Only the cause's **type** is logged, never its message: a database error's message carries the SQL statement's parameters and Postgres's `DETAIL` line (emails, phone numbers, password hashes), which OWASP's Logging Cheat Sheet says to keep out of logs. The type alone tells a connection failure from a constraint clash.
+
+`on_error` is a `fastapi-error-map` hook: once a `Rule` resolves for a raised exception, its `on_error` (or, absent one, the router's own default `on_error` passed to `make_error_aware_router`) runs *before* the response is built. `log_info` is deliberately `logging.info`, not a warning or exception log — a mapped `409 Conflict` on a duplicate username is an ordinary, expected outcome of doing business, not a problem to be alerted on; that distinction is exactly what makes Tier 1 different from Tier 2, whose `GlobalExceptionMiddleware` logs at `logger.error(..., exc_info=exc)`, with the traceback, and can trigger a real alert email. Because `on_error` is attached per `Rule`, a route could in principle give one specific exception type its own callback (e.g. `rule(503, on_error=page_oncall)`) without changing the router-wide default — this codebase doesn't currently need that, but the mechanism supports it.
 
 ## Resolution walks the exception's MRO
 

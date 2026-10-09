@@ -54,9 +54,7 @@ Tokenizing in the value object is also the injection defense: Postgres `to_tsque
 ```python
 class UserSearch(Protocol):
     @abstractmethod
-    async def search_users(
-        self, query: SearchQuery, *, pagination: OffsetPaginationParams
-    ) -> SearchUsersQm: ...
+    async def search_users(self, query: SearchQuery, *, pagination: OffsetPaginationParams) -> SearchUsersQm: ...
 
 
 class OrganizationSearch(Protocol):

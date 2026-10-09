@@ -3,6 +3,7 @@ import pytest
 from app.main.config.loader import (
     CeleryEnvConfig,
     OrganizationEnvConfig,
+    SqlaEnvConfig,
     load_alert_settings,
     load_api_key_settings,
     load_app_settings,
@@ -66,6 +67,7 @@ def test_load_sqla_settings_reads_env_vars(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setenv("SQLA_ECHO_POOL", "true")
     monkeypatch.setenv("SQLA_POOL_SIZE", "123456789")
     monkeypatch.setenv("SQLA_MAX_OVERFLOW", "987654321")
+    monkeypatch.setenv("SQLA_CONNECT_TIMEOUT_S", "123")
 
     sut = load_sqla_settings()
 
@@ -73,6 +75,21 @@ def test_load_sqla_settings_reads_env_vars(monkeypatch: pytest.MonkeyPatch) -> N
     assert sut.ECHO_POOL is True
     assert sut.POOL_SIZE == 123456789
     assert sut.MAX_OVERFLOW == 987654321
+    assert sut.CONNECT_TIMEOUT_S == 123
+
+
+def test_load_sqla_settings_connect_timeout_defaults_to_5_seconds(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The 5 seconds main/ioc/outbound.py used to hard-code, now a setting
+    # (docs/plans/15-upstream-autumn-2026.md, Step 4), so behaviour is
+    # unchanged unless SQLA_CONNECT_TIMEOUT_S is set. Same isolation as the
+    # invitation-TTL default test above: delenv clears the process
+    # environment, and _env_file=None stops a developer's own .env from
+    # supplying a value, so this proves the field default itself.
+    monkeypatch.delenv("SQLA_CONNECT_TIMEOUT_S", raising=False)
+
+    sut = SqlaEnvConfig(_env_file=None)
+
+    assert sut.CONNECT_TIMEOUT_S == 5
 
 
 def test_load_password_hasher_settings_reads_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:

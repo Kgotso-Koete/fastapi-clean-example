@@ -27,6 +27,11 @@ async def test_returns_200_and_lists_single_user(
     users = payload["users"]
     assert len(users) == 1
     assert users[0]["id"] == str(it_admin.id_)
+    # The right row with the right fields, not only the right id (the original
+    # author's check; docs/plans/15-upstream-autumn-2026.md, Step 5, item 9).
+    assert users[0]["username"] == it_admin.username.value
+    assert users[0]["role"] == UserRole.ADMIN.value
+    assert users[0]["is_active"] is True
     assert payload["total"] == 1
     assert payload["limit"] == 20
     assert payload["offset"] == 0
@@ -69,6 +74,28 @@ async def test_returns_200_and_respects_pagination_params(
     assert payload["limit"] == 2
     assert payload["offset"] == 1
     assert len(payload["users"]) == 2
+
+
+async def test_returns_200_and_an_empty_page_when_offset_is_past_the_total(
+    it_client: httpx2.AsyncClient,
+    it_session: AsyncSession,
+    it_admin: User,
+    it_user_service: UserService,
+) -> None:
+    # SqlaUserReader reads the total from the fetched rows' window count, so a
+    # page with no rows takes a separate counting path; it must still report
+    # the real total, not 0 (the original author's test;
+    # docs/plans/15-upstream-autumn-2026.md, Step 5, item 9).
+    it_session.add(create_user(it_user_service))
+    await it_session.commit()
+
+    r = await it_client.get(USERS_ENDPOINT, params={"offset": 5})
+
+    assert r.status_code == 200
+    payload = r.json()
+    assert payload["users"] == []
+    assert payload["total"] == 2
+    assert payload["offset"] == 5
 
 
 async def test_returns_200_and_sorts_by_updated_at_desc(

@@ -179,10 +179,15 @@ async def test_returns_403_when_user_role(
     r = await it_client.post(USERS_ENDPOINT, json=payload)
 
     assert r.status_code == 403
+    # A refused request creates no user: the requester is still the only one
+    # (the original author's check; docs/plans/15-upstream-autumn-2026.md, Step 5, item 6).
+    count = await it_session.scalar(select(func.count()).select_from(User))
+    assert count == 1
 
 
 async def test_returns_403_when_admin_creates_admin(
     it_client: httpx2.AsyncClient,
+    it_session: AsyncSession,
     it_admin: User,
 ) -> None:
     payload = {
@@ -196,6 +201,10 @@ async def test_returns_403_when_admin_creates_admin(
     r = await it_client.post(USERS_ENDPOINT, json=payload)
 
     assert r.status_code == 403
+    # A refused request creates no user: the requester is still the only one
+    # (the original author's check; docs/plans/15-upstream-autumn-2026.md, Step 5, item 6).
+    count = await it_session.scalar(select(func.count()).select_from(User))
+    assert count == 1
 
 
 async def test_returns_409_when_username_already_exists(

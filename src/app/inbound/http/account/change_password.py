@@ -1,8 +1,9 @@
 from inspect import getdoc
+from typing import Annotated, Any, Final
 
 from dishka import FromDishka
 from dishka.integrations.fastapi import inject
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Body, Depends, status
 from fastapi.security import APIKeyCookie
 from pydantic import BaseModel, ConfigDict
 
@@ -29,6 +30,17 @@ class ChangePasswordRequestSchema(BaseModel):
     new_password: str
 
 
+# Sample request body shown in Swagger (/docs); see sign_up.py for why the
+# values are chosen by hand. The current password is the seeded
+# peter-parker's (scripts/seed_db.py).
+CHANGE_PASSWORD_EXAMPLES: Final[dict[str, Any]] = {
+    "change_password": {
+        "summary": "Change your own password",
+        "value": {"current_password": "SpideySense2024!", "new_password": "SpideySense2025!"},
+    },
+}
+
+
 def make_change_password_router(*, cookie_name: str) -> APIRouter:
     router = make_error_aware_router(on_error=log_info)
 
@@ -49,7 +61,7 @@ def make_change_password_router(*, cookie_name: str) -> APIRouter:
     )
     @inject
     async def change_password(
-        request_schema: ChangePasswordRequestSchema,
+        request_schema: Annotated[ChangePasswordRequestSchema, Body(openapi_examples=CHANGE_PASSWORD_EXAMPLES)],
         handler: FromDishka[ChangePassword],
     ) -> None:
         request = ChangePasswordRequest(

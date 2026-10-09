@@ -19,13 +19,18 @@ async def test_returns_204_and_changes_password(
     await it_session.commit()
     await authenticate(it_client, user.username.value, password)
     old_password_hash = user.password_hash
-    payload = {"current_password": password, "new_password": create_raw_password()}
+    new_password = create_raw_password()
+    payload = {"current_password": password, "new_password": new_password}
 
     r = await it_client.put(CHANGE_PASSWORD_ENDPOINT, json=payload)
 
     assert r.status_code == 204
     await it_session.refresh(user)
     assert user.password_hash != old_password_hash
+    # The stored hash is of the NEW password, checked the way login checks it,
+    # not merely "something changed" (the original author's check;
+    # docs/plans/15-upstream-autumn-2026.md, Step 5, item 8).
+    assert await it_user_service.is_password_valid(user, RawPassword(new_password))
 
 
 async def test_returns_400_when_new_password_is_too_short(
@@ -87,3 +92,8 @@ async def test_returns_403_when_current_password_is_wrong(
     r = await it_client.put(CHANGE_PASSWORD_ENDPOINT, json=payload)
 
     assert r.status_code == 403
+    # A refused change leaves the password as it was: the original password
+    # still verifies against what's stored (the original author's check;
+    # docs/plans/15-upstream-autumn-2026.md, Step 5, item 6).
+    await it_session.refresh(user)
+    assert await it_user_service.is_password_valid(user, RawPassword(password))

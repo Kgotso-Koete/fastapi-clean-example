@@ -1,10 +1,10 @@
 from inspect import getdoc
-from typing import Annotated
+from typing import Annotated, Any, Final
 from uuid import UUID
 
 from dishka import FromDishka
 from dishka.integrations.fastapi import inject
-from fastapi import APIRouter, Path
+from fastapi import APIRouter, Body, Path
 from pydantic import BaseModel, ConfigDict
 from starlette import status
 
@@ -31,6 +31,16 @@ class SetUserPasswordRequestSchema(BaseModel):
     password: str
 
 
+# Sample request body shown in Swagger (/docs); see account/sign_up.py for why
+# the value is chosen by hand.
+SET_USER_PASSWORD_EXAMPLES: Final[dict[str, Any]] = {
+    "set_password": {
+        "summary": "Set another user's password",
+        "value": {"password": "TemporaryPass2024!"},
+    },
+}
+
+
 def make_set_user_password_router() -> APIRouter:
     router = make_error_aware_router(on_error=log_info)
 
@@ -50,7 +60,7 @@ def make_set_user_password_router() -> APIRouter:
     @inject
     async def set_user_password(
         user_id: Annotated[UUID, Path()],
-        request_schema: SetUserPasswordRequestSchema,
+        request_schema: Annotated[SetUserPasswordRequestSchema, Body(openapi_examples=SET_USER_PASSWORD_EXAMPLES)],
         interactor: FromDishka[SetUserPassword],
     ) -> None:
         request = SetUserPasswordRequest(

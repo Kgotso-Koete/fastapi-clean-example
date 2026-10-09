@@ -137,7 +137,14 @@ value = cast(str | None, staged)
 if value is None:
     response.delete_cookie(key=self._cookie_name, path=self._cookie_path)
     return response
-response.set_cookie(key=self._cookie_name, value=value, path=self._cookie_path, httponly=self._cookie_httponly, secure=self._cookie_secure, samesite=self._cookie_samesite)
+response.set_cookie(
+    key=self._cookie_name,
+    value=value,
+    path=self._cookie_path,
+    httponly=self._cookie_httponly,
+    secure=self._cookie_secure,
+    samesite=self._cookie_samesite,
+)
 ```
 
 This same staging mechanism is reused, with a `None` value instead, to *delete* the cookie on logout — see [Account: Log Out](account-log-out.md).

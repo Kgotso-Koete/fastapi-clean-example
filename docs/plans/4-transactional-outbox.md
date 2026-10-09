@@ -224,7 +224,7 @@ With Confirmed Decision #2 defaulting to retain, `event_outbox` can hold both pe
 
 ```python
 self._user_tx_storage.add(user)
-await self._event_dispatcher.stage(user.collect_events())   # NEW -- pre-commit
+await self._event_dispatcher.stage(user.collect_events())  # NEW -- pre-commit
 await self._flusher.flush()
 await self._transaction_manager.commit()
 await self._event_dispatcher.dispatch(user.collect_events())  # unchanged call, now only runs sync/fallback handlers

@@ -28,3 +28,13 @@ jobs:
         env:
           ALLOW_DESTRUCTIVE_TEST_CLEANUP: 1
         run: make test-docker
+
+      # Fails the run when combined unit + integration coverage drops below
+      # MIN_COVERAGE percent. Reads the data make test-docker copied out of
+      # its container; make check's unit-only report isn't gated, since
+      # adapters are covered by integration tests (the original author's step;
+      # docs/plans/15-upstream-autumn-2026.md, Step 6).
+      - name: Check coverage
+        env:
+          MIN_COVERAGE: 75
+        run: uv run coverage report --data-file=.coverage.docker --fail-under="${MIN_COVERAGE}"

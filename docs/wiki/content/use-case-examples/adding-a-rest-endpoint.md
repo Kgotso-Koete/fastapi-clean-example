@@ -7,6 +7,7 @@
     - [`src/app/inbound/http/errors/router.py`](../../../../src/app/inbound/http/errors/router.py) — `make_error_aware_router`, the `error_map` mechanism
     - [`src/app/inbound/http/errors/callbacks.py`](../../../../src/app/inbound/http/errors/callbacks.py)
     - [`src/app/inbound/http/errors/rules.py`](../../../../src/app/inbound/http/errors/rules.py)
+    - [`tests/sanity/inbound/http/`](../../../../tests/sanity/inbound/http/) — the checks every request-body example must pass
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
 
@@ -64,7 +65,7 @@ def make_create_user_router() -> APIRouter:
     )
     @inject
     async def create_user(
-        request: CreateUserRequest,
+        request: Annotated[CreateUserRequest, Body(openapi_examples=CREATE_USER_EXAMPLES)],
         interactor: FromDishka[CreateUser],
     ) -> CreateUserResponse:
         return await interactor.execute(request)
@@ -78,6 +79,31 @@ A few details worth calling out explicitly, since each is a deliberate, reusable
 - **`description=getdoc(CreateUser)`** pulls the command class's own docstring straight into the OpenAPI/Swagger description — the authorization rules documented once on `CreateUser` (`"Only super admins can create new admins"`, etc.) show up in `/docs` automatically, with nothing duplicated.
 - **`@inject` + `FromDishka[CreateUser]`** is [Dishka](../core-patterns/dependency-injection.md)'s per-request dependency injection — the route function declares it needs a fully-constructed `CreateUser`, and Dishka resolves its whole constructor graph (`CurrentUserService`, `UserService`, ports, etc.) without the route function ever seeing any of it.
 - **The route function's body is a single line** — `return await interactor.execute(request)`. `interactor` is just this codebase's parameter name for the injected use case (Command) object itself — see [Adding a New Use Case (Command)](adding-a-use-case.md) for what "use case" means here. If a route ever needs more than that, it's usually a sign the extra logic belongs inside the use case, not the route.
+- **`Annotated[CreateUserRequest, Body(openapi_examples=...)]`** is the same `CreateUserRequest` body, plus a sample request that Swagger (`/docs`) shows. Every route that takes a JSON body must declare one; see the next section.
+
+## Request-body examples
+
+Every route with a JSON body declares at least one example, defined as a constant at the top of its own route file, in [`create_user.py`](../../../../src/app/inbound/http/users/create_user.py):
+
+```python
+CREATE_USER_EXAMPLES: Final[dict[str, Any]] = {
+    "new_user": {
+        "summary": "Create a user",
+        "value": {
+            "username": "sam-wilson",
+            "email": "sam.wilson@avengers.org",
+            "phone_number": "0821000017",
+            "password": "OnYourLeft2024!",
+            "role": "user",
+        },
+    },
+}
+```
+
+- **Why:** the example is what a developer copies from Swagger to make their first call. One that breaks a rule greets them with a confusing `400`.
+- **Where:** in `inbound`, through FastAPI's `Body(openapi_examples=...)`, never on `core`'s request type, which knows nothing about HTTP or Swagger.
+- **Checked automatically:** the sanity tests in [`tests/sanity/inbound/http/`](../../../../tests/sanity/inbound/http/) build both apps' OpenAPI documents and fail if a route with a JSON body has no example, if an example has a wrong field name, type or enum value (a role, say), or if no example of a route fills every field. They run in `make check`.
+- **Not checked automatically:** the schema only says "string", so the tests can't tell whether a value passes `core`'s own rules (username 5–20 characters, a password of 12+ with a letter, a digit and a symbol, a South African phone number). Choose values that do, and where the request acts on existing data, use a seeded account from `scripts/seed_db.py` (`peter-parker`, say), so the example works as-is on a seeded dev stack.
 
 ## Step 2 — Register the router
 

@@ -203,6 +203,7 @@ class DomainEvent:
     - Enforcer/clean-architecture: frozen dataclasses with domain fields
     - pgorecki/python-ddd: events recorded on aggregates and collected after commit
     """
+
     occurred_at: datetime
 
     def __new__(cls, *_args: Any, **_kwargs: Any) -> Self:
@@ -225,6 +226,7 @@ from app.core.common.events.domain_event import DomainEvent
 @dataclass(frozen=True, slots=True, kw_only=True)
 class UserRegisteredEvent(DomainEvent):
     """Raised when a new user account is created (via signup or admin creation)."""
+
     user_id: UserId
     username: str
     email: str
@@ -276,6 +278,7 @@ from app.core.common.events.domain_event import DomainEvent
 
 class EventHandler[T: DomainEvent](Protocol):
     """Handles a specific type of domain event."""
+
     @abstractmethod
     async def handle(self, event: T) -> None: ...
 ```
@@ -291,6 +294,7 @@ from app.core.common.events.domain_event import DomainEvent
 
 class EventDispatcher(Protocol):
     """Dispatches domain events to their registered handlers."""
+
     @abstractmethod
     async def dispatch(self, events: list[DomainEvent]) -> None: ...
 ```
@@ -313,6 +317,7 @@ from typing import Protocol
 
 class EmailSender(Protocol):
     """Port for sending emails. Implementations may use SMTP, console logging, etc."""
+
     @abstractmethod
     async def send(
         self,
@@ -393,10 +398,14 @@ logger = logging.getLogger(__name__)
 
 class ConsoleEmailSender:
     """Logs emails to console instead of sending them. For development and testing."""
+
     async def send(self, *, to_email: str, to_name: str, subject: str, html_body: str) -> None:
         logger.info(
             "EMAIL [to=%s (%s)] [subject=%s]\n%s",
-            to_email, to_name, subject, html_body,
+            to_email,
+            to_name,
+            subject,
+            html_body,
         )
 ```
 
@@ -420,6 +429,7 @@ class SmtpEmailSender:
     Switch providers by changing host/port/credentials in env vars. Zero code changes.
     Uses Python's built-in email.mime for message building (no extra dependencies).
     """
+
     def __init__(
         self,
         *,
@@ -476,6 +486,7 @@ logger = logging.getLogger(__name__)
 
 class SyncEventDispatcher:
     """Dispatches events synchronously. The HTTP response waits for all handlers to complete."""
+
     def __init__(
         self,
         handler_registry: dict[type[DomainEvent], Sequence[EventHandler]],
@@ -511,6 +522,7 @@ class BackgroundEventDispatcher:
     Framework-independent — works with any async Python framework.
     The HTTP response returns immediately without waiting for handlers.
     """
+
     def __init__(
         self,
         handler_registry: dict[type[DomainEvent], Sequence[EventHandler]],
@@ -523,7 +535,8 @@ class BackgroundEventDispatcher:
             for handler in handlers:
                 logger.info(
                     "Scheduling background dispatch: %s -> %s",
-                    type(event).__name__, type(handler).__name__,
+                    type(event).__name__,
+                    type(handler).__name__,
                 )
                 asyncio.create_task(
                     self._safe_handle(handler, event),
@@ -538,7 +551,8 @@ class BackgroundEventDispatcher:
         except Exception:
             logger.exception(
                 "Background event handler failed: %s handling %s",
-                type(handler).__name__, type(event).__name__,
+                type(handler).__name__,
+                type(event).__name__,
             )
 ```
 
@@ -625,6 +639,7 @@ from app.core.common.ports.email_sender import EmailSender
 from app.core.common.ports.event_dispatcher import EventDispatcher
 from app.outbound.adapters.background_event_dispatcher import BackgroundEventDispatcher
 from app.outbound.adapters.console_email_sender import ConsoleEmailSender
+
 
 class CoreProvider(Provider):
     # ... existing providers ...
@@ -731,6 +746,7 @@ For integration tests: Override `EmailSender` in the DI container with a `SpyEma
 ```python
 class SpyEmailSender:
     """Test double that captures sent emails for assertion."""
+
     def __init__(self) -> None:
         self.sent: list[dict] = []
 

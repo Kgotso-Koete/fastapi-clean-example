@@ -27,7 +27,7 @@
         subgraph rootmounts["mounted directly on root"]
             redirect["GET / → redirect to /docs"]
             health["health router (/livez/, /healthz/)"]
-            debug["debug router (/debug/test-error)"]
+            debug["debug router (/debug/test-error/)"]
         end
 
         subgraph v1["make_v1_router() — prefix /api/v1"]
@@ -81,7 +81,10 @@ Every route in `account/` and `users/` is built with `make_error_aware_router()`
     description=getdoc(SignUp),
 )
 @inject
-async def sign_up(request: SignUpRequest, handler: FromDishka[SignUp]) -> UserQm:
+async def sign_up(
+    request: Annotated[SignUpRequest, Body(openapi_examples=SIGN_UP_EXAMPLES)],
+    handler: FromDishka[SignUp],
+) -> UserQm:
     return await handler.execute(request)
 ```
 
