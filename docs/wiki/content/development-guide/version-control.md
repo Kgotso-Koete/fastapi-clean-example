@@ -135,7 +135,7 @@ That's the entire pre-commit/pre-push split in this repo: every hook below runs 
         style ci stroke-width:1px,stroke:#333333
     ```
 
-[`.github/workflows/ci.yaml`](../../../../.github/workflows/ci.yaml) triggers `on: [push, pull_request]` — every push to every branch and every pull request, not just ones targeting `main`/`master`. Its one job checks out the repo, installs Python 3.13 and `uv`, runs `uv sync --locked --group dev`, then two steps:
+[`.github/workflows/ci.yaml`](../../../../.github/workflows/ci.yaml) triggers `on: [push, pull_request]` — every push to every branch and every pull request, not just ones targeting `main`/`master`. Its one job checks out the repo, installs Python 3.13 and `uv`, runs `uv sync --locked --group dev`, then three steps:
 
 Relevant section of [`.github/workflows/ci.yaml`](../../../../.github/workflows/ci.yaml):
 
@@ -147,9 +147,14 @@ Relevant section of [`.github/workflows/ci.yaml`](../../../../.github/workflows/
   env:
     ALLOW_DESTRUCTIVE_TEST_CLEANUP: 1
   run: make test-docker
+
+- name: Check coverage
+  env:
+    MIN_COVERAGE: 75
+  run: uv run coverage report --data-file=.coverage.docker --fail-under="${MIN_COVERAGE}"
 ```
 
-`make check-ci` is the non-mutating sibling of the `code-check` hook's `make check` — same lint/type/import gates, but failing instead of auto-fixing (see [Code Quality Tools](../testing/code-quality-tools.md) for the exact `check` vs. `check-ci` gate order). `make test-docker` is the identical target the `test-docker` pre-push hook already runs locally, just against a fresh CI runner.
+`make check-ci` is the non-mutating sibling of the `code-check` hook's `make check` — same lint/type/import gates, but failing instead of auto-fixing (see [Code Quality Tools](../testing/code-quality-tools.md) for the exact `check` vs. `check-ci` gate order). `make test-docker` is the identical target the `test-docker` pre-push hook already runs locally, just against a fresh CI runner. **Check coverage** fails the run when the combined coverage of that one Docker test run (unit, sanity, smoke and integration tests together, written to `.coverage.docker`) is below 75%. It isn't applied to `make check`'s unit-only report, because adapters are covered by integration tests. The same command runs locally after a `make test-docker`, with `75` in place of `"${MIN_COVERAGE}"`.
 
 That overlap is also where the real gap sits: CI never calls `make pip-audit`, and it never runs `typos`, `yamlfmt`, `shellcheck`, or any of the generic `pre-commit-hooks` checks (`detect-private-key`, `check-yaml`, `trailing-whitespace`, and so on) — those exist **only** as local, opt-in pre-commit hooks. `README.md`'s own "Pre-commit Hooks Summary" table doesn't mention this gap either — it lists five hooks total (omitting `yamlfmt`, `shellcheck`, and the whole `pre-commit-hooks` set) and doesn't distinguish "runs locally" from "also re-checked in CI." In practice this means a contributor who commits with `git commit --no-verify` (or never ran `pre-commit install` at all) can push code that skips the dependency-vulnerability scan, the spell-checker, YAML formatting, and shellcheck entirely — CI's two steps re-verify the lint/type/test gates, but nothing else on that list.
 

@@ -91,7 +91,7 @@ worker:
 
 ## What CI actually runs, and what runs as a git hook
 
-[`.github/workflows/ci.yaml`](../../../../.github/workflows/ci.yaml) runs exactly two steps after installing dependencies: `make check-ci`, then `make test-docker` (with `ALLOW_DESTRUCTIVE_TEST_CLEANUP=1` set at the job level instead of relying on the compose overlay, since the job runs on the bare runner, not inside the `app` container). `check-ci` is `check`'s CI-flavored twin — see [Code Quality Tools](code-quality-tools.md) for the difference.
+[`.github/workflows/ci.yaml`](../../../../.github/workflows/ci.yaml) runs exactly three steps after installing dependencies: `make check-ci`, then `make test-docker` (with `ALLOW_DESTRUCTIVE_TEST_CLEANUP=1` set at the job level instead of relying on the compose overlay, since the job runs on the bare runner, not inside the `app` container), then **Check coverage**, which fails the run if that Docker run's combined coverage (`.coverage.docker`, every test tier together) is below 75%. `check-ci` is `check`'s CI-flavored twin — see [Code Quality Tools](code-quality-tools.md) for the difference.
 
 !!! figure "When each target runs automatically, from a developer's own commit to CI"
     ```mermaid
@@ -109,7 +109,8 @@ worker:
         subgraph ci["GitHub Actions (every push/PR)"]
             g1["make check-ci"]
             g2["make test-docker"]
-            g1 --> g2
+            g3["coverage report<br/>(fails below 75%)"]
+            g1 --> g2 --> g3
         end
 
         precommit --> prepush --> ci

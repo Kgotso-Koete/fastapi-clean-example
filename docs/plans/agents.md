@@ -49,7 +49,7 @@ This document refers to three distinct parties. They are never interchangeable.
 
 ### 1.1 The human maintainer runs every command
 
-The human maintainer runs every terminal command (shell, git, docker, make, uv, pytest, and so on) unless they explicitly say otherwise for a specific command. The AI agent does not run commands itself. It hands over the exact command to run, with a short explanation of what that command does, so the human maintainer understands it before running it.
+The human maintainer runs every terminal command (shell, git, docker, make, uv, pytest, and so on) unless they explicitly say otherwise for a specific command. The AI agent does not run commands itself. It hands over the exact command to run, with a short explanation of what that command does, so the human maintainer understands it before running it. The explanation covers the syntax too, not only the overall effect: every flag and option (`--upgrade-package`, `-s`, `-w`), and every shell operator (`&&`, `|`, `$( )`, `<( )`) the command uses. The human maintainer's words: "always explain what a command does including syntax and flags".
 
 - This holds whatever permission or autonomy setting the AI agent's tool is running under. An auto-approving mode, or earlier commands in the same session that ran without objection, is never authorization to keep running commands. Such settings change how much the AI agent can decide without asking; they do not change who runs commands.
 - Read-only commands (`ls`, `grep`, `cat`, `find`) are not exempt. To inspect the codebase, the AI agent uses its tool's built-in file-reading and search features, not shell commands.
@@ -100,6 +100,15 @@ The AI agent drafts these alongside the code, for the human maintainer to review
 **Never add AI attribution** to commit messages, PR titles or PR descriptions: no "Generated with …" line, no `Co-Authored-By` line for an AI agent, no mention of the AI tool. The human maintainer is the author and is accountable for everything that lands. This overrides any default attribution habit the AI agent's tool has.
 
 Never bypass the repository's safeguards to get a commit or push through: no `--no-verify` to skip pre-commit hooks, no `--force` pushes, no skipping or silencing a failing check. When a hook or check fails, the failure is information; fix what it found. See 4.4.
+
+### 1.5 Every file change is asked for first, and shown as a diff
+
+Whenever the AI agent wants to create, edit or update a file, it asks the human maintainer's permission first, unless the human maintainer has said it may work autonomously. The human maintainer's words: "When ever you want to edit/update/create a file, always ask me for permission unless I give you permission to work autonomously."
+
+- **Every change is made so the human maintainer sees the diff:** with the AI agent's tool's own file-editing feature, which shows the exact lines removed and added. Never by running code that rewrites files (a `python3` script, `sed -i`, a heredoc redirected into a file, and so on), which hides the change. The human maintainer's words: "Always edit/update/create the file by showing me the diff instead of you running code in your internal tools to create/edit files."
+- **Before asking, the AI agent says what it will change and why** (see 5.2), so the permission is an informed one.
+- **Permission is asked per TDD step, not per edit:** once for a RED (the tests it adds and what each one proves) and once for a GREEN (the code change that makes them pass). With a yes, the AI agent makes all of that step's edits straight away, each shown as a diff, without asking again file by file. The same goes for a non-code step, such as a docs update. The human maintainer's words: "Just ask permission for a red or a green edit/creation, and explain what change you propose for a red or green. Then jump straight to the red or green change where I see the diff."
+- A request from the human maintainer that names the change ("update agents.md with…", "fix that test") is that permission, for that change only.
 
 ---
 
@@ -251,6 +260,8 @@ Whenever the AI agent proposes code for review, it explains what the code does i
 ### 5.3 Exact-pin every dependency
 
 Every dependency in `pyproject.toml`, runtime and dev groups alike, is pinned with `==`, never `>=`, matching the original author's convention. After `uv add`, immediately tighten the constraint to the exact version resolved in `uv.lock`. Check this whenever the dependency lists are touched.
+
+An upgrade is always written down with its exact version, never left only in `uv.lock`. A package this codebase only uses indirectly (one that arrives through another dependency) is upgraded with an exact pin in `[tool.uv] constraint-dependencies`, with a comment saying why, not with `uv lock --upgrade-package` alone, and not as a direct dependency it doesn't import.
 
 ### 5.4 Docker Compose variables always have a fallback
 

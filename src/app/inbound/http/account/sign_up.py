@@ -1,8 +1,9 @@
 from inspect import getdoc
+from typing import Annotated, Any, Final
 
 from dishka import FromDishka
 from dishka.integrations.fastapi import inject
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Body, status
 
 from app.core.commands.exceptions import (
     EmailAlreadyExistsError,
@@ -19,6 +20,24 @@ from app.outbound.adapters.exceptions import PasswordHasherBusyError
 from app.outbound.auth_ctx.exceptions import AlreadyAuthenticatedError
 from app.outbound.auth_ctx.handlers.sign_up import SignUp, SignUpRequest
 from app.outbound.exceptions import StorageError
+
+# Sample request bodies shown in Swagger (/docs), which developers copy. The
+# schema only says "string", so these values are chosen by hand to pass the
+# real rules in core's value objects (username 5-20 characters, password 12+
+# with a letter, digit and symbol, a South African phone number), and
+# tests/sanity/inbound/http/ checks their fields and types against the
+# schema (docs/plans/15-upstream-autumn-2026.md, Step 5, item 10).
+SIGN_UP_EXAMPLES: Final[dict[str, Any]] = {
+    "new_user": {
+        "summary": "Sign up a new user",
+        "value": {
+            "username": "kitty-pryde",
+            "password": "PhaseShift2024!",
+            "email": "kitty.pryde@xmen.org",
+            "phone_number": "0821000016",
+        },
+    },
+}
 
 
 def make_sign_up_router() -> APIRouter:
@@ -41,7 +60,7 @@ def make_sign_up_router() -> APIRouter:
     )
     @inject
     async def sign_up(
-        request: SignUpRequest,
+        request: Annotated[SignUpRequest, Body(openapi_examples=SIGN_UP_EXAMPLES)],
         handler: FromDishka[SignUp],
     ) -> UserQm:
         return await handler.execute(request)

@@ -148,15 +148,19 @@ Add `to_payload(self) -> dict[str, Any]` and `classmethod from_payload(cls, payl
 class OrderPlacedEvent(DomainEvent):
     order_id: OrderId
     customer_id: UserId
-    total_amount: Decimal   # would need a new _ENCODERS/_DECODERS entry
+    total_amount: Decimal  # would need a new _ENCODERS/_DECODERS entry
     placed_at: datetime
 
+
 class NotifyUserOrderRegistration:
-    DISPATCH_MODE: ClassVar[Literal["sync", "background"]] = "sync"       # user needs confirmation now
+    DISPATCH_MODE: ClassVar[Literal["sync", "background"]] = "sync"  # user needs confirmation now
+
     async def handle(self, event: OrderPlacedEvent) -> None: ...
+
 
 class CreateInvoice:
     DISPATCH_MODE: ClassVar[Literal["sync", "background"]] = "background"  # can lag
+
     async def handle(self, event: OrderPlacedEvent) -> None: ...
 ```
 

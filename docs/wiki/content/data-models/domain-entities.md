@@ -66,6 +66,7 @@ def record_event(self, event: DomainEvent) -> None:
     """Record a domain event. Events are collected after the use case commits."""
     self._events.append(event)
 
+
 def collect_events(self) -> list[DomainEvent]:
     """Return and clear all recorded events. Call after transaction commit."""
     events = self._events.copy()

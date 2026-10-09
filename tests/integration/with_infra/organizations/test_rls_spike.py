@@ -64,8 +64,10 @@ async def _enable_the_policy(it_session: AsyncSession) -> None:
         f"CREATE ROLE {_ROLE} NOLOGIN",
         f"GRANT SELECT ON organization_memberships TO {_ROLE}",
         "ALTER TABLE organization_memberships ENABLE ROW LEVEL SECURITY",
-        "CREATE POLICY organization_isolation ON organization_memberships "
-        "USING (organization_id = current_setting('app.current_organization_id', true)::uuid)",
+        (
+            "CREATE POLICY organization_isolation ON organization_memberships "
+            "USING (organization_id = current_setting('app.current_organization_id', true)::uuid)"
+        ),
     ):
         await it_session.execute(text(statement))
 

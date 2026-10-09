@@ -106,6 +106,7 @@ What each fixture actually provides:
 def smoke_app() -> FastAPI:
     return make_app()
 
+
 @pytest.fixture
 async def smoke_client(smoke_app: FastAPI) -> AsyncIterator[httpx2.AsyncClient]:
     async with (

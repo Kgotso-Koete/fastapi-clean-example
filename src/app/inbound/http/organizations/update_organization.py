@@ -1,10 +1,10 @@
 from inspect import getdoc
-from typing import Annotated
+from typing import Annotated, Any, Final
 from uuid import UUID
 
 from dishka import FromDishka
 from dishka.integrations.fastapi import inject
-from fastapi import APIRouter, Path
+from fastapi import APIRouter, Body, Path
 from pydantic import BaseModel, ConfigDict
 from starlette import status
 
@@ -30,6 +30,22 @@ class UpdateOrganizationBody(BaseModel):
 
     name: str | None = None
     description: str | None = None
+
+
+# Sample request bodies shown in Swagger (/docs); see create_organization.py
+# for why the values are chosen by hand. The first sets both fields (the
+# checks need one example with every field); the second shows a field left
+# out being left unchanged.
+UPDATE_ORGANIZATION_EXAMPLES: Final[dict[str, Any]] = {
+    "both_fields": {
+        "summary": "Change the name and the description",
+        "value": {"name": "Avengers", "description": "Earth's mightiest heroes, assembled."},
+    },
+    "description_only": {
+        "summary": "Change only the description",
+        "value": {"description": "Earth's mightiest heroes, assembled."},
+    },
+}
 
 
 def make_update_organization_router() -> APIRouter:
@@ -59,7 +75,7 @@ def make_update_organization_router() -> APIRouter:
     @inject
     async def update_organization(
         organization_id: Annotated[UUID, Path()],
-        body: UpdateOrganizationBody,
+        body: Annotated[UpdateOrganizationBody, Body(openapi_examples=UPDATE_ORGANIZATION_EXAMPLES)],
         interactor: FromDishka[UpdateOrganization],
     ) -> UpdateOrganizationResponse:
         request = UpdateOrganizationRequest(

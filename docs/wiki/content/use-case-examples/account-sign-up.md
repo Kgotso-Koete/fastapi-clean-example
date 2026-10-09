@@ -73,11 +73,14 @@
     description=getdoc(SignUp),
 )
 @inject
-async def sign_up(request: SignUpRequest, handler: FromDishka[SignUp]) -> UserQm:
+async def sign_up(
+    request: Annotated[SignUpRequest, Body(openapi_examples=SIGN_UP_EXAMPLES)],
+    handler: FromDishka[SignUp],
+) -> UserQm:
     return await handler.execute(request)
 ```
 
-Notice there's no `dependencies=[Depends(APIKeyCookie(...))]` here, unlike `log_out`/`change_password` — signing up requires no existing session, by definition. It's registered without a cookie dependency in [`router.py`](../../../../src/app/inbound/http/account/router.py)'s `make_account_router`.
+`SIGN_UP_EXAMPLES`, defined at the top of the same file, is the sample body Swagger (`/docs`) shows; see [Adding a New REST Endpoint](adding-a-rest-endpoint.md#request-body-examples). Notice there's no `dependencies=[Depends(APIKeyCookie(...))]` here, unlike `log_out`/`change_password` — signing up requires no existing session, by definition. It's registered without a cookie dependency in [`router.py`](../../../../src/app/inbound/http/account/router.py)'s `make_account_router`.
 
 ## Step 2 — The handler
 
@@ -98,9 +101,13 @@ From there it mirrors `CreateUser`'s body almost exactly: parse into value objec
 Both happen inside [`UserService.create_user_with_raw_password`](../../../../src/app/core/common/services/user.py), not in `SignUp` itself:
 
 ```python
-async def create_user_with_raw_password(self, user_id, username, email, phone_number, raw_password, *, now, role=UserRole.USER, is_active=True) -> User:
+async def create_user_with_raw_password(
+    self, user_id, username, email, phone_number, raw_password, *, now, role=UserRole.USER, is_active=True
+) -> User:
     password_hash = await self._password_hasher.hash(raw_password)
-    return self.create_user(user_id, username, email, phone_number, password_hash, now=now, role=role, is_active=is_active)
+    return self.create_user(
+        user_id, username, email, phone_number, password_hash, now=now, role=role, is_active=is_active
+    )
 ```
 
 [`create_user`](../../../../src/app/core/common/services/user.py) (the synchronous half) constructs the `User` entity and immediately records the event on it:

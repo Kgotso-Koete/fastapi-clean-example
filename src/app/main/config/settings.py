@@ -49,6 +49,12 @@ class SqlaSettings(BaseModel):
     ECHO_POOL: bool = False
     POOL_SIZE: int = 15
     MAX_OVERFLOW: int = 0
+    # How long, in whole seconds, opening a new database connection may take
+    # before the request gives up with a 503, instead of hanging while
+    # Postgres is unreachable (docs/plans/15-upstream-autumn-2026.md, Step 4).
+    # 5 is the value main/ioc/outbound.py used to hard-code. ge=1 because
+    # Postgres reads 0 as "wait forever", the very hang this exists to stop.
+    CONNECT_TIMEOUT_S: int = Field(ge=1, default=5)
 
 
 class PasswordHasherSettings(BaseModel):

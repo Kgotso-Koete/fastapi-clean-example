@@ -205,11 +205,12 @@ Two small, pure factories, each in its own new file -- mirroring `src/app/outbou
   ```python
   class ApiKeyQm(TypedDict):
       id: UUID
-      key_prefix: str          # e.g. "ak_a1b2c3d4" -- enough to tell keys apart, never the secret
+      key_prefix: str  # e.g. "ak_a1b2c3d4" -- enough to tell keys apart, never the secret
       label: str | None
       created_at: datetime
       expires_at: datetime
       revoked_at: datetime | None
+
 
   class ListApiKeysQm(TypedDict):
       api_keys: list[ApiKeyQm]
@@ -217,11 +218,12 @@ Two small, pure factories, each in its own new file -- mirroring `src/app/outbou
       limit: int
       offset: int
 
+
   class ApiKeyUsageStatsQm(TypedDict):
       id: UUID
-      user_id: UUID          # not returned to the caller (stripped by the response schema) --
-                              # present only so GetApiKeyUsageStats can check ownership itself,
-                              # mirroring how RevokeApiKey checks ownership after an unscoped load
+      user_id: UUID  # not returned to the caller (stripped by the response schema) --
+      # present only so GetApiKeyUsageStats can check ownership itself,
+      # mirroring how RevokeApiKey checks ownership after an unscoped load
       key_prefix: str
       label: str | None
       use_count: int
@@ -229,6 +231,7 @@ Two small, pure factories, each in its own new file -- mirroring `src/app/outbou
       created_at: datetime
       expires_at: datetime
       revoked_at: datetime | None
+
 
   class ApiKeyReader(Protocol):
       async def list_by_user(
@@ -340,12 +343,14 @@ class IssueApiKeyRequest:
     expires_in_days: int
     label: str | None = None
 
+
 class IssueApiKeyResponse(TypedDict):
     id: UUID
-    raw_key: str          # shown exactly once -- never persisted, never returned again
+    raw_key: str  # shown exactly once -- never persisted, never returned again
     label: str | None
     created_at: datetime
     expires_at: datetime
+
 
 class IssueApiKey:
     def __init__(
@@ -370,15 +375,22 @@ class IssueApiKey:
         expires_at = UtcDatetime(now.value + timedelta(days=expiry_days.value))
         raw_key = generate_raw_api_key()
         api_key = ApiKey(
-            id_=create_api_key_id(), user_id=user.id_, key_hash=self._api_key_hasher.hash(raw_key),
+            id_=create_api_key_id(),
+            user_id=user.id_,
+            key_hash=self._api_key_hasher.hash(raw_key),
             key_prefix=raw_key[:11],  # "ak_" + 8 chars -- non-secret, display-only
-            label=request.label, created_at=now, expires_at=expires_at,
+            label=request.label,
+            created_at=now,
+            expires_at=expires_at,
         )
         self._api_key_repository.add(api_key)
         await self._transaction_manager.commit()
         return IssueApiKeyResponse(
-            id=api_key.id_, raw_key=raw_key, label=api_key.label,
-            created_at=now.value, expires_at=expires_at.value,
+            id=api_key.id_,
+            raw_key=raw_key,
+            label=api_key.label,
+            created_at=now.value,
+            expires_at=expires_at.value,
         )
 ```
 `InvalidApiKeyCredentialsError`/`API_KEY_ACCOUNT_INACTIVE` live in a **new** file, `src/app/core/commands/api_key_exceptions.py` -- not added to the existing `src/app/core/commands/exceptions.py`.
@@ -388,8 +400,10 @@ class IssueApiKey:
 **`GetApiKeyUsageStats`** (`src/app/core/queries/get_api_key_usage_stats.py`, a **query**, new) -- the analytics vertical (see "Usage analytics" above for the design rationale). Unlike `ListApiKeys`, this is a by-id lookup, so it follows `RevokeApiKey`'s ownership-check convention rather than `ListApiKeys`'s "scope the query itself" one:
 
 ```python
-class ApiKeyNotFoundError(BaseError): ...  # defined here, not reused from core.commands --
-                                            # core.queries may never import core.commands
+class ApiKeyNotFoundError(BaseError):
+    ...  # defined here, not reused from core.commands --
+    # core.queries may never import core.commands
+
 
 class GetApiKeyUsageStats:
     def __init__(self, current_user_service: CurrentUserService, api_key_reader: ApiKeyReader) -> None:
@@ -425,9 +439,13 @@ class GetOwnProfile:
     async def execute(self) -> UserQm:
         current_user = await self._current_user_service.get_current_user()
         return UserQm(
-            id=current_user.id_, username=current_user.username, email=current_user.email,
-            phone_number=current_user.phone_number, role=current_user.role,
-            is_active=current_user.is_active, created_at=current_user.created_at,
+            id=current_user.id_,
+            username=current_user.username,
+            email=current_user.email,
+            phone_number=current_user.phone_number,
+            role=current_user.role,
+            is_active=current_user.is_active,
+            created_at=current_user.created_at,
             updated_at=current_user.updated_at,
         )
 ```
@@ -465,7 +483,8 @@ def make_public_api_app(
         lifespan=make_lifespan(),  # reused, unmodified, from main/run.py
     )
     container = make_async_container(
-        *get_public_api_providers(), *di_providers,
+        *get_public_api_providers(),
+        *di_providers,
         context={
             PasswordHasherSettings: password_hasher_settings,
             PostgresSettings: postgres_settings,

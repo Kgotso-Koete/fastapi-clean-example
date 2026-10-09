@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.0] - 2026-10-09: Upstream autumn 2026 updates: dependency upgrades, safer error logs, connect timeout, request examples
+
+Selected pieces of the original author's "Autumn 2026 Updates & Fixes" commit (https://github.com/ivan-borovets/fastapi-clean-example/commit/5d68d52c9635c7da74d4d45ffb58493f267531aa), brought in by hand, one test-first step at a time; the full record of what was taken, adapted and left out is `docs/plans/15-upstream-autumn-2026.md`.
+
+### Added
+- **Configurable database connect timeout:** `SQLA_CONNECT_TIMEOUT_S` (`SqlaSettings.CONNECT_TIMEOUT_S`, whole seconds, default 5, minimum 1, since Postgres reads 0 as "wait forever") replaces the 5 hard-coded in `main/ioc/outbound.py`. Tests: `test_loader.py`, and `tests/unit/main/ioc/test_outbound.py`, which proves the value reaches the driver.
+- **The "omitted" sentinel for partial updates:** `OMITTED` and `apply_when_present()` (`src/app/core/common/sentinels.py`) and `omit_if_missing()` (`src/app/inbound/missing.py`), so a `PATCH` can tell "field left out" from "field sent as `null`". Not used by a route yet; `docs/plans/10-profile-editing.md` is the first consumer.
+- **Request-body examples in Swagger:** every route with a JSON body (9 on the cookie app, `POST /public/v1/api-keys/` on the public API) declares a sample request with `Body(openapi_examples=...)`, in `inbound`, using values that pass `core`'s rules and seeded accounts where the request acts on existing data.
+- **OpenAPI sanity tests** (`tests/sanity/inbound/http/`, run by `make check`): the original author's checks that every example is valid against its schema, uses only its fields and fills every field at least once, plus guard tests for the checker; a check added here that every JSON body declares an example; and a test that every route path ends in `/`. New dev pin `jsonschema==4.26.0`.
+- **Tests for existing behaviour** (`tests/integration/with_infra/`), none of which found a bug:
+  - Login sessions in the database: logout deletes the session row; a session deleted on the server or past its expiry gets `401`; a user deactivated mid-session gets `403` and loses every session; deactivating a user deletes their sessions; a session near expiry is renewed; login creates exactly one session, and a refused login none.
+  - A refused (`403`) request changes nothing: the target's password, activation and role, and no user is created.
+  - Super admins over HTTP: one can't act on another super admin, and can manage admins.
+  - Password changes are proven by the new password verifying; the users list returns an empty page past its total with the real total.
+- **A 75% coverage floor in CI:** a "Check coverage" step after `make test-docker` (`.github/workflows/ci.yaml`) fails the run when the combined unit and integration coverage drops below 75% (94% today).
+
+### Changed
+- **Dependency upgrades**, each changelog read first and every pin exact: `alembic` 1.20.0, `fastapi` 0.142.2, `psycopg[binary]` 3.3.6, `pydantic-settings` 2.15.0, `pyjwt[crypto]` 2.15.1, `sqlalchemy` 2.0.54, `uuid-utils` 1.0.0, `uvicorn` 0.54.0, and new direct pins `pydantic==2.13.5` and `starlette==1.7.0`; dev tools `httpx2` 2.13.1, `import-linter` 2.15, `mypy` 2.4.0, `pip-audit` 2.10.1, `pytest` 9.1.1, `pytest-asyncio` 1.4.0, `ruff` 0.16.10, `slotscheck` 0.21.0, `tombi` 1.7.3. Vulnerable transitive packages are pinned exactly in `[tool.uv] constraint-dependencies` (`anyio` 4.14.2, `cryptography` 50.0.0, `msgpack` 1.2.1, `pip` 26.2, `urllib3` 2.8.0, `virtualenv` 21.7.13).
+- **SQLAlchemy's deprecated mypy plugin removed,** with the `sqlalchemy[mypy]` extra, which also put `mypy` into the production image.
+- **Handled-error logs name the cause:** `log_info` (`inbound/http/errors/callbacks.py`) adds `; caused by: <type>` when the error was raised from another, for example `StorageError — ; caused by: OperationalError`. Only the cause's type is logged, never its message (it can carry SQL parameters and personal data).
+- **Breaking:** the temporary alerting route is now `GET /debug/test-error/`, with a trailing slash like every other route; the old path answers `307`. Plans 2 and 13 and the wiki use the new path.
+- **Ruff now formats the Python code blocks inside markdown files** (code examples only, never prose).
+- **Documentation:**
+  - `docs/plans/15-upstream-autumn-2026.md`, the plan and step-by-step record, with its human checks; `docs/plans/10-profile-editing.md` rewritten to start after it.
+  - `docs/plans/agents.md`: commands are explained down to every flag and operator (1.1); everything a human check prints is readable (1.3); every file change is asked for once per TDD step and shown as a diff (1.5); transitive pins go in `[tool.uv] constraint-dependencies` (5.3).
+  - Wiki: the connect-timeout setting (`settings-system.md`, `database.md`), the cause logging and `SqlaFlusher`'s error handling (`error-handling.md`, `transaction-management.md`), a "Request-body examples" section in `adding-a-rest-endpoint.md`, the updated `sign_up` code, and the CI coverage step (`version-control.md`, `running-tests.md`).
+  - `README.md` and the roadmap mark this work and the P0 `pip-audit` item done.
+
+### Fixed
+- **Security: dependencies with known vulnerabilities.** `make pip-audit` reported 24 across `cryptography`, `msgpack`, `pip`, `pydantic-settings`, `pyjwt` and `starlette`; it now reports none.
+- **Security: personal data and secrets in logs** (OWASP Logging Cheat Sheet):
+  - A duplicate username, email or phone number (`409`) is re-raised `from None` by `SqlaFlusher`, so the SQLAlchemy error, whose message holds the new user's email, phone number and password hash, is never attached or logged; an unrecognised constraint clash logs only the constraint's name.
+  - The engine's DEBUG log printed the full database connection string, password included, on every start (the dev stack runs at DEBUG); it now names only host, port and database.
+- **Unhandled-error logs lost their traceback:** ruff 0.16's autofix turned `logger.exception(...)` into `logger.error(...)` in `exception_middleware.py`; it now passes `exc_info=exc`, with a regression test.
+
 ## [0.17.0] - 2026-10-07: Organizations close-out: delete, edit, mandatory description, public API reads
 
 ### Added

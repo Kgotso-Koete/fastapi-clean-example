@@ -131,7 +131,7 @@ Test file(s) before production file(s) per step (RED -> GREEN -> refactor). No p
 
 **Step 3 -- Wire into `GlobalExceptionMiddleware`, gated by `SentrySettings.ENABLED`, with auto-integrations disabled.**
 - Test: extend `tests/unit/inbound/http/errors/test_alerting.py` (or a new sibling unit-test file for the middleware itself, matching however `GlobalExceptionMiddleware` is currently unit-tested) with a spy callable in place of `report_to_sentry` -- an unhandled exception calls the spy exactly once, with the original exception and a context dict containing `user_status`; a spy that raises does not prevent the 500 JSON response, the log line, the Prometheus increment, or the alert email (best-effort, matching `_try_send_alert_email`'s existing wrapping).
-- Test: extend `tests/integration/with_infra/observability/test_metrics_and_alerting.py` with a fake Sentry transport wired through the real app -- a genuine unhandled exception (hit via the existing `GET /test-error` debug endpoint) results in exactly one captured Sentry event; a mapped 4xx business exception (e.g. wrong login password) results in zero captured Sentry events, mirroring the existing "4xx never triggers an alert" test in the same file.
+- Test: extend `tests/integration/with_infra/observability/test_metrics_and_alerting.py` with a fake Sentry transport wired through the real app -- a genuine unhandled exception (hit via the existing `GET /debug/test-error/` debug endpoint) results in exactly one captured Sentry event; a mapped 4xx business exception (e.g. wrong login password) results in zero captured Sentry events, mirroring the existing "4xx never triggers an alert" test in the same file.
 - Production: `inbound/http/errors/exception_middleware.py` (+`_try_report_to_sentry`, +constructor parameter), `main/setup.py` (+`setup_sentry()`, call site alongside `setup_metrics()`/`setup_global_exception_handlers()`), `main/run.py` (load `SentrySettings`, pass through).
 
 **Step 4 -- Dependency, Docker/env, and docs/roadmap sync.**
@@ -139,7 +139,7 @@ Test file(s) before production file(s) per step (RED -> GREEN -> refactor). No p
 - `.env.example`/`docker-compose.yml` -- `SENTRY_ENABLED` (default `false`), `SENTRY_DSN` (default empty), `SENTRY_TRACES_SAMPLE_RATE` (default `0.0`), each with a safe fallback so the stack still starts with none of them set.
 - `docs/plans/0-production-readiness-roadmap.md` / `README.md` -- checklist sync.
 - `docs/plans/2-observability.md` -- update its own "Free/local vs. paid/cloud" closing note, which currently just mentions GlitchTip as a hypothetical, to instead point at this plan file now that it's real, planned work.
-- Manual verification: with `SENTRY_ENABLED=true` and a real DSN, `make upd`, hit `GET /test-error`, confirm the event appears in the Sentry (or GlitchTip) dashboard with `environment`/`release` tags set and `user_status`/`user_id` present.
+- Manual verification: with `SENTRY_ENABLED=true` and a real DSN, `make upd`, hit `GET /debug/test-error/`, confirm the event appears in the Sentry (or GlitchTip) dashboard with `environment`/`release` tags set and `user_status`/`user_id` present.
 
 ## File Summary
 
@@ -160,13 +160,13 @@ Test file(s) before production file(s) per step (RED -> GREEN -> refactor). No p
 
 - **`make check`** -- lint (`ruff`/`mypy --strict`/`slotscheck`) + fast unit tests (Steps 1-3's unit tests, including the fake-transport Sentry tests -- no real network call, no real DSN needed).
 - **`make test-docker`** -- full integration suite, including the extended `test_metrics_and_alerting.py`, and every pre-existing suite (proving nothing regressed).
-- **Manual verification**, using real entrypoints: `make upd` with `SENTRY_ENABLED=true` and a real Sentry (or GlitchTip) DSN set in `.secrets`, hit `GET /test-error`, confirm the event appears in the dashboard within a few seconds, tagged with the right `environment`/`release`/`user_status`/`user_id`, and that a routine 4xx (e.g. a bad login attempt) produces no event at all.
+- **Manual verification**, using real entrypoints: `make upd` with `SENTRY_ENABLED=true` and a real Sentry (or GlitchTip) DSN set in `.secrets`, hit `GET /debug/test-error/`, confirm the event appears in the dashboard within a few seconds, tagged with the right `environment`/`release`/`user_status`/`user_id`, and that a routine 4xx (e.g. a bad login attempt) produces no event at all.
 
 ## Human checks
 
 **(planned -- to run once Sentry is implemented)** These checks are based only on what this plan specifies; adjust them to the shipped code if the implementation differs.
 
-They trigger errors through the existing debug route `GET http://localhost:8000/debug/test-error` (`src/app/inbound/http/debug/test_error.py`, mounted under `/debug` in `src/app/inbound/http/root_router.py`), which always raises `ValueError("Test error for alerting - this triggers a 500 and email alert")`. That file is marked "remove after testing"; these checks need it to still exist.
+They trigger errors through the existing debug route `GET http://localhost:8000/debug/test-error/` (`src/app/inbound/http/debug/test_error.py`, mounted under `/debug` in `src/app/inbound/http/root_router.py`), which always raises `ValueError("Test error for alerting - this triggers a 500 and email alert")`. That file is marked "remove after testing"; these checks need it to still exist.
 
 ### Setup
 
@@ -211,7 +211,7 @@ They trigger errors through the existing debug route `GET http://localhost:8000/
    ```
    Expect the last `SENTRY_ENABLED` line to be `true`, and a `SENTRY_DSN` line holding your DSN. In the Sentry Issues page, note whether a `ValueError` issue already exists, and its event count. Then trigger the error:
    ```shell
-   curl -s -w '\n%{http_code}\n' http://localhost:8000/debug/test-error
+   curl -s -w '\n%{http_code}\n' http://localhost:8000/debug/test-error/
    ```
    Expect `500`. Within a few seconds, expect one new `ValueError` event with the message above and a stack trace through `test_error.py`: a new issue, or the existing one's count up by exactly 1. Because this request was anonymous, its tags show `user_status` `anonymous` and no `user_id`.
 
@@ -236,7 +236,7 @@ They trigger errors through the existing debug route `GET http://localhost:8000/
    ```
    Expect `200`, then a UUID. Then, as `peter-parker`, trigger the error:
    ```shell
-   curl -s -w '\n%{http_code}\n' -b /tmp/peter-parker.cookies http://localhost:8000/debug/test-error
+   curl -s -w '\n%{http_code}\n' -b /tmp/peter-parker.cookies http://localhost:8000/debug/test-error/
    ```
    Expect `500`. Open the newest event of the `ValueError` issue. Expect the tags `environment: development`, `release: development` (or your `APP_VERSION`), `user_status: authenticated` and `user_id` equal to the UUID printed above.
 
@@ -251,7 +251,7 @@ They trigger errors through the existing debug route `GET http://localhost:8000/
    curl -s -w '\n%{http_code}\n' -c /tmp/peter-parker.cookies -X POST http://localhost:8000/api/v1/account/login/ \
      -H 'Content-Type: application/json' \
      -d '{"identifier": "peter-parker", "password": "SpideySense2024!"}'
-   curl -s -w '\n%{http_code}\n' -b /tmp/peter-parker.cookies http://localhost:8000/debug/test-error
+   curl -s -w '\n%{http_code}\n' -b /tmp/peter-parker.cookies http://localhost:8000/debug/test-error/
    ```
    Expect `200`, then `500`. **Prove** this event is peter's: open the newest `ValueError` event and expect `user_status: authenticated` with a `user_id`. Then use the browser's find-in-page (Ctrl+F) on that event page, including its tags, context and the event's JSON view. Expect no match for `peter.parker@dailybugle.com`, `27821000011` or `peter-parker`, and no `email`, `phone_number` or `username` tag in the tag list.
 
@@ -263,7 +263,7 @@ They trigger errors through the existing debug route `GET http://localhost:8000/
 
    **Prove** the starting state: in the Issues page, note how many `ValueError` issues there are (expect one) and its event count. Then trigger the same error three times:
    ```shell
-   for i in 1 2 3; do curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/debug/test-error; done
+   for i in 1 2 3; do curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/debug/test-error/; done
    ```
    Expect `500` three times. Expect still exactly one `ValueError` issue, with its event count up by 3.
 
@@ -299,14 +299,14 @@ They trigger errors through the existing debug route `GET http://localhost:8000/
    ```
    Expect the last value of each to be `true`, `oncall@example.com`, `0` and `true`. Then trigger the error, and read the counter:
    ```shell
-   curl -s -w '\n%{http_code}\n' http://localhost:8000/debug/test-error
+   curl -s -w '\n%{http_code}\n' http://localhost:8000/debug/test-error/
    curl -s http://localhost:8000/metrics | grep 'app_unhandled_exceptions_total{'
    ```
    Expect `500`, and an `exception_type="ValueError"` counter line with a value above 0. Then show the app's logs (the command prints them and exits):
    ```shell
    docker compose -p "$PROJECT" logs --no-log-prefix app | grep -E 'Unhandled exception|\[ALERT\]'
    ```
-   Expect an `Unhandled exception` line with `ValueError` and path `/debug/test-error`, and an `EMAIL [to=['oncall@example.com']]` line with subject `[ALERT] ValueError on GET /debug/test-error`. In Sentry, expect the `ValueError` event count up by 1 as well.
+   Expect an `Unhandled exception` line with `ValueError` and path `/debug/test-error/`, and an `EMAIL [to=['oncall@example.com']]` line with subject `[ALERT] ValueError on GET /debug/test-error/`. In Sentry, expect the `ValueError` event count up by 1 as well.
 
 7. **No performance data is collected.**
 
@@ -338,6 +338,6 @@ They trigger errors through the existing debug route `GET http://localhost:8000/
    ```
    Expect `SENTRY_ENABLED=false`, then `"OK"` and `200`. In the Issues page, note the `ValueError` event count. Then trigger the error:
    ```shell
-   curl -s -w '\n%{http_code}\n' http://localhost:8000/debug/test-error
+   curl -s -w '\n%{http_code}\n' http://localhost:8000/debug/test-error/
    ```
-   Expect `500`, and after a few seconds no new event. To check the stack also starts with no `SENTRY_*` lines at all, delete both `SENTRY_*` lines from `.secrets` and run the same `make down`, `make upd`, `/healthz/` and `/debug/test-error` commands: expect the same results. Afterwards, remove the `ALERT_*` lines from `.secrets` too if you don't want them, and run `make down` then `make upd`.
+   Expect `500`, and after a few seconds no new event. To check the stack also starts with no `SENTRY_*` lines at all, delete both `SENTRY_*` lines from `.secrets` and run the same `make down`, `make upd`, `/healthz/` and `/debug/test-error/` commands: expect the same results. Afterwards, remove the `ALERT_*` lines from `.secrets` too if you don't want them, and run `make down` then `make upd`.

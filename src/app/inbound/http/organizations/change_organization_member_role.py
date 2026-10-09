@@ -1,10 +1,10 @@
 from inspect import getdoc
-from typing import Annotated
+from typing import Annotated, Any, Final
 from uuid import UUID
 
 from dishka import FromDishka
 from dishka.integrations.fastapi import inject
-from fastapi import APIRouter, Path
+from fastapi import APIRouter, Body, Path
 from pydantic import BaseModel, ConfigDict
 from starlette import status
 
@@ -36,6 +36,17 @@ class ChangeOrganizationMemberRoleBody(BaseModel):
     role: OrganizationRole
 
 
+# Sample request body shown in Swagger (/docs), checked against the schema by
+# tests/sanity/inbound/http/ (docs/plans/15-upstream-autumn-2026.md, Step 5,
+# item 10). role is "owner", "admin" or "member".
+CHANGE_ORGANIZATION_MEMBER_ROLE_EXAMPLES: Final[dict[str, Any]] = {
+    "promote_to_admin": {
+        "summary": "Promote a member to admin",
+        "value": {"role": "admin"},
+    },
+}
+
+
 def make_change_organization_member_role_router() -> APIRouter:
     router = make_error_aware_router(on_error=log_info)
 
@@ -65,7 +76,10 @@ def make_change_organization_member_role_router() -> APIRouter:
     async def change_organization_member_role(
         organization_id: Annotated[UUID, Path()],
         membership_id: Annotated[UUID, Path()],
-        body: ChangeOrganizationMemberRoleBody,
+        body: Annotated[
+            ChangeOrganizationMemberRoleBody,
+            Body(openapi_examples=CHANGE_ORGANIZATION_MEMBER_ROLE_EXAMPLES),
+        ],
         interactor: FromDishka[ChangeOrganizationMemberRole],
     ) -> None:
         request = ChangeOrganizationMemberRoleRequest(

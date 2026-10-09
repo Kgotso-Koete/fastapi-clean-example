@@ -82,7 +82,7 @@ Everything above is real and already working — but it is not the same thing as
 - No deploy pipeline past CI (Continuous Integration) — a green build has no automated path to a running deployment, and no rollback mechanism
 - No self-service "forgot my password" flow (only an authenticated admin's `set_user_password`, and a logged-in user's own `change_password`)
 - No email verification on sign-up
-- Known vulnerabilities currently flagged by `pip-audit` (non-blocking today) across `cryptography`, `msgpack`, `pip`, `pydantic-settings`, `pyjwt`, and `starlette`
+- `pip-audit` is still non-blocking: it flags no known vulnerabilities since 0.18.0 (the `cryptography`, `msgpack`, `pip`, `pydantic-settings`, `pyjwt` and `starlette` findings were fixed by upgrades), but a newly published one wouldn't stop a commit
 
 The roadmap also tracks a **P1** tier (conditional on whether sign-up is public vs. admin-only — CAPTCHA (Completely Automated Public Turing test to tell Computers and Humans Apart)/abuse protection, an admin audit log, MFA (Multi-Factor Authentication), CORS (Cross-Origin Resource Sharing)/security headers) and further items like multi-tenancy and a public API-key auth surface, none of which this page repeats — treat the roadmap document itself as the current source of truth, since it's updated as items get resolved (several already are, and are marked `[x]` there) in a way this static page can't track as reliably.
 

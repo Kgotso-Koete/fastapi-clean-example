@@ -72,10 +72,14 @@ class PersistenceSqlaProvider(Provider):
             echo_pool=sqla.ECHO_POOL,
             pool_size=sqla.POOL_SIZE,
             max_overflow=sqla.MAX_OVERFLOW,
-            connect_args={"connect_timeout": 5},
+            # SQLA_CONNECT_TIMEOUT_S, default 5 (docs/plans/15-upstream-autumn-2026.md, Step 4).
+            connect_args={"connect_timeout": sqla.CONNECT_TIMEOUT_S},
             pool_pre_ping=True,
         )
-        logger.debug("Async engine created with DSN: %s", postgres.dsn)
+        # Host, port and database only: postgres.dsn includes the password,
+        # which must never reach the logs (docs/plans/15-upstream-autumn-2026.md,
+        # Step 4b; OWASP Logging Cheat Sheet).
+        logger.debug("Async engine created for %s:%s/%s", postgres.HOST, postgres.PORT, postgres.DB)
         yield async_engine
         logger.debug("Disposing async engine...")
         await async_engine.dispose()

@@ -1,8 +1,9 @@
 from inspect import getdoc
+from typing import Annotated, Any, Final
 
 from dishka import FromDishka
 from dishka.integrations.fastapi import inject
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Body, status
 
 from app.core.common.authorization.exceptions import AuthorizationError
 from app.core.common.exceptions import BusinessTypeError
@@ -14,6 +15,20 @@ from app.outbound.adapters.exceptions import PasswordHasherBusyError
 from app.outbound.auth_ctx.exceptions import AlreadyAuthenticatedError, AuthenticationError
 from app.outbound.auth_ctx.handlers.log_in import LogIn, LogInRequest
 from app.outbound.exceptions import StorageError
+
+# Sample request bodies shown in Swagger (/docs); see sign_up.py for why the
+# values are chosen by hand. Both log in as the seeded peter-parker
+# (scripts/seed_db.py), so they work as-is against a seeded dev stack.
+LOG_IN_EXAMPLES: Final[dict[str, Any]] = {
+    "by_username": {
+        "summary": "Log in with a username",
+        "value": {"identifier": "peter-parker", "password": "SpideySense2024!"},
+    },
+    "by_email": {
+        "summary": "Log in with an email address",
+        "value": {"identifier": "peter.parker@dailybugle.com", "password": "SpideySense2024!"},
+    },
+}
 
 
 def make_log_in_router() -> APIRouter:
@@ -34,7 +49,7 @@ def make_log_in_router() -> APIRouter:
     )
     @inject
     async def log_in(
-        request: LogInRequest,
+        request: Annotated[LogInRequest, Body(openapi_examples=LOG_IN_EXAMPLES)],
         handler: FromDishka[LogIn],
     ) -> UserQm:
         return await handler.execute(request)

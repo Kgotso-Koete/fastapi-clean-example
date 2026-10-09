@@ -134,6 +134,7 @@ class AlertSettings(BaseModel):
     toggle, recipient, and rate limit rather than piggybacking on transactional
     email config.
     """
+
     ENABLED: bool = False
     TO_EMAIL: str = ""
     TO_NAME: str = "On-call"
@@ -162,6 +163,7 @@ class JsonFormatter(logging.Formatter):
     index fields for filtering/search — by level, logger name, exception type,
     request path, etc. — instead of grepping free-text.
     """
+
     def format(self, record: logging.LogRecord) -> str:
         payload: dict[str, Any] = {
             "timestamp": self.formatTime(record, DATEFMT),
@@ -222,6 +224,7 @@ class RequestUserContext:
     is itself useful information) are different facts and shouldn't collapse
     into the same "no user" bucket.
     """
+
     status: Literal["authenticated", "anonymous", "unknown"]
     user_id: str | None = None
     username: str | None = None
@@ -422,10 +425,13 @@ flowchart LR
 ```python
 class _FakeClock:
     """Deterministic, manually-advanced stand-in for time.monotonic."""
+
     def __init__(self, start: float = 0.0) -> None:
         self._now = start
+
     def __call__(self) -> float:
         return self._now
+
     def advance(self, seconds: float) -> None:
         self._now += seconds
 
@@ -447,9 +453,15 @@ async def test_unhandled_exception_from_a_logged_in_user_shows_their_identity_in
 ) -> None:
     username, password = create_raw_username(), create_raw_password()
     email, phone_number = create_raw_email(), create_raw_phone_number()
-    await it_client.post(SIGN_UP_ENDPOINT, json={
-        "username": username, "email": email, "phone_number": phone_number, "password": password,
-    })
+    await it_client.post(
+        SIGN_UP_ENDPOINT,
+        json={
+            "username": username,
+            "email": email,
+            "phone_number": phone_number,
+            "password": password,
+        },
+    )
     await authenticate(it_client, username, password)
 
     await it_client.get(UNHANDLED_ERROR_ENDPOINT)
@@ -490,7 +502,7 @@ If per-error-type grouping ever matters more than dashboards, [GlitchTip](https:
 
 ## Human checks
 
-Since this plan was written, the alert settings have changed: `ALERT_TO_EMAIL`/`ALERT_TO_NAME` became the comma-separated `ALERT_TO_EMAILS` (plus optional `ALERT_CC_EMAILS`/`ALERT_BCC_EMAILS`), see `env.example`. The checks below use the current names. They trigger a server error through `GET /debug/test-error` (`src/app/inbound/http/debug/test_error.py`). That route raises a `ValueError` on purpose, and it is always mounted, whatever `APP_DEBUG_MODE` is set to.
+Since this plan was written, the alert settings have changed: `ALERT_TO_EMAIL`/`ALERT_TO_NAME` became the comma-separated `ALERT_TO_EMAILS` (plus optional `ALERT_CC_EMAILS`/`ALERT_BCC_EMAILS`), see `env.example`. The checks below use the current names. They trigger a server error through `GET /debug/test-error/` (`src/app/inbound/http/debug/test_error.py`). That route raises a `ValueError` on purpose, and it is always mounted, whatever `APP_DEBUG_MODE` is set to.
 
 ### Setup
 
@@ -567,7 +579,7 @@ Since this plan was written, the alert settings have changed: `ALERT_TO_EMAIL`/`
 
    **Why:** an unhandled exception is a bug on our side, so it's a 500, not a 4xx. The caller gets only a generic error body: the exception's message and the user's details go to the logs and the alert email, never into the response. `app_unhandled_exceptions_total` counts only exceptions that reach the global catch-all.
 
-   **Acts on:** seeded `matt-murdock`, and the always-mounted `GET /debug/test-error` route.
+   **Acts on:** seeded `matt-murdock`, and the always-mounted `GET /debug/test-error/` route.
 
    Log in as `matt-murdock`:
    ```shell
@@ -585,7 +597,7 @@ Since this plan was written, the alert settings have changed: `ALERT_TO_EMAIL`/`
    ```
    Expect nothing printed: no unhandled error since the app started, and a labeled counter has no line until its first increment. Then, as `matt-murdock`, call the error route:
    ```shell
-   curl -s -w '\n%{http_code}\n' -b /tmp/matt-murdock.cookies http://localhost:8000/debug/test-error
+   curl -s -w '\n%{http_code}\n' -b /tmp/matt-murdock.cookies http://localhost:8000/debug/test-error/
    ```
    Expect `500`. The body must not contain `Test error for alerting` or `matt.murdock@nelsonmurdock.com`. **Prove** it was counted:
    ```shell
@@ -613,8 +625,8 @@ Since this plan was written, the alert settings have changed: `ALERT_TO_EMAIL`/`
    docker compose -p "$PROJECT" logs --no-log-prefix app | grep -oE '"exception_type": .*|\[subject=\[ALERT\][^]]*\]|User:</b> [^<]*'
    ```
    Expect exactly three lines:
-   - `"exception_type": "ValueError", "path": "/debug/test-error", "method": "GET", "user_status": "authenticated"`, followed by `"user_id"` equal to `$MATT_ID`, `"username": "matt-murdock"`, `"user_email": "matt.murdock@nelsonmurdock.com"` and `"user_phone_number": "27821000005"`;
-   - `[subject=[ALERT] ValueError on GET /debug/test-error]`;
+   - `"exception_type": "ValueError", "path": "/debug/test-error/", "method": "GET", "user_status": "authenticated"`, followed by `"user_id"` equal to `$MATT_ID`, `"username": "matt-murdock"`, `"user_email": "matt.murdock@nelsonmurdock.com"` and `"user_phone_number": "27821000005"`;
+   - `[subject=[ALERT] ValueError on GET /debug/test-error/]`;
    - `User:</b> matt-murdock (id=`, then `$MATT_ID`, then `, email=matt.murdock@nelsonmurdock.com, phone=27821000005)`.
 
 5. **A repeat error within the cooldown is counted, but sends no second email.**
@@ -631,11 +643,11 @@ Since this plan was written, the alert settings have changed: `ALERT_TO_EMAIL`/`
    ```
    Expect `ALERT_COOLDOWN_S=300`, then the counter at `1.0`, then the same three log lines as check 4 (one `[subject=[ALERT] ...]`). Then call the error route without a cookie:
    ```shell
-   curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/debug/test-error
+   curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/debug/test-error/
    curl -s http://localhost:8000/metrics | grep '^app_unhandled_exceptions_total'
    docker compose -p "$PROJECT" logs --no-log-prefix app | grep -oE '"exception_type": .*|\[subject=\[ALERT\][^]]*\]|User:</b> [^<]*'
    ```
-   Expect `500`, then the counter at `2.0`, then a fourth log line, `"exception_type": "ValueError", "path": "/debug/test-error", "method": "GET", "user_status": "anonymous"}`, but still only one `[subject=[ALERT] ...]` line.
+   Expect `500`, then the counter at `2.0`, then a fourth log line, `"exception_type": "ValueError", "path": "/debug/test-error/", "method": "GET", "user_status": "anonymous"}`, but still only one `[subject=[ALERT] ...]` line.
 
 6. **After a restart, the first error alerts again, and an anonymous error's alert says "anonymous".**
 
@@ -656,11 +668,11 @@ Since this plan was written, the alert settings have changed: `ALERT_TO_EMAIL`/`
    ```
    Expect `"OK"` (if nothing prints, wait a few seconds and run it again), then nothing printed by the other two. Then call the error route without a cookie:
    ```shell
-   curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/debug/test-error
+   curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/debug/test-error/
    curl -s http://localhost:8000/metrics | grep '^app_unhandled_exceptions_total'
    docker compose -p "$PROJECT" logs --no-log-prefix app | grep -oE '"exception_type": .*|\[subject=\[ALERT\][^]]*\]|User:</b> [^<]*'
    ```
-   Expect `500`, then the counter at `1.0`, then three log lines: `"exception_type": "ValueError", "path": "/debug/test-error", "method": "GET", "user_status": "anonymous"}`, `[subject=[ALERT] ValueError on GET /debug/test-error]` and `User:</b> anonymous (no valid session)`.
+   Expect `500`, then the counter at `1.0`, then three log lines: `"exception_type": "ValueError", "path": "/debug/test-error/", "method": "GET", "user_status": "anonymous"}`, `[subject=[ALERT] ValueError on GET /debug/test-error/]` and `User:</b> anonymous (no valid session)`.
 
 7. **A 4xx error neither alerts nor counts.**
 
@@ -741,7 +753,7 @@ Since this plan was written, the alert settings have changed: `ALERT_TO_EMAIL`/`
       --data-urlencode 'query={compose_service="app"} | json | exception_type="ValueError"' \
       | python3 -c 'import sys, json; [print(s["stream"].get("path"), s["stream"].get("user_status")) for s in json.load(sys.stdin)["data"]["result"]]'
     ```
-    Expect `/debug/test-error anonymous` for check 6's error, plus lines for checks 3 and 5 if they ran within the last hour. Loki keeps its data in a named volume, so errors from earlier runs in the last hour show up too.
+    Expect `/debug/test-error/ anonymous` for check 6's error, plus lines for checks 3 and 5 if they ran within the last hour. Loki keeps its data in a named volume, so errors from earlier runs in the last hour show up too.
 
 12. **With alerting turned off, errors are still counted, but no email is sent.**
 
@@ -762,8 +774,8 @@ Since this plan was written, the alert settings have changed: `ALERT_TO_EMAIL`/`
     ```
     Expect `ALERT_ENABLED=false`, then `"OK"` (if nothing prints, wait a few seconds and run it again), then nothing printed for the counter. Then call the error route:
     ```shell
-    curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/debug/test-error
+    curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/debug/test-error/
     curl -s http://localhost:8000/metrics | grep '^app_unhandled_exceptions_total'
     docker compose -p "$PROJECT" logs --no-log-prefix app | grep -oE '"exception_type": .*|\[subject=\[ALERT\][^]]*\]|User:</b> [^<]*'
     ```
-    Expect `500`, then the counter at `1.0`, then exactly one log line, `"exception_type": "ValueError", "path": "/debug/test-error", "method": "GET", "user_status": "anonymous"}`, and no `[subject=[ALERT] ...]` line. Set `ALERT_ENABLED=true` in `.secrets` again before re-running these checks.
+    Expect `500`, then the counter at `1.0`, then exactly one log line, `"exception_type": "ValueError", "path": "/debug/test-error/", "method": "GET", "user_status": "anonymous"}`, and no `[subject=[ALERT] ...]` line. Set `ALERT_ENABLED=true` in `.secrets` again before re-running these checks.

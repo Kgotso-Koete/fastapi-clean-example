@@ -9,6 +9,7 @@ from tests.integration.with_infra.authentication import authenticate
 from tests.integration.with_infra.factories import (
     create_raw_password,
     create_raw_user_id,
+    create_super_admin,
     create_user,
     create_user_with_password,
 )
@@ -25,13 +26,18 @@ async def test_returns_204_and_sets_password(
     it_session.add(target)
     await it_session.commit()
     old_password_hash = target.password_hash
-    payload = {"password": create_raw_password()}
+    new_password = create_raw_password()
+    payload = {"password": new_password}
 
     r = await it_client.put(f"{USERS_ENDPOINT}{target.id_}/password/", json=payload)
 
     assert r.status_code == 204
     await it_session.refresh(target)
     assert target.password_hash != old_password_hash
+    # The stored hash is of the NEW password, checked the way login checks it,
+    # not merely "something changed" (the original author's check;
+    # docs/plans/15-upstream-autumn-2026.md, Step 5, item 8).
+    assert await it_user_service.is_password_valid(target, RawPassword(new_password))
 
 
 async def test_returns_400_when_password_is_too_short(
@@ -71,11 +77,16 @@ async def test_returns_403_when_user_role(
     it_session.add_all([user, target])
     await it_session.commit()
     await authenticate(it_client, user.username.value, password)
+    old_password_hash = target.password_hash
     payload = {"password": create_raw_password()}
 
     r = await it_client.put(f"{USERS_ENDPOINT}{target.id_}/password/", json=payload)
 
     assert r.status_code == 403
+    # A refused request leaves the target's password as it was (the original
+    # author's check; docs/plans/15-upstream-autumn-2026.md, Step 5, item 6).
+    await it_session.refresh(target)
+    assert target.password_hash == old_password_hash
 
 
 async def test_returns_403_when_admin_targets_admin(
@@ -87,11 +98,64 @@ async def test_returns_403_when_admin_targets_admin(
     other_admin = create_user(it_user_service, role=UserRole.ADMIN)
     it_session.add(other_admin)
     await it_session.commit()
+    old_password_hash = other_admin.password_hash
     payload = {"password": create_raw_password()}
 
     r = await it_client.put(f"{USERS_ENDPOINT}{other_admin.id_}/password/", json=payload)
 
     assert r.status_code == 403
+    # A refused request leaves the target's password as it was (the original
+    # author's check; docs/plans/15-upstream-autumn-2026.md, Step 5, item 6).
+    await it_session.refresh(other_admin)
+    assert other_admin.password_hash == old_password_hash
+
+
+async def test_returns_204_and_sets_admin_password_when_super_admin(
+    it_client: httpx2.AsyncClient,
+    it_session: AsyncSession,
+    it_super_admin: User,
+    it_user_service: UserService,
+) -> None:
+    # A super admin manages admins, one level below them (the original
+    # author's test; docs/plans/15-upstream-autumn-2026.md, Step 5, item 7).
+    target = create_user(it_user_service, role=UserRole.ADMIN)
+    it_session.add(target)
+    await it_session.commit()
+    old_password_hash = target.password_hash
+    new_password = create_raw_password()
+    payload = {"password": new_password}
+
+    r = await it_client.put(f"{USERS_ENDPOINT}{target.id_}/password/", json=payload)
+
+    assert r.status_code == 204
+    await it_session.refresh(target)
+    assert target.password_hash != old_password_hash
+    # The stored hash is of the NEW password, checked the way login checks it,
+    # not merely "something changed" (the original author's check;
+    # docs/plans/15-upstream-autumn-2026.md, Step 5, item 8).
+    assert await it_user_service.is_password_valid(target, RawPassword(new_password))
+
+
+async def test_returns_403_when_super_admin_targets_super_admin(
+    it_client: httpx2.AsyncClient,
+    it_session: AsyncSession,
+    it_super_admin: User,
+    it_user_service: UserService,
+) -> None:
+    # No one manages their own level, not even a super admin, and nothing
+    # changes (the original author's test; docs/plans/15-upstream-autumn-2026.md,
+    # Step 5, item 7).
+    other_super_admin = create_super_admin(it_user_service)
+    it_session.add(other_super_admin)
+    await it_session.commit()
+    old_password_hash = other_super_admin.password_hash
+    payload = {"password": create_raw_password()}
+
+    r = await it_client.put(f"{USERS_ENDPOINT}{other_super_admin.id_}/password/", json=payload)
+
+    assert r.status_code == 403
+    await it_session.refresh(other_super_admin)
+    assert other_super_admin.password_hash == old_password_hash
 
 
 async def test_returns_404_when_user_not_found(

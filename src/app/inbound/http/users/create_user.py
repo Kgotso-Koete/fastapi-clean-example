@@ -1,8 +1,9 @@
 from inspect import getdoc
+from typing import Annotated, Any, Final
 
 from dishka import FromDishka
 from dishka.integrations.fastapi import inject
-from fastapi import APIRouter
+from fastapi import APIRouter, Body
 from starlette import status
 
 from app.core.commands.create_user import CreateUser, CreateUserRequest, CreateUserResponse
@@ -19,6 +20,22 @@ from app.inbound.http.errors.rules import HTTP_503_SERVICE_UNAVAILABLE_RULE
 from app.outbound.adapters.exceptions import PasswordHasherBusyError
 from app.outbound.auth_ctx.exceptions import AuthenticationError
 from app.outbound.exceptions import StorageError
+
+# Sample request body shown in Swagger (/docs); see account/sign_up.py for why
+# the values are chosen by hand. role is "user" or "admin"; only a super
+# admin may create an admin.
+CREATE_USER_EXAMPLES: Final[dict[str, Any]] = {
+    "new_user": {
+        "summary": "Create a user",
+        "value": {
+            "username": "sam-wilson",
+            "email": "sam.wilson@avengers.org",
+            "phone_number": "0821000017",
+            "password": "OnYourLeft2024!",
+            "role": "user",
+        },
+    },
+}
 
 
 def make_create_user_router() -> APIRouter:
@@ -41,7 +58,7 @@ def make_create_user_router() -> APIRouter:
     )
     @inject
     async def create_user(
-        request: CreateUserRequest,
+        request: Annotated[CreateUserRequest, Body(openapi_examples=CREATE_USER_EXAMPLES)],
         interactor: FromDishka[CreateUser],
     ) -> CreateUserResponse:
         return await interactor.execute(request)

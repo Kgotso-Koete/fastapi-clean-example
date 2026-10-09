@@ -118,6 +118,23 @@ async def test_unhandled_exception_returns_generic_500_without_leaking_internals
     assert "simulated unhandled error" not in r.text
 
 
+async def test_unhandled_exception_is_logged_with_its_traceback(
+    it_client: httpx2.AsyncClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # The other side of the test above: the response hides the error, so the
+    # log line is the only place an operator can see what failed and where.
+    # It must carry the exception itself (exc_info), which is what turns into
+    # the traceback. Pinned after ruff 0.16's LOG004 autofix silently turned
+    # `logger.exception(...)` into `logger.error(...)` here, which drops it
+    # (docs/plans/15-upstream-autumn-2026.md, Step 1b).
+    await it_client.get(UNHANDLED_ERROR_ENDPOINT)
+
+    [record] = [r for r in caplog.records if r.getMessage() == "Unhandled exception"]
+    assert record.exc_info is not None
+    assert isinstance(record.exc_info[1], ValueError)
+
+
 async def test_unhandled_exception_increments_the_metric_labeled_by_exception_type(
     it_client: httpx2.AsyncClient,
 ) -> None:

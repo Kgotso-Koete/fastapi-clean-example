@@ -164,3 +164,8 @@ async def test_returns_403_when_already_authenticated(
     r = await it_client.post(SIGN_UP_ENDPOINT, json=payload)
 
     assert r.status_code == 403
+    # A refused sign-up creates no user: the logged-in requester is still the
+    # only one (the original author's check; docs/plans/15-upstream-autumn-2026.md,
+    # Step 5, item 6).
+    count = await it_session.scalar(select(func.count()).select_from(User))
+    assert count == 1
