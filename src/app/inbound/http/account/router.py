@@ -5,6 +5,7 @@ from app.inbound.http.account.log_in import make_log_in_router
 from app.inbound.http.account.log_out import make_log_out_router
 from app.inbound.http.account.profile import make_get_own_profile_router
 from app.inbound.http.account.sign_up import make_sign_up_router
+from app.inbound.http.account.update_own_profile import make_update_own_profile_router
 
 
 def make_account_router(*, cookie_name: str) -> APIRouter:
@@ -14,4 +15,5 @@ def make_account_router(*, cookie_name: str) -> APIRouter:
     router.include_router(make_change_password_router(cookie_name=cookie_name))
     router.include_router(make_log_out_router(cookie_name=cookie_name))
     router.include_router(make_get_own_profile_router(cookie_name=cookie_name))
+    router.include_router(make_update_own_profile_router(cookie_name=cookie_name))
     return router

@@ -2,6 +2,7 @@ import httpx2
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.common.services.user import UserService
+from app.core.common.value_objects.description import Description
 from tests.integration.with_infra.account.constants import PROFILE_ENDPOINT
 from tests.integration.with_infra.authentication import authenticate
 from tests.integration.with_infra.factories import create_raw_password, create_user_with_password
@@ -28,6 +29,27 @@ async def test_returns_200_with_the_authenticated_users_own_profile(
     assert body["phone_number"] == user.phone_number.value
     assert body["role"] == user.role.value
     assert body["is_active"] == user.is_active
+
+
+async def test_returns_200_with_the_users_description(
+    it_client: httpx2.AsyncClient,
+    it_session: AsyncSession,
+    it_user_service: UserService,
+) -> None:
+    # Decision 4 (docs/plans/10-profile-editing.md): the description travels
+    # the whole read path -- users.description, through CurrentUserService
+    # and GetOwnProfile, into the JSON.
+    password = create_raw_password()
+    user = await create_user_with_password(it_user_service, raw_password=password)
+    user.description = Description("Genius, billionaire, philanthropist.")
+    it_session.add(user)
+    await it_session.commit()
+    await authenticate(it_client, user.username.value, password)
+
+    r = await it_client.get(PROFILE_ENDPOINT)
+
+    assert r.status_code == 200
+    assert r.json()["description"] == "Genius, billionaire, philanthropist."
 
 
 async def test_returns_401_when_not_authenticated(

@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.0] - 2026-10-12: Profile editing: user descriptions, self-service and admin profile edits
+
+### Added
+- **A description on users:** `User.description`, optional (`Description | None`), using the `Description` value object organizations use (1 to 1000 characters, line breaks allowed). Stored in a new nullable `users.description` column (migration `0014ed692f74`, `add description to users`, no backfill). It's mapped with the original author's nullable-composite recipe (`outbound/persistence_sqla/mappings/composite/`: a factory that returns `None` for `NULL`, and a `__composite_values__` patch run by `patch_composite()` in `map_tables()`), so the entity keeps a plain attribute. The description shows wherever the profile does: `GET /api/v1/account/profile/`, `GET /public/v1/account/profile/`, the users list, and the login and sign-up responses.
+- **Editing your own profile:** `UpdateOwnProfile` (`outbound/auth_ctx/handlers/`, beside `ChangePassword`) at `PATCH /api/v1/account/profile/`, a partial update of `username`, `email`, `phone_number` and `description`.
+  - A field left out stays unchanged, `null` clears the description, and every value is validated before anything changes.
+  - Changing the email needs the right `current_password`: missing or wrong is `403 Invalid password.`, the original author's `ReAuthenticationError`.
+  - Answers `200` with the updated profile.
+- **An admin editing another user's profile:** `UpdateUserProfile` (`core/commands/`) at `PATCH /api/v1/users/{user_id}/profile/`, authorized like `SetUserPassword` (`CanManageRole`, then `CanManageSubordinate`): an ADMIN edits a USER, a SUPER_ADMIN edits an ADMIN, and no target password is needed. An unknown user is `404`.
+- Both routes answer `409` for a username, email or phone number another account has, declare Swagger request examples, and are on the private API only: an API key can't change the account's login identifiers.
+- **Dev-only DB seeding:** seeded users have fixed ids (`e0000000-0000-4000-8000-0000000000NN`, `NN` being the last two digits of their seeded phone number), and `tony-stark` and `natasha-romanoff` have descriptions.
+- **Tests:** unit tests for `User.description`, the composite recipe and both use cases; integration tests for the description's persistence, both routes (including the state after every refusal), and the description in the profile, the users list and the login response.
+- **Documentation:**
+  - `docs/plans/10-profile-editing.md`: the design, its decisions, the step-by-step record and the human checks.
+  - Wiki: new `Account: Update Own Profile` and `Users: Update User Profile` pages; the nullable-composite recipe in `database-models.md`; `User.description` and `UserQm.description` in the other Data Models pages and `database.md`; the new routes and command in `inbound-layer.md`, `core-layer.md`, `authorization-rbac.md`, `users-grant-admin.md` and the Overview; the fixed seed ids in `quick-start-docker.md`; the new commit step in `version-control.md`.
+  - `docs/plans/agents.md` 1.3: human-check commands show whole objects, never a few picked fields.
+
+### Changed
+- **`omit_if_missing()`** (`inbound/missing.py`, the original author's) takes `value: T | MISSING` instead of `value: T`, so mypy accepts a real call (a `str | MISSING` field becoming `str | Omitted`). The body and behaviour are unchanged; profile editing is its first caller.
+- **`UserQm.description` has no default,** so mypy rejects any `UserQm(...)` that leaves it out. `LogIn` passes the stored description and `SignUp` passes `None`; a default had let the login answer `"description": null` for a user who had one, which the human checks caught before release (pinned by a test in `test_log_in.py`).
+- **README Commit Protocol:** a new step 4 watches the PR's CI checks (`gh pr checks <PR number> --watch`) before merging.
+- **Documentation:** `README.md` and the roadmap mark profile editing done, and add an open item for `make upd` failing on a fresh database until it's run twice.
+
 ## [0.18.0] - 2026-10-09: Upstream autumn 2026 updates: dependency upgrades, safer error logs, connect timeout, request examples
 
 Selected pieces of the original author's "Autumn 2026 Updates & Fixes" commit (https://github.com/ivan-borovets/fastapi-clean-example/commit/5d68d52c9635c7da74d4d45ffb58493f267531aa), brought in by hand, one test-first step at a time; the full record of what was taken, adapted and left out is `docs/plans/15-upstream-autumn-2026.md`.

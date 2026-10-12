@@ -3,6 +3,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.common.services.user import UserService
+from app.core.common.value_objects.description import Description
 from app.core.common.value_objects.raw_password import RawPassword
 from app.core.common.value_objects.username import Username
 from app.outbound.auth_ctx.model import AuthSession
@@ -49,6 +50,27 @@ async def test_returns_200_and_sets_cookie(
     assert "password_hash" not in data
     auth_session = (await it_session.execute(select(AuthSession))).scalar_one()
     assert auth_session.user_id == user.id_
+
+
+async def test_returns_200_with_the_users_description(
+    it_client: httpx2.AsyncClient,
+    it_session: AsyncSession,
+    it_user_service: UserService,
+) -> None:
+    # Decision 4 (docs/plans/10-profile-editing.md): the description shows
+    # wherever the profile is, and LogIn answers with the profile (UserQm),
+    # so its response must carry the stored description too, not null.
+    password = create_raw_password()
+    user = await create_user_with_password(it_user_service, raw_password=password)
+    user.description = Description("Genius, billionaire, philanthropist.")
+    it_session.add(user)
+    await it_session.commit()
+    payload = {"identifier": user.username.value, "password": password}
+
+    r = await it_client.post(LOG_IN_ENDPOINT, json=payload)
+
+    assert r.status_code == 200
+    assert r.json()["description"] == "Genius, billionaire, philanthropist."
 
 
 async def test_returns_200_and_sets_cookie_when_logging_in_with_email(

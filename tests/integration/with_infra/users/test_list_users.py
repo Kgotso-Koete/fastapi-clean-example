@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.common.entities.types_ import UserRole
 from app.core.common.entities.user import User
 from app.core.common.services.user import UserService
+from app.core.common.value_objects.description import Description
 from tests.integration.with_infra.authentication import authenticate
 from tests.integration.with_infra.factories import (
     create_raw_now,
@@ -96,6 +97,32 @@ async def test_returns_200_and_an_empty_page_when_offset_is_past_the_total(
     assert payload["users"] == []
     assert payload["total"] == 2
     assert payload["offset"] == 5
+
+
+async def test_returns_200_and_each_users_description_or_null(
+    it_client: httpx2.AsyncClient,
+    it_session: AsyncSession,
+    it_admin: User,
+    it_user_service: UserService,
+) -> None:
+    # Decision 4 (docs/plans/10-profile-editing.md): the users list shows each
+    # user's description, null when there is none -- SqlaUserReader reading
+    # users.description.
+    described = create_user(it_user_service)
+    described.description = Description("Genius, billionaire, philanthropist.")
+    undescribed = create_user(it_user_service)
+    it_session.add_all([described, undescribed])
+    await it_session.commit()
+
+    r = await it_client.get(USERS_ENDPOINT)
+
+    assert r.status_code == 200
+    descriptions = {user["id"]: user["description"] for user in r.json()["users"]}
+    assert descriptions == {
+        str(described.id_): "Genius, billionaire, philanthropist.",
+        str(undescribed.id_): None,
+        str(it_admin.id_): None,
+    }
 
 
 async def test_returns_200_and_sorts_by_updated_at_desc(

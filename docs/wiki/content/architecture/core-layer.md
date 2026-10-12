@@ -94,7 +94,7 @@ A port is a plain `Protocol` (or in a couple of legacy-shaped classes, an ABC, s
 
 ## Commands vs. queries: the CQRS split
 
-`core.commands` holds every use case that changes state — `CreateUser`, `ActivateUser`, `DeactivateUser`, `GrantAdmin`, `RevokeAdmin`, `SetUserPassword`. `core.queries` holds read-only use cases — currently just `ListUsers`. Each command/query follows the same shape: a frozen `*Request` dataclass, a class with an `execute()` method, and constructor-injected ports plus services.
+`core.commands` holds every use case that changes state — `CreateUser`, `ActivateUser`, `DeactivateUser`, `GrantAdmin`, `RevokeAdmin`, `SetUserPassword`, `UpdateUserProfile`. `core.queries` holds read-only use cases — currently just `ListUsers`. Each command/query follows the same shape: a frozen `*Request` dataclass, a class with an `execute()` method, and constructor-injected ports plus services.
 
 [`CreateUser.execute()`](../../../../src/app/core/commands/create_user.py) is a representative write use case:
 

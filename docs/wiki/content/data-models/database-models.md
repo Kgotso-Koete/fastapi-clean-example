@@ -7,6 +7,8 @@
     - [`src/app/outbound/persistence_sqla/mappings/outbox_message.py`](../../../../src/app/outbound/persistence_sqla/mappings/outbox_message.py) — `event_outbox_table` + `map_event_outbox_table()`
     - [`src/app/outbound/persistence_sqla/mappings/organization.py`](../../../../src/app/outbound/persistence_sqla/mappings/organization.py) — `organizations_table` + `map_organizations_table()`
     - [`src/app/outbound/persistence_sqla/mappings/organization_membership.py`](../../../../src/app/outbound/persistence_sqla/mappings/organization_membership.py) — `organization_memberships_table` + its mapping
+    - [`src/app/outbound/persistence_sqla/mappings/composite/description.py`](../../../../src/app/outbound/persistence_sqla/mappings/composite/description.py) — `nullable_description()` and `patch()`, the nullable-composite recipe for `User.description`
+    - [`src/app/outbound/persistence_sqla/mappings/composite/registry.py`](../../../../src/app/outbound/persistence_sqla/mappings/composite/registry.py) — `patch_composite()`, which `map_tables()` runs before any mapping
     - [`src/app/outbound/persistence_sqla/entity_load_events.py`](../../../../src/app/outbound/persistence_sqla/entity_load_events.py) — gives every entity loaded from the database an empty domain-event list, since SQLAlchemy skips `__init__` on load
     - [`src/app/outbound/persistence_sqla/registry.py`](../../../../src/app/outbound/persistence_sqla/registry.py) — the shared `MetaData`/`registry` every mapping registers into
     - [`src/app/outbound/persistence_sqla/constraint_names.py`](../../../../src/app/outbound/persistence_sqla/constraint_names.py) — named constants for the unique constraints Alembic/SQLAlchemy generate
@@ -36,6 +38,9 @@ def map_users_table() -> None:
             "is_active": users_table.c.is_active,
             "_created_at": composite(UtcDatetime, users_table.c.created_at),
             "updated_at": composite(UtcDatetime, users_table.c.updated_at),
+            # A factory instead of the Description class, so NULL loads as
+            # None; see mappings/composite/description.py.
+            "description": composite(nullable_description, users_table.c.description),
         },
         column_prefix="__",
     )
@@ -71,6 +76,15 @@ This is the reason `map_tables()` exists as an explicit startup call at all (see
 
 Four of `User`'s fields — `username`, `email`, `phone_number`, and both `UtcDatetime` timestamps — are value objects, not primitive columns. SQLAlchemy's `composite()` is what makes that transparent: each maps a single database column onto a value-object field by calling the value object's constructor with the column's raw value, and unwraps it back to the raw value on the way to a write. `composite(Username, users_table.c.username)` means: on load, call `Username(row_value)` — running that value object's own validation and normalization — and store the result on `user.username`; on save, read `user.username.value` back out. This is also why `column_prefix="__"` appears on every mapping in this file: SQLAlchemy needs a way to store the *raw* column value internally alongside the composite's reconstructed value-object instance, and the prefix keeps that internal attribute out of the way of the real one.
 
+## Nullable value objects: the nullable-composite recipe
+
+`users.description` is the one nullable column a value object maps onto, and plain `composite(Description, ...)` can't handle it: on a `NULL` row it would call `Description(None)` and crash. The fix is the original author's recipe (upstream commit 5d68d52), in [`mappings/composite/`](../../../../src/app/outbound/persistence_sqla/mappings/composite/description.py):
+
+- `composite()` is given a **factory function** instead of the class. [`nullable_description()`](../../../../src/app/outbound/persistence_sqla/mappings/composite/description.py) returns `None` for `NULL` and a `Description` otherwise, so loading is safe.
+- Given a function, SQLAlchemy can no longer read the value back out of a `Description` when saving, so `patch()` attaches `__composite_values__` (returning `(self.value,)`) to `Description`. [`patch_composite()`](../../../../src/app/outbound/persistence_sqla/mappings/composite/registry.py) runs every such patch, and `map_tables()` calls it before `map_users_table()`.
+
+So `User.description` stays a plain attribute, with no property or setter on the entity. The patch changes a `core` class at runtime from `outbound`, which import-linter and mypy can't see; that's the accepted cost, recorded in `docs/plans/10-profile-editing.md`, decision 1.
+
 `password_hash`, `role`, and `is_active` map directly to their columns with no `composite()` wrapper, because they aren't value objects on the entity — `password_hash` is a `NewType`-tagged `bytes`, `role` is a plain `UserRole` `StrEnum` (mapped via a non-native SQLAlchemy `Enum` so the column stores it as a comparable string, not a Postgres-native enum type), and `is_active` is a plain `bool`.
 
 ## The other two mappings, and the shared registry
@@ -85,7 +99,7 @@ Every mapping shares one [`registry.py`](../../../../src/app/outbound/persistenc
 
 - **`organizations`:** `name` and `description` are both `NOT NULL` and mapped with `composite()` onto `OrganizationName` and `Description`, exactly like `users.username`. `created_by_user_id` is a foreign key to `users.id` with no `ON DELETE`, so deleting a user never silently takes an organization with it.
 - **`organization_memberships`:** a unique `(organization_id, user_id)` constraint allows one row per user per organization. `organization_id` is `ON DELETE CASCADE`, so deleting an organization removes every membership and invitation in the same statement.
-- **Nullable timestamps aren't `composite()`.** `accepted_at` and `expires_at` are `NULL` on half the rows (a pending invitation hasn't been accepted; an accepted membership never expires). `composite(UtcDatetime, ...)` fails on loading a `NULL`, and its `None`-tolerant workaround breaks writing instead, so these two map to plain nullable `DateTime` attributes, and the entity wraps them in `UtcDatetime` in a property. `ApiKey.revoked_at` uses the same shape.
+- **Nullable timestamps aren't `composite()`.** `accepted_at` and `expires_at` are `NULL` on half the rows (a pending invitation hasn't been accepted; an accepted membership never expires). `composite(UtcDatetime, ...)` fails on loading a `NULL`, and its `None`-tolerant workaround breaks writing instead, so these two map to plain nullable `DateTime` attributes, and the entity wraps them in `UtcDatetime` in a property. `ApiKey.revoked_at` uses the same shape. These predate the [nullable-composite recipe](#nullable-value-objects-the-nullable-composite-recipe) `User.description` uses; converting them to it is a roadmap item.
 - **Loaded entities get their event list back.** SQLAlchemy never calls `__init__` when it loads a row, so a loaded entity has no `_events` list. [`entity_load_events.py`](../../../../src/app/outbound/persistence_sqla/entity_load_events.py) registers a `load` listener on the `Entity` base class, called first in `map_tables()`, that gives every loaded entity an empty one. That's what lets re-inviting over an expired invitation record its email event on a row read from the database.
 
 ## Three representations of "a user," and how they connect

@@ -3,7 +3,7 @@
 !!! sourcefiles "Relevant Source Files/Folders"
     - [`src/app/inbound/http/root_router.py`](../../../../src/app/inbound/http/root_router.py) — the top-level FastAPI router
     - [`src/app/inbound/http/api_v1_router.py`](../../../../src/app/inbound/http/api_v1_router.py) — mounts `/api/v1`
-    - [`src/app/inbound/http/account/`](../../../../src/app/inbound/http/account/) — signup/login/logout/change-password endpoints
+    - [`src/app/inbound/http/account/`](../../../../src/app/inbound/http/account/) — signup/login/logout/change-password and own-profile (view, edit) endpoints
     - [`src/app/inbound/http/users/`](../../../../src/app/inbound/http/users/) — admin user-management endpoints
     - [`src/app/inbound/http/errors/`](../../../../src/app/inbound/http/errors/) — the error-mapping router wrapper and the global exception middleware
     - [`src/app/inbound/http/health/`](../../../../src/app/inbound/http/health/) — liveness/readiness probes
@@ -36,6 +36,8 @@
                 login["POST /login/"]
                 changepw["PUT /password/"]
                 logout["DELETE /logout/"]
+                getprofile["GET /profile/"]
+                editprofile["PATCH /profile/"]
             end
             subgraph users["users router — prefix /users, cookie-secured"]
                 createuser["POST /"]
@@ -45,6 +47,7 @@
                 revoke["DELETE /{user_id}/roles/admin/"]
                 activate["PUT /{user_id}/activation/"]
                 deactivate["DELETE /{user_id}/activation/"]
+                editusrprofile["PATCH /{user_id}/profile/"]
             end
         end
 

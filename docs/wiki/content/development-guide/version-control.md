@@ -13,7 +13,7 @@ This page is the fuller, wiki-native version of `README.md`'s ["How to Commit"](
 
 ## The commit-to-merge flow
 
-`README.md`'s ["How to Commit"](../../../../README.md#how-to-commit) section documents four steps: create a feature branch, commit with a [Conventional Commits](https://www.conventionalcommits.org/) message, open a PR via `gh pr create`, then squash-merge and delete the branch via `gh pr merge --squash --delete-branch`. The exact commands, copied verbatim — this is the actual protocol to run, not a paraphrase of it:
+`README.md`'s ["How to Commit"](../../../../README.md#how-to-commit) section documents five steps: create a feature branch, commit with a [Conventional Commits](https://www.conventionalcommits.org/) message, open a PR via `gh pr create`, watch the PR's CI checks until they pass via `gh pr checks <PR number> --watch`, then squash-merge and delete the branch via `gh pr merge --squash --delete-branch`. The exact commands, copied verbatim — this is the actual protocol to run, not a paraphrase of it:
 
 [`README.md`](../../../../README.md#how-to-commit) — step 1, create a feature branch:
 ```shell
@@ -31,12 +31,17 @@ git commit -m "feat(scope): brief description (vX.Y.Z)"
 gh pr create --title "feat(scope): brief description" --body "Detailed explanation of changes."
 ```
 
-[`README.md`](../../../../README.md#how-to-commit) — step 4, merge and delete the branch once approved:
+[`README.md`](../../../../README.md#how-to-commit) — step 4, wait for the CI checks to pass (the PR number is the number at the end of the URL `gh pr create` prints):
+```shell
+gh pr checks <PR number> --watch
+```
+
+[`README.md`](../../../../README.md#how-to-commit) — step 5, merge and delete the branch once approved:
 ```shell
 gh pr merge --squash --delete-branch
 ```
 
-That's the complete protocol as documented — four commands, nothing more. `git push` never appears as its own step: `gh pr create` pushes the current branch to the remote itself if it isn't already there.
+That's the complete protocol as documented — five commands, nothing more. `git push` never appears as its own step: `gh pr create` pushes the current branch to the remote itself if it isn't already there.
 
 Two local git hook stages sit inside that flow without changing its shape — a commit only succeeds once its pre-commit hooks pass, and a push only succeeds once its pre-push hook passes:
 
@@ -55,8 +60,9 @@ Two local git hook stages sit inside that flow without changing its shape — a 
         subgraph github["GitHub"]
             pr["gh pr create"]
             ci["CI workflow runs<br/>(push + pull_request)"]
+            watch["gh pr checks &lt;PR number&gt;<br/>--watch"]
             merge["gh pr merge --squash<br/>--delete-branch"]
-            pr --> ci --> merge
+            pr --> ci --> watch --> merge
         end
 
         commit -->|"pre-commit hooks pass<br/>(code-check, pip-audit,<br/>typos, ...)"| push

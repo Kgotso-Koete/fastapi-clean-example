@@ -28,17 +28,20 @@ TODO:
 - [ ] Mount `GET /debug/test-error/` only in `development` (it's reachable in production today) -- see `docs/plans/0-production-readiness-roadmap.md`
 - [ ] Investigate a possible username-enumeration leak in the inbound CLI (a rule-breaking password for an existing username may get a different message than for an unknown one) -- see `docs/plans/0-production-readiness-roadmap.md`
 - [ ] Investigate why `docker compose down`/`stop` can fail to remove `worker`/`redis` at all (confirmed in `make test-docker`'s teardown, only `docker kill` recovers it) — see `docs/plans/0-production-readiness-roadmap.md`
+- [ ] Find why `make upd` on a fresh database fails with `db_pg is unhealthy` until it's run a second time — see `docs/plans/0-production-readiness-roadmap.md`
 - [ ] Harden for production use: password policy, rate limiting, secrets management, TLS, backups, a real deploy pipeline, self-service password reset, email verification, and more — full prioritized backlog in `docs/plans/0-production-readiness-roadmap.md`
 - [x] Add an organizations/multi-tenancy bounded context (`Organization`/`OrganizationMembership`, `OWNER`/`ADMIN`/`MEMBER` roles, expiring invitations with an invitation email, shared membership-based authorization) — see `docs/plans/9-organizations.md`
 - [ ] Enforce Postgres Row-Level Security on organization-owned tables (needs the app to connect as a non-superuser database role first), sequenced before search and file storage -- see `docs/plans/0-production-readiness-roadmap.md`
 - [x] Expose read-only organization queries (list my organizations, list members) on the public API with an API key; the invitation list and organization writes stay off the public API until API keys can be scoped -- see `docs/plans/0-production-readiness-roadmap.md`
 - [ ] Add scoped API keys (organization-scoped, read vs. write) -- the prerequisite for any organization write over the public API -- see `docs/plans/0-production-readiness-roadmap.md`
 - [ ] Add paginated user and organization text search (prefix/search-as-you-type and keyword) -- Postgres built-in full-text search by default, Elasticsearch optional -- not yet started, full design in `docs/plans/11-search.md`
-- [ ] Add profile editing on the private API: a `description` on users, and self-service and admin user-profile editing (organization name/description editing shipped with Organizations) -- not yet started, full design in `docs/plans/10-profile-editing.md`
+- [x] Add profile editing on the private API: a `description` on users, and self-service and admin user-profile editing (organization name/description editing shipped with Organizations) -- see `docs/plans/10-profile-editing.md`
 - [ ] Add file storage on the private API: image galleries on users and organizations and private documents (PDFs, images), local disk by default or any S3-compatible service (AWS S3, Cloudflare R2, MinIO) -- not yet started, full design in `docs/plans/12-file-storage.md`
 - [ ] Restructure into a modular monolith (one folder per bounded context — Users/Organizations/Notifications, possibly more) once there's more than one real bounded context — decided, not yet started, see `docs/plans/0-production-readiness-roadmap.md`
 - [ ] Add Sentry error tracking (automatic error grouping/fingerprinting, release correlation) alongside the existing Prometheus/Loki/Grafana stack and email alerting — not yet started, full design in `docs/plans/13-sentry-error-tracking.md`
 - [x] Selectively bring in the original author's "Autumn 2026 Updates & Fixes" (dependency upgrades closing every `pip-audit` finding, a partial-update sentinel, cause-chain logging, a configurable DB connect timeout, session/authorization/OpenAPI-example tests, a 75% CI coverage floor), one small test-first change at a time -- see `docs/plans/15-upstream-autumn-2026.md`
+- [ ] Group `core/commands/` and `core/queries/` into folders by area (`users/`, `account/`, `organizations/`...), as `inbound/http/` already is -- pure relocation, no code rewritten -- see `docs/plans/0-production-readiness-roadmap.md`
+- [ ] Map every nullable value-object field with the original author's nullable-composite recipe (from profile editing) instead of an entity property and setter per field (`ApiKey`, `OrganizationMembership`) -- not yet started, see `docs/plans/0-production-readiness-roadmap.md`
 
 Prerequisites
 ```shell
@@ -174,7 +177,13 @@ Use the GitHub CLI to open a PR for review.
 gh pr create --title "feat(scope): brief description" --body "Detailed explanation of changes."
 ```
 
-**4. Merge and Delete Branch**
+**4. Wait for the CI checks to pass**
+Watch the PR's GitHub Actions checks until they finish; merge only once every check passes. The PR number is the number at the end of the URL `gh pr create` prints.
+```shell
+gh pr checks <PR number> --watch
+```
+
+**5. Merge and Delete Branch**
 Once approved, squash and merge the PR, and automatically delete the feature branch.
 ```shell
 gh pr merge --squash --delete-branch

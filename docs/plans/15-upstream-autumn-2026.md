@@ -18,6 +18,7 @@ Not user-facing: this is maintenance under the existing features, so there are n
 - `mappings/user.py`: the username's uniqueness written as a named `UniqueConstraint`, with the same name as today, so no schema change.
 - `main/setup.py`: `logger.exception` becomes `logger.error(..., exc_info=exc)` in the global exception handler. That fix keeps the traceback when logging outside an `except` block; this codebase replaced that handler with `inbound/http/errors/exception_middleware.py`, which logs inside one, so it doesn't apply.
 - `main/ioc/outbound.py`: the engine built by a new `persistence_sqla/engine.py` factory; only its connect-timeout setting is taken (Step 4).
+- **Missed when this list was made, recorded 2026-10-11:** `persistence_sqla/mappings/composite/` (`utc_datetime.py`, `registry.py`), the original author's recipe for a nullable value object mapped with `composite()` (a factory function plus a `__composite_values__` patch). No upstream mapping used it yet, and it was overlooked rather than decided on. It was found by the research for `docs/plans/10-profile-editing.md`, which takes the recipe for `User.description`.
 
 ## Proposed changes (each step: test first where there is behaviour to test, confirmed RED, then code, confirmed GREEN)
 

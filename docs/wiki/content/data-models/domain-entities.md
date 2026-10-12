@@ -111,6 +111,7 @@ The intent, stated in the docstring, is a strict ordering: a use case mutates th
             +bool is_active
             +UtcDatetime created_at
             +UtcDatetime updated_at
+            +Description description
             +record_event(event)
             +collect_events() list~DomainEvent~
         }
@@ -131,6 +132,9 @@ The intent, stated in the docstring, is a strict ordering: a use case mutates th
         class UtcDatetime {
             +datetime value
         }
+        class Description {
+            +str value
+        }
         class UserRole {
             <<enumeration>>
             SUPER_ADMIN
@@ -143,9 +147,10 @@ The intent, stated in the docstring, is a strict ordering: a use case mutates th
         User *-- PhoneNumber
         User *-- UserRole
         User *-- UtcDatetime : created_at, updated_at
+        User *-- Description : optional
     ```
 
-    > `User` (in [`user.py`](../../../../src/app/core/common/entities/user.py)) subclasses `Entity[UserId]` and composes four value objects (`Username`, `Email`, `PhoneNumber`, `UtcDatetime` used twice, for `created_at` and `updated_at`) plus two plain-typed fields that aren't value objects: `password_hash` (a `NewType`-tagged `bytes`, not a validated shape — validation of the *raw* password happens earlier, in `RawPassword`) and `role` (a plain `StrEnum`, `UserRole`, since role membership doesn't need the validate-and-normalize machinery a value object provides). `created_at` is deliberately read-only from outside — it's stored as `_created_at` and exposed only via a `@property` with no setter, since a user's creation timestamp should never change after construction, even though nothing at the `Entity`/`ValueObject` base-class level enforces that; it's a convention applied at the `User` class itself.
+    > `User` (in [`user.py`](../../../../src/app/core/common/entities/user.py)) subclasses `Entity[UserId]` and composes four value objects (`Username`, `Email`, `PhoneNumber`, `UtcDatetime` used twice, for `created_at` and `updated_at`) plus two plain-typed fields that aren't value objects: `password_hash` (a `NewType`-tagged `bytes`, not a validated shape — validation of the *raw* password happens earlier, in `RawPassword`) and `role` (a plain `StrEnum`, `UserRole`, since role membership doesn't need the validate-and-normalize machinery a value object provides). `created_at` is deliberately read-only from outside — it's stored as `_created_at` and exposed only via a `@property` with no setter, since a user's creation timestamp should never change after construction, even though nothing at the `Entity`/`ValueObject` base-class level enforces that; it's a convention applied at the `User` class itself. `description` is the one optional field: a plain `Description | None` attribute, `None` when the user has written none, using the same `Description` value object as `Organization` (see [Database Models](database-models.md#nullable-value-objects-the-nullable-composite-recipe) for how a `NULL` column loads as `None`).
 
 `UserRole` also carries one small piece of business logic beyond being a plain enum: `is_system`, a property that's `True` only for `SUPER_ADMIN` — used elsewhere in the authorization code to keep the bootstrap superadmin role from being granted or revoked like an ordinary admin role.
 
@@ -187,7 +192,7 @@ Two entities make up the Organizations context — see [Core Patterns → Organi
         OrganizationMembership *-- OrganizationRole
     ```
 
-    > `Organization` (in [`organization.py`](../../../../src/app/core/common/entities/organization.py)) composes two value objects, `OrganizationName` and `Description`, both mandatory, plus a plain `created_by_user_id` reference to Identity's `User`. It knows nothing about who belongs to it. That lives on `OrganizationMembership` (in [`organization_membership.py`](../../../../src/app/core/common/entities/organization_membership.py)), one row per (organization, user). A pending invitation and an accepted membership are the same row: `accepted_at` is `None` while it's pending, `expires_at` is `None` once it's accepted, and the constructor raises `InvalidMembershipExpiryError` unless exactly one of the two is set. `accepted_at` and `expires_at` are properties over plain nullable `datetime` attributes, not `composite()`-mapped value objects, for the reason given in [Database Models](database-models.md#the-organization-tables).
+    > `Organization` (in [`organization.py`](../../../../src/app/core/common/entities/organization.py)) composes two value objects, `OrganizationName` and `Description`, both mandatory (a user's `Description` is optional), plus a plain `created_by_user_id` reference to Identity's `User`. It knows nothing about who belongs to it. That lives on `OrganizationMembership` (in [`organization_membership.py`](../../../../src/app/core/common/entities/organization_membership.py)), one row per (organization, user). A pending invitation and an accepted membership are the same row: `accepted_at` is `None` while it's pending, `expires_at` is `None` once it's accepted, and the constructor raises `InvalidMembershipExpiryError` unless exactly one of the two is set. `accepted_at` and `expires_at` are properties over plain nullable `datetime` attributes, not `composite()`-mapped value objects, for the reason given in [Database Models](database-models.md#the-organization-tables).
 
 ## Where to go next
 

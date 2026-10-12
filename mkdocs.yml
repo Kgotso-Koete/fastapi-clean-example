@@ -102,6 +102,7 @@ nav:
       - "Account: Log In": content/use-case-examples/account-log-in.md
       - "Account: Log Out": content/use-case-examples/account-log-out.md
       - "Account: Change Password": content/use-case-examples/account-change-password.md
+      - "Account: Update Own Profile": content/use-case-examples/account-update-own-profile.md
       - "Users: Create User": content/use-case-examples/users-create-user.md
       - "Users: Activate User": content/use-case-examples/users-activate-user.md
       - "Users: Deactivate User": content/use-case-examples/users-deactivate-user.md
@@ -109,6 +110,7 @@ nav:
       - "Users: Revoke Admin": content/use-case-examples/users-revoke-admin.md
       - "Users: Set User Password": content/use-case-examples/users-set-user-password.md
       - "Users: List Users": content/use-case-examples/users-list-users.md
+      - "Users: Update User Profile": content/use-case-examples/users-update-user-profile.md
   - Changelog: content/changelog.md
   - Roadmap: content/roadmap.md
   - Complexity: content/complexity.md
