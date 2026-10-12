@@ -24,6 +24,7 @@ from app.outbound.auth_ctx.handlers.change_password import ChangePassword
 from app.outbound.auth_ctx.handlers.log_in import LogIn
 from app.outbound.auth_ctx.handlers.log_out import LogOut
 from app.outbound.auth_ctx.handlers.sign_up import SignUp
+from app.outbound.auth_ctx.handlers.update_own_profile import UpdateOwnProfile
 from app.outbound.auth_ctx.jwt_processor import JwtProcessor
 from app.outbound.auth_ctx.service import AuthService
 from app.outbound.auth_ctx.sqla_transaction_manager import AuthSqlaTransactionManager
@@ -168,6 +169,8 @@ class AuthProvider(Provider):
     log_in = provide(LogIn)
     change_password = provide(ChangePassword)
     log_out = provide(LogOut)
+    # Profile editing (docs/plans/10-profile-editing.md, Step 6).
+    update_own_profile = provide(UpdateOwnProfile)
 
 
 class CeleryProvider(Provider):

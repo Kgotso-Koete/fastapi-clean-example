@@ -37,4 +37,7 @@ class GetOwnProfile:
             is_active=current_user.is_active,
             created_at=current_user.created_at.value,
             updated_at=current_user.updated_at.value,
+            # docs/plans/10-profile-editing.md, decision 4: shown wherever the
+            # profile is; None when the user has none.
+            description=current_user.description.value if current_user.description is not None else None,
         )

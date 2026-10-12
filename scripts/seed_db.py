@@ -48,7 +48,6 @@ from app.core.common.entities.organization_membership import (
     OrganizationRole,
 )
 from app.core.common.entities.types_ import UserId, UserRole
-from app.core.common.factories.id_factory import create_user_id
 from app.core.common.factories.organization_membership_id_factory import create_organization_membership_id
 from app.core.common.services.user import UserService
 from app.core.common.value_objects.description import Description
@@ -75,6 +74,9 @@ class SeedUser:
     phone_number: str
     password: str
     role: UserRole
+    # Optional, as on User (docs/plans/10-profile-editing.md, Step 7): only a
+    # few seeds get one, so both "with" and "without" can be shown.
+    description: str | None = None
 
 
 # Each password is deliberately different in shape (letter-heavy, digit-heavy,
@@ -104,8 +106,22 @@ SEED_USERS: list[SeedUser] = [
     # for both the "key works" and "key expired" paths without having to
     # issue a key by hand first.
     SeedUser("peter-parker", "peter.parker@dailybugle.com", "27821000011", "SpideySense2024!", UserRole.USER),
-    SeedUser("tony-stark", "tony.stark@starkindustries.com", "27821000012", "ImIronMan#3000", UserRole.USER),
-    SeedUser("natasha-romanoff", "natasha.romanoff@shield.gov", "27821000013", "BlackWidow!!Red1", UserRole.USER),
+    SeedUser(
+        "tony-stark",
+        "tony.stark@starkindustries.com",
+        "27821000012",
+        "ImIronMan#3000",
+        UserRole.USER,
+        description="Genius, billionaire, philanthropist.",
+    ),
+    SeedUser(
+        "natasha-romanoff",
+        "natasha.romanoff@shield.gov",
+        "27821000013",
+        "BlackWidow!!Red1",
+        UserRole.USER,
+        description="Former spy, now an Avenger.",
+    ),
     SeedUser("diana-prince", "diana.prince@themyscira.org", "27821000014", "AmazonWarrior$99", UserRole.USER),
     SeedUser("bruce-wayne", "bruce.wayne@wayneenterprises.com", "27821000015", "IAmTheNight2024!!", UserRole.USER),
 ]
@@ -320,7 +336,11 @@ async def _seed_one(
     # does it. That's the only precedent for this role anywhere in the codebase.
     creation_role = UserRole.USER if seed.role is UserRole.SUPER_ADMIN else seed.role
     user = await user_service.create_user_with_raw_password(
-        user_id=create_user_id(),
+        # A FIXED id (not generated), like the organizations' and API keys',
+        # so the human checks in docs/plans/10-profile-editing.md can paste
+        # it into PATCH /users/{user_id}/profile/. NN is the last two digits
+        # of the seeded phone number (01-15, all distinct).
+        user_id=UserId(UUID(f"e0000000-0000-4000-8000-0000000000{seed.phone_number[-2:]}")),
         username=Username(seed.username),
         email=Email(seed.email),
         phone_number=PhoneNumber(seed.phone_number),
@@ -331,6 +351,9 @@ async def _seed_one(
     )
     if seed.role is UserRole.SUPER_ADMIN:
         user.role = UserRole.SUPER_ADMIN
+    # Set after creation, like the role above, so UserService stays untouched.
+    if seed.description is not None:
+        user.description = Description(seed.description)
     session.add(user)
     logger.info("Seeded %s (%s)", seed.username, seed.role.value)
     return user.id_

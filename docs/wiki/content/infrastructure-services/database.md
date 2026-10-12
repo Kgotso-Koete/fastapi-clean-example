@@ -53,7 +53,7 @@ Domain entities (`User`, `AuthSession`, the outbox's `OutboxMessage` — an **en
 
 Six tables exist today:
 
-- `users` (with a composite `Username`/`Email`/`PhoneNumber`/`UtcDatetime` value-object (a Domain-Driven Design building block for something defined purely by its value, not identity; see [Layer Dependencies & Import Rules](../architecture/layer-dependencies.md)) mapping via SQLAlchemy's `composite()`);
+- `users` (with a composite `Username`/`Email`/`PhoneNumber`/`UtcDatetime` value-object (a Domain-Driven Design building block for something defined purely by its value, not identity; see [Layer Dependencies & Import Rules](../architecture/layer-dependencies.md)) mapping via SQLAlchemy's `composite()`, plus a nullable `description` mapped onto an optional `Description` — see [Database Models](../data-models/database-models.md#nullable-value-objects-the-nullable-composite-recipe));
 - `auth_sessions` (`ON DELETE CASCADE` to `users.id`);
 - `event_outbox` (the transactional outbox — see [Core Patterns → Domain Events & Outbox](../core-patterns/domain-events-outbox.md) and [Background Jobs](background-jobs.md) for what writes to and drains it);
 - `api_keys` (the public API's keys, stored only as hashes — see [Public API](../core-patterns/public-api.md));

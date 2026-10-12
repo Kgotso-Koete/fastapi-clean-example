@@ -23,6 +23,7 @@ from app.core.commands.remove_organization_member import RemoveOrganizationMembe
 from app.core.commands.revoke_admin import RevokeAdmin
 from app.core.commands.set_user_password import SetUserPassword
 from app.core.commands.update_organization import UpdateOrganization
+from app.core.commands.update_user_profile import UpdateUserProfile
 from app.core.common.authorization.current_organization_service import CurrentOrganizationService
 from app.core.common.authorization.current_user_service import CurrentUserService
 from app.core.common.authorization.organization_ports import MembershipChecker
@@ -111,6 +112,8 @@ class CoreProvider(Provider):
     revoke_admin = provide(RevokeAdmin)
     activate_user = provide(ActivateUser)
     deactivate_user = provide(DeactivateUser)
+    # Profile editing (docs/plans/10-profile-editing.md, Step 6).
+    update_user_profile = provide(UpdateUserProfile)
 
     # Query Ports
     user_reader = provide(SqlaUserReader, provides=UserReader)

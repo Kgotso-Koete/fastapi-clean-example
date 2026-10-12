@@ -9,6 +9,7 @@ from app.core.common.value_objects.email import Email
 from app.core.common.value_objects.phone_number import PhoneNumber
 from app.core.common.value_objects.username import Username
 from app.core.common.value_objects.utc_datetime import UtcDatetime
+from app.outbound.persistence_sqla.mappings.composite.description import nullable_description
 from app.outbound.persistence_sqla.registry import mapper_registry
 
 
@@ -39,6 +40,9 @@ users_table = Table(
     Column("is_active", Boolean, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
+    # Optional (docs/plans/10-profile-editing.md, decision 1): NULL = no
+    # description. Its length is Description's rule, not the column's.
+    Column("description", String, nullable=True),
 )
 
 
@@ -56,6 +60,9 @@ def map_users_table() -> None:
             "is_active": users_table.c.is_active,
             "_created_at": composite(UtcDatetime, users_table.c.created_at),
             "updated_at": composite(UtcDatetime, users_table.c.updated_at),
+            # A factory instead of the Description class, so NULL loads as
+            # None; see mappings/composite/description.py.
+            "description": composite(nullable_description, users_table.c.description),
         },
         column_prefix="__",
     )

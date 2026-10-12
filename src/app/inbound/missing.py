@@ -2,9 +2,9 @@ from pydantic.experimental.missing_sentinel import MISSING
 
 from app.core.common.sentinels import OMITTED, Omitted
 
-# Ported unchanged from the original author's "Autumn 2026 Updates & Fixes"
-# (docs/plans/15-upstream-autumn-2026.md, Step 2); only these comments are
-# added.
+# Ported from the original author's "Autumn 2026 Updates & Fixes"
+# (docs/plans/15-upstream-autumn-2026.md, Step 2); only these comments and
+# the parameter type below are changed.
 #
 # A sentinel is a special, one-of-a-kind marker value that stands for a
 # situation rather than for data, recognised by identity (`is`), so it can
@@ -21,7 +21,11 @@ from app.core.common.sentinels import OMITTED, Omitted
 # about pydantic.
 
 
-def omit_if_missing[T](value: T) -> T | Omitted:
+# The one change to the original author's code: the parameter was `value: T`,
+# which kept MISSING inside T, so mypy rejected every real call (a
+# `str | MISSING` field can't become `str | Omitted`). Spelling MISSING out
+# lets mypy solve T without it (docs/plans/10-profile-editing.md, Step 6).
+def omit_if_missing[T](value: T | MISSING) -> T | Omitted:
     # `None` (an explicit JSON null, meaning "clear it") is not MISSING, so it
     # passes through unchanged, as does any real value.
     return OMITTED if value is MISSING else value

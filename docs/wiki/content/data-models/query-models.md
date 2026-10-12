@@ -57,7 +57,14 @@ class UserQm:
     is_active: bool
     created_at: datetime
     updated_at: datetime
+    # None when the user has none (docs/plans/10-profile-editing.md,
+    # decision 4). Deliberately no default: every UserQm(...) must say what
+    # the description is, so mypy catches one that forgets it (a default let
+    # LogIn silently answer null).
+    description: str | None
 ```
+
+`description` has no default on purpose: `GetOwnProfile`, `SqlaUserReader`, `LogIn`, `SignUp` and `UpdateOwnProfile` all build a `UserQm`, and mypy rejects any of them that leaves the field out.
 
 Three concrete differences from the `User` entity documented in [Domain Entities & Value Objects](domain-entities.md), all visible directly in this dataclass definition:
 

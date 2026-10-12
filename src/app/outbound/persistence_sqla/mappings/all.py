@@ -24,6 +24,7 @@ during database migrations.
 from app.outbound.persistence_sqla.entity_load_events import listen_for_entity_loads
 from app.outbound.persistence_sqla.mappings.api_key import map_api_keys_table
 from app.outbound.persistence_sqla.mappings.auth_session import map_auth_sessions_table
+from app.outbound.persistence_sqla.mappings.composite.registry import patch_composite
 from app.outbound.persistence_sqla.mappings.organization import map_organizations_table
 from app.outbound.persistence_sqla.mappings.organization_membership import map_organization_memberships_table
 from app.outbound.persistence_sqla.mappings.outbox_message import map_event_outbox_table
@@ -37,6 +38,9 @@ def map_tables() -> None:
     # First, so every mapped entity gets its _events list back on load --
     # see entity_load_events.py.
     listen_for_entity_loads()
+    # Before any mapping: composite(nullable_description, ...) needs
+    # Description patched to save -- see mappings/composite/registry.py.
+    patch_composite()
     map_users_table()
     map_auth_sessions_table()
     map_event_outbox_table()

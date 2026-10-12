@@ -34,7 +34,7 @@ make upd
 
 This single command: regenerates `.env` from `env.example` + `.secrets`, computes `COMPOSE_PROFILES` from `CELERY_ENABLED`/`ENVIRONMENT`, builds every image, and starts every container whose profile is active. See the Overview's [What actually runs](../../index.md#what-actually-runs) diagram for exactly which containers that is and why. With the defaults in `env.example` (`ENVIRONMENT=development`, `CELERY_ENABLED=true`), that's everything — app, background jobs, and every dev-only dashboard — and `make upd` opens the key ones in your browser automatically.
 
-Set `SEED_DB_WITH_TEST_DATA=true` in `.secrets` beforehand and `make upd` also seeds ~10 test user accounts (a mix of `user`/`admin`/`super_admin` roles) via [`scripts/seed_db.py`](../../../../scripts/seed_db.py), so manual testing has ready-made fixture accounts to log in as or delete without signing up from scratch each time.
+Set `SEED_DB_WITH_TEST_DATA=true` in `.secrets` beforehand and `make upd` also seeds ~10 test user accounts (a mix of `user`/`admin`/`super_admin` roles) via [`scripts/seed_db.py`](../../../../scripts/seed_db.py), so manual testing has ready-made fixture accounts to log in as or delete without signing up from scratch each time. Each seeded user has a fixed id, `e0000000-0000-4000-8000-0000000000NN`, where `NN` is the last two digits of their seeded phone number, so a command can name a user directly; `tony-stark` and `natasha-romanoff` also have a profile description, and the rest have none.
 
 !!! figure "Which containers `make upd` actually starts, by CELERY_ENABLED / ENVIRONMENT"
     ```mermaid

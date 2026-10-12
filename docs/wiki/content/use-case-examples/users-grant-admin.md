@@ -72,6 +72,7 @@ This is the one line in `GrantAdmin.execute()` that differs structurally from [A
         subgraph target_user["target_role = USER"]
             activate["Activate/Deactivate User"]
             setpw["Set User Password"]
+            editprofile["Update User Profile"]
         end
         subgraph target_admin["target_role = ADMIN"]
             grant["Grant Admin"]

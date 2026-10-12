@@ -92,4 +92,7 @@ class LogIn:
             is_active=user.is_active,
             created_at=user.created_at.value,
             updated_at=user.updated_at.value,
+            # The stored description, as GetOwnProfile answers it
+            # (docs/plans/10-profile-editing.md, decision 4).
+            description=user.description.value if user.description is not None else None,
         )

@@ -1,5 +1,6 @@
 import pytest
 
+from app.core.common.value_objects.description import Description
 from app.core.queries.get_own_profile import GetOwnProfile
 from app.core.queries.models.user import UserQm
 from tests.unit.core.common.authorization.factories import create_current_user_service
@@ -16,6 +17,10 @@ def _expected_qm(user: object) -> UserQm:
         is_active=user.is_active,  # type: ignore[attr-defined]
         created_at=user.created_at.value,  # type: ignore[attr-defined]
         updated_at=user.updated_at.value,  # type: ignore[attr-defined]
+        # Both tests using this helper build users with no description, so
+        # the expected profile says None (test_includes_the_users_description
+        # covers one that has a description).
+        description=None,
     )
 
 
@@ -41,3 +46,17 @@ async def test_matches_whatever_user_it_resolves_to_not_a_hardcoded_shape() -> N
     result = await sut.execute()
 
     assert result == _expected_qm(user)
+
+
+@pytest.mark.asyncio
+async def test_includes_the_users_description() -> None:
+    # Decision 4 (docs/plans/10-profile-editing.md): a description is shown
+    # wherever the profile is. The two tests above use users without one,
+    # which read as None.
+    user = create_user()
+    user.description = Description("Genius, billionaire, philanthropist.")
+    sut = GetOwnProfile(current_user_service=create_current_user_service(user))
+
+    result = await sut.execute()
+
+    assert result.description == "Genius, billionaire, philanthropist."

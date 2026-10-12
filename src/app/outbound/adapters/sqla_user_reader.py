@@ -36,6 +36,7 @@ class SqlaUserReader(UserReader):
                 users_table.c.is_active,
                 users_table.c.created_at,
                 users_table.c.updated_at,
+                users_table.c.description,
                 func.count().over().label("total"),
             )
             .order_by(order_by_expression, secondary_order_by)
@@ -69,6 +70,9 @@ class SqlaUserReader(UserReader):
                 is_active=row.is_active,
                 created_at=row.created_at,
                 updated_at=row.updated_at,
+                # Plain text or None: a plain column select bypasses the
+                # mapping's composite (docs/plans/10-profile-editing.md, decision 4).
+                description=row.description,
             )
             for row in rows
         ]

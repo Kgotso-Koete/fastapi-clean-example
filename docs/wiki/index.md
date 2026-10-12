@@ -30,7 +30,7 @@ Everything below is real, working code in this repository today — not a roadma
 
 | Capability | What it does |
 |---|---|
-| User accounts & RBAC (Role-Based Access Control) | Sign-up, login/logout, password management, admin grant/revoke, `user`/`admin` roles |
+| User accounts & RBAC (Role-Based Access Control) | Sign-up, login/logout, password management, profile editing (self-service and by an admin, with an optional description), admin grant/revoke, `user`/`admin` roles |
 | Cookie + JWT (JSON Web Token) session auth | `HttpOnly` cookie referencing a server-side, revocable session record — not a long-lived stateless bearer token |
 | Domain events | Entities (domain objects with persistent identity — see [Layer Dependencies & Import Rules](content/architecture/layer-dependencies.md#what-clean-architecture-and-domain-driven-design-actually-are)) record events (`UserRegisteredEvent`, etc.); handlers declare `"sync"` or `"background"` dispatch independently, per handler |
 | Transactional outbox | Background-dispatched events are written to the database in the *same transaction* as the state change that triggered them, closing the "dual write" gap between committing to Postgres and publishing to a broker |

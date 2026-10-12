@@ -109,4 +109,7 @@ class SignUp:
             is_active=user.is_active,
             created_at=user.created_at.value,
             updated_at=user.updated_at.value,
+            # A brand-new account has no description yet
+            # (docs/plans/10-profile-editing.md, decision 4).
+            description=None,
         )
