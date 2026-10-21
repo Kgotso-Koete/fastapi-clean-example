@@ -12,6 +12,7 @@ from app.main.config.loader import (
     load_jwt_settings,
     load_organization_settings,
     load_password_hasher_settings,
+    load_postgres_runtime_role_settings,
     load_postgres_settings,
     load_redis_settings,
     load_session_settings,
@@ -60,6 +61,23 @@ def test_load_postgres_settings_reads_env_vars(monkeypatch: pytest.MonkeyPatch) 
     assert sut.PORT == 123456789
     assert sut.USER == "test-user"
     assert sut.PASSWORD == "test-password"
+
+
+def test_load_postgres_runtime_role_settings_reads_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The login credentials of the unprivileged runtime role the web app and
+    # public API connect as, so Row-Level Security policies actually apply to
+    # them (docs/plans/14-row-level-security.md, Step 1). Deliberately a
+    # separate settings object from POSTGRES_USER/POSTGRES_PASSWORD above:
+    # those stay the table owner's credentials, used by migrations, the
+    # worker and the CLI (Decision 3), and a superuser or owner would bypass
+    # every policy.
+    monkeypatch.setenv("POSTGRES_APP_USER", "test-app-user")
+    monkeypatch.setenv("POSTGRES_APP_PASSWORD", "test-app-password")
+
+    sut = load_postgres_runtime_role_settings()
+
+    assert sut.USER == "test-app-user"
+    assert sut.PASSWORD == "test-app-password"
 
 
 def test_load_sqla_settings_reads_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:

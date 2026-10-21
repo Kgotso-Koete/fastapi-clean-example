@@ -13,6 +13,7 @@ from app.main.config.settings import (
     JwtSettings,
     OrganizationSettings,
     PasswordHasherSettings,
+    PostgresRuntimeRoleSettings,
     PostgresSettings,
     RedisSettings,
     SessionSettings,
@@ -38,6 +39,13 @@ class AppEnvConfig(BaseSettings, AppSettings):
 
 class PostgresEnvConfig(BaseSettings, PostgresSettings):
     model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="POSTGRES_")
+
+
+# Reads POSTGRES_APP_USER and POSTGRES_APP_PASSWORD. PostgresEnvConfig above
+# (prefix POSTGRES_) sees these as unknown fields (APP_USER, APP_PASSWORD) and
+# ignores them, thanks to extra="ignore", so the two prefixes never clash.
+class PostgresRuntimeRoleEnvConfig(BaseSettings, PostgresRuntimeRoleSettings):
+    model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="POSTGRES_APP_")
 
 
 class SqlaEnvConfig(BaseSettings, SqlaSettings):
@@ -91,6 +99,11 @@ def load_app_settings() -> AppSettings:
 
 def load_postgres_settings() -> PostgresSettings:
     return _load_settings(PostgresEnvConfig)
+
+
+# The unprivileged runtime role's credentials (docs/plans/14-row-level-security.md).
+def load_postgres_runtime_role_settings() -> PostgresRuntimeRoleSettings:
+    return _load_settings(PostgresRuntimeRoleEnvConfig)
 
 
 def load_sqla_settings() -> SqlaSettings:

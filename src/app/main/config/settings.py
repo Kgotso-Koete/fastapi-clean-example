@@ -44,6 +44,24 @@ class PostgresSettings(BaseModel):
         )
 
 
+class PostgresRuntimeRoleSettings(BaseModel):
+    """Login credentials of the unprivileged runtime database role.
+
+    The web app and the public API will connect as this role instead of the
+    table owner, so Postgres Row-Level Security policies actually apply to
+    their queries: a superuser or the table owner bypasses every policy
+    (docs/plans/14-row-level-security.md). PostgresSettings above keeps the
+    owner's credentials, which migrations, the worker and the CLI still use
+    (that plan's Decision 3).
+
+    No defaults, like PostgresSettings: a missing credential must stop the
+    app at startup, never fall back to a guessed username or password.
+    """
+
+    USER: str
+    PASSWORD: str
+
+
 class SqlaSettings(BaseModel):
     ECHO: bool = False
     ECHO_POOL: bool = False

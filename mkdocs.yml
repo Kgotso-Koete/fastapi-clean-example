@@ -63,6 +63,7 @@ nav:
       - CLI (Terminal Adapter): content/core-patterns/inbound-cli.md
       - Public API (Server-to-Server Clients): content/core-patterns/public-api.md
       - Organizations (Multi-Tenancy): content/core-patterns/organizations.md
+      - Row-Level Security (RLS): content/core-patterns/row-level-security.md
   - API Reference: content/api-reference.md
   - Data Models:
       - Domain Entities & Value Objects: content/data-models/domain-entities.md

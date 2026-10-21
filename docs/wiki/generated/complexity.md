@@ -8,28 +8,28 @@
     | `src/app/main/run.py` | 15 (C) | `make_app` | 55.4 (A) |
     | `src/app/core/common/value_objects/raw_password.py` | 9 (B) | `RawPassword._validate` | 54.4 (A) |
     | `src/app/outbound/adapters/sqla_api_key_reader.py` | 9 (B) | `SqlaApiKeyReader.list_by_user` | 60.7 (A) |
-    | `src/app/outbound/adapters/sqla_user_reader.py` | 9 (B) | `SqlaUserReader.list_users` | 53.3 (A) |
+    | `src/app/outbound/adapters/sqla_user_reader.py` | 9 (B) | `SqlaUserReader.list_users` | 62.7 (A) |
+    | `src/app/outbound/auth_ctx/handlers/update_own_profile.py` | 9 (B) | `UpdateOwnProfile.execute` | 67.3 (A) |
     | `src/app/core/commands/change_organization_member_role.py` | 8 (B) | `ChangeOrganizationMemberRole.execute` | 72.7 (A) |
     | `src/app/core/commands/invite_organization_member.py` | 8 (B) | `InviteOrganizationMember.execute` | 68.7 (A) |
+    | `src/app/core/commands/update_user_profile.py` | 8 (B) | `UpdateUserProfile.execute` | 64.9 (A) |
     | `src/app/core/commands/remove_organization_member.py` | 7 (B) | `RemoveOrganizationMember.execute` | 75.5 (A) |
     | `src/app/core/common/value_objects/organization_name.py` | 7 (B) | `OrganizationName._validate` | 79.4 (A) |
     | `src/app/core/common/value_objects/username.py` | 7 (B) | `Username._validate` | 70.5 (A) |
+    | `src/app/outbound/auth_ctx/handlers/log_in.py` | 7 (B) | `LogIn.execute` | 69.2 (A) |
+    | `src/app/outbound/persistence_sqla/row_level_security.py` | 7 (B) | `_policy_steps` | 61.4 (A) |
     | `src/app/core/commands/issue_api_key.py` | 6 (B) | `IssueApiKey.execute` | 69.0 (A) |
     | `src/app/core/common/value_objects/base.py` | 6 (B) | `ValueObject.__repr_value` | 73.3 (A) |
-    | `src/app/core/common/value_objects/description.py` | 6 (B) | `Description._validate` | 82.8 (A) |
-    | `src/app/inbound/http/errors/alerting.py` | 6 (B) | `RequestUserContext` | 72.2 (A) |
-    | `src/app/outbound/auth_ctx/handlers/log_in.py` | 6 (B) | `LogIn.execute` | 69.3 (A) |
-    | `src/app/core/commands/accept_organization_invitation.py` | 5 (A) | `AcceptOrganizationInvitation.execute` | 82.4 (A) |
 
     > "Rank" here is `radon`'s own A-F (complexity) / A-C (maintainability index) letter grades — A is best in both cases. A file with a high complexity rank isn't automatically a problem (a router with many mapped exception types is inherently branchy) — treat this as a place to look, not an automatic verdict.
 
-!!! figure "Cyclomatic complexity rank distribution across every file in src/app (274 files)"
+!!! figure "Cyclomatic complexity rank distribution across every file in src/app (286 files)"
     ```mermaid
     %%{init: {"theme": "default", "themeVariables": {"fontSize": "14px"}, "flowchart": {"nodeSpacing": 20, "rankSpacing": 16, "padding": 10, "subGraphTitleMargin": {"top": 5, "bottom": 12}, "useMaxWidth": false}}}%%
     pie showData
         title Cyclomatic complexity rank (A best, F worst)
-        "A" : 260
-        "B" : 13
+        "A" : 269
+        "B" : 16
         "C" : 1
     ```
 

@@ -184,6 +184,7 @@ cython_debug/
 .vscode/
 htmlcov-docker/
 todo/
+ai_research/
 
 .constraints.in
 .secrets

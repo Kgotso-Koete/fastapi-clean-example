@@ -290,6 +290,33 @@ test-docker-migrations: docker-env
 	$(DC_TEST_DOCKER) down -v --remove-orphans; \
 	exit $$rc
 
+# One integration test file (or directory) in the same throwaway Docker test
+# stack as test-docker-app, for quick RED/GREEN cycles on a test that needs
+# real infrastructure, e.g.:
+#   make test-docker-file path=tests/integration/with_infra/row_level_security/test_runtime_role.py
+# The app container's `pytest` entrypoint runs the migrations first, exactly
+# as in test-docker-app. No coverage report. The full `make test-docker`
+# still runs before every commit (docs/plans/agents.md 1.3).
+.PHONY: test-docker-file
+test-docker-file: docker-env
+	if [ -z "$(strip $(path))" ]; then \
+	  echo 'ERROR: path is required, e.g. make test-docker-file path=tests/integration/with_infra/...' >&2; \
+	  exit 2; \
+	fi
+	rc=0; \
+	$(DC_TEST_DOCKER) down -v --remove-orphans >/dev/null 2>&1 || true; \
+	if [ -n "$(strip $(INFRA_SERVICES))" ]; then \
+	  $(DC_TEST_DOCKER) up -d --build --wait --wait-timeout 180 $(INFRA_SERVICES) worker; \
+	  if [ -n "$(strip $(INFRA_INIT_SERVICES))" ]; then \
+	    $(DC_TEST_DOCKER) up --build $(INFRA_INIT_SERVICES) >/dev/null; \
+	  fi; \
+	fi; \
+	$(DC_TEST_DOCKER) run -T --build --rm app \
+		pytest $(PYTEST_ARGS_VERBOSE) $(path) \
+		|| rc=$$?; \
+	$(DC_TEST_DOCKER) down -v --remove-orphans; \
+	exit $$rc
+
 test-docker:
 	$(MAKE) test-docker-app
 	$(MAKE) test-docker-migrations

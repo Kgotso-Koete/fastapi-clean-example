@@ -10,6 +10,7 @@ from app.main.config.loader import load_postgres_settings
 from app.main.config.settings import PostgresSettings
 from app.outbound.persistence_sqla.mappings.all import map_tables
 from app.outbound.persistence_sqla.registry import mapper_registry
+from app.outbound.persistence_sqla.row_level_security import TABLE_RULES, security_revision_hook
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -61,7 +62,13 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        # Autogenerate also writes the security model's grants and RLS
+        # switches into each new migration (row_level_security.py).
+        process_revision_directives=security_revision_hook(TABLE_RULES),
+    )
 
     with context.begin_transaction():
         context.run_migrations()

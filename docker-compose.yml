@@ -28,6 +28,13 @@ services:
       POSTGRES_DB: ${POSTGRES_DB?POSTGRES_DB is required}
       POSTGRES_USER: ${POSTGRES_USER?POSTGRES_USER is required}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD?POSTGRES_PASSWORD is required}
+      # Read only by scripts/postgres/initdb/10-create-runtime-role.sh, which
+      # creates the unprivileged runtime role (docs/plans/14-row-level-security.md).
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-app_user}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:-app_password}
+    volumes:
+      # The official image runs these scripts once, on a brand-new data folder.
+      - ./scripts/postgres/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 2s
