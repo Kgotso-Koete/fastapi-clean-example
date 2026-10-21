@@ -2,6 +2,8 @@
 
 > **This README is just a quick-start summary, not the full guide.** For the complete walkthrough — the DDD/Clean Architecture explanation, every use case traced end-to-end with diagrams, configuration/deployment reference, and more — see the self-hosted documentation wiki under [`docs/wiki/`](docs/wiki/). Run `make wiki` (or `make upd`, which starts it alongside everything else) and open **http://localhost:8001** (`WIKI_PORT` in `env.example`).
 
+> **AI agents: read [`docs/plans/agents.md`](docs/plans/agents.md) before doing anything in this repository.** It is the single source of truth for how work is done here (TDD, permissions, verification commands, commits), and its rules override an agent's defaults.
+
 Stay tuned. Refactor in progress, see [`legacy-2025`](https://github.com/ivan-borovets/fastapi-clean-example/tree/legacy-2025) branch for architecture docs
 
 TODO:
@@ -31,17 +33,21 @@ TODO:
 - [ ] Find why `make upd` on a fresh database fails with `db_pg is unhealthy` until it's run a second time — see `docs/plans/0-production-readiness-roadmap.md`
 - [ ] Harden for production use: password policy, rate limiting, secrets management, TLS, backups, a real deploy pipeline, self-service password reset, email verification, and more — full prioritized backlog in `docs/plans/0-production-readiness-roadmap.md`
 - [x] Add an organizations/multi-tenancy bounded context (`Organization`/`OrganizationMembership`, `OWNER`/`ADMIN`/`MEMBER` roles, expiring invitations with an invitation email, shared membership-based authorization) — see `docs/plans/9-organizations.md`
-- [ ] Enforce Postgres Row-Level Security on organization-owned tables (needs the app to connect as a non-superuser database role first), sequenced before search and file storage -- see `docs/plans/0-production-readiness-roadmap.md`
+- [ ] Enforce Postgres Row-Level Security on organization-owned tables (needs the app to connect as a non-superuser database role first), parked on 2026-10-21, part-built on the branch `wip/row-level-security` -- see `docs/plans/0-production-readiness-roadmap.md`
+- [ ] Add cross-organization staff access (read every organization, correct named fields, explicit staff grants), split out of the RLS plan to follow it -- see `docs/plans/0-production-readiness-roadmap.md`
+- [ ] Add an append-only audit table for staff corrections across organizations (taken out of the RLS plan's scope; corrections are only logged there) -- see `docs/plans/0-production-readiness-roadmap.md`
 - [x] Expose read-only organization queries (list my organizations, list members) on the public API with an API key; the invitation list and organization writes stay off the public API until API keys can be scoped -- see `docs/plans/0-production-readiness-roadmap.md`
 - [ ] Add scoped API keys (organization-scoped, read vs. write) -- the prerequisite for any organization write over the public API -- see `docs/plans/0-production-readiness-roadmap.md`
-- [ ] Add paginated user and organization text search (prefix/search-as-you-type and keyword) -- Postgres built-in full-text search by default, Elasticsearch optional -- not yet started, full design in `docs/plans/11-search.md`
+- [ ] Add paginated user and organization text search (prefix/search-as-you-type and keyword) -- Postgres built-in full-text search by default, Elasticsearch optional -- sequenced after the modular monolith, not yet started, full design in `docs/plans/11-search.md`
 - [x] Add profile editing on the private API: a `description` on users, and self-service and admin user-profile editing (organization name/description editing shipped with Organizations) -- see `docs/plans/10-profile-editing.md`
-- [ ] Add file storage on the private API: image galleries on users and organizations and private documents (PDFs, images), local disk by default or any S3-compatible service (AWS S3, Cloudflare R2, MinIO) -- not yet started, full design in `docs/plans/12-file-storage.md`
-- [ ] Restructure into a modular monolith (one folder per bounded context — Users/Organizations/Notifications, possibly more) once there's more than one real bounded context — decided, not yet started, see `docs/plans/0-production-readiness-roadmap.md`
+- [ ] Add file storage on the private API: image galleries on users and organizations and private documents (PDFs, images), local disk by default or any S3-compatible service (AWS S3, Cloudflare R2, MinIO) -- sequenced after search, not yet started, full design in `docs/plans/12-file-storage.md`
+- [ ] Restructure into a modular monolith (one folder per bounded context — Users/Organizations/Notifications, possibly more) before search and file storage (Row-Level Security, which was to come first, is parked) — decided, not yet started, plan in `docs/plans/16-modular-monolith.md`, see `docs/plans/0-production-readiness-roadmap.md`
 - [ ] Add Sentry error tracking (automatic error grouping/fingerprinting, release correlation) alongside the existing Prometheus/Loki/Grafana stack and email alerting — not yet started, full design in `docs/plans/13-sentry-error-tracking.md`
 - [x] Selectively bring in the original author's "Autumn 2026 Updates & Fixes" (dependency upgrades closing every `pip-audit` finding, a partial-update sentinel, cause-chain logging, a configurable DB connect timeout, session/authorization/OpenAPI-example tests, a 75% CI coverage floor), one small test-first change at a time -- see `docs/plans/15-upstream-autumn-2026.md`
 - [ ] Group `core/commands/` and `core/queries/` into folders by area (`users/`, `account/`, `organizations/`...), as `inbound/http/` already is -- pure relocation, no code rewritten -- see `docs/plans/0-production-readiness-roadmap.md`
 - [ ] Map every nullable value-object field with the original author's nullable-composite recipe (from profile editing) instead of an entity property and setter per field (`ApiKey`, `OrganizationMembership`) -- not yet started, see `docs/plans/0-production-readiness-roadmap.md`
+- [ ] Build a frontend master template to match this backend -- most likely candidate: https://github.com/rmanguinho/clean-react -- not yet started, see `docs/plans/0-production-readiness-roadmap.md`
+- [ ] Replace the dishka container with dependency injection written in plain Python and owned by the project, no DI framework, alongside or after the modular monolith -- not yet planned, see `docs/plans/0-production-readiness-roadmap.md`
 
 Prerequisites
 ```shell
@@ -89,6 +95,12 @@ Test (all paths)
 make test-docker
 ```
 *Generates full integration test coverage report. View in browser at `htmlcov-docker/index.html`*
+
+Test (one integration file)
+```shell
+make test-docker-file path=tests/integration/with_infra/organizations/test_organization_lists.py
+```
+*Runs just that file (or directory) against the same throwaway Postgres/Redis stack as `make test-docker`, in about a minute instead of the full suite. For quick red/green cycles; no coverage report. Run the full `make test-docker` before committing.*
 
 Full wiki pipeline (test, regenerate, build, serve)
 ```shell

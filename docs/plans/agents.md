@@ -54,6 +54,10 @@ The human maintainer runs every terminal command (shell, git, docker, make, uv, 
 - This holds whatever permission or autonomy setting the AI agent's tool is running under. An auto-approving mode, or earlier commands in the same session that ran without objection, is never authorization to keep running commands. Such settings change how much the AI agent can decide without asking; they do not change who runs commands.
 - Read-only commands (`ls`, `grep`, `cat`, `find`) are not exempt. To inspect the codebase, the AI agent uses its tool's built-in file-reading and search features, not shell commands.
 - **When the human maintainer does authorize a specific command** ("run the command", "just do it"), the AI agent runs it immediately, in that same turn, with no re-explaining, hedging or second confirmation.
+- **Every message that asks for commands carries the full list, in order.** Each command the human maintainer still has to run, plus the ones from the same step already run and shared, marked done, so nobody has to scroll back to track what is left. The human maintainer's words: "I don't have the mental bandwidth to scroll up and keep track of all the commands you ask me to run and the order to run them."
+- **Every command stands on its own, in its own code block,** never inside a paragraph. Each gets a **Purpose** line (what running it achieves) and a **Breakdown** of its syntax: every argument, flag and operator. The human maintainer's words: "Please make sure commands that I should run are on their own line block and not tangled in a paragraph."
+- **No next RED or GREEN while commands are outstanding.** The AI agent waits until the output of every command it asked for (tests above all) has been shared before proposing the next edit, so nothing is edited on top of an unverified step.
+- **Never ask for an edit and for commands in the same message.** While an edit is waiting for approval, the message asks only for that approval. The commands that verify the edit come in the next message, once the edit is in. The human maintainer's words: "You asked me to make edits and you asked me to run commands in the same message. Which is it?"
 - **Standing exception: fetching past conversation text.** When the human maintainer asks for messages from a previous session, or the exact text of an earlier message, the AI agent retrieves it itself straight away (see section 8).
 
 ### 1.2 Use the real entrypoint for verification
@@ -62,9 +66,9 @@ When giving manual verification steps, use the real top-level command a user or 
 
 ### 1.3 The verification ladder
 
-- **RED step:** run the single test file, `uv run pytest <path> -v`, or `make test-docker` when the test needs real infrastructure. A RED has to be seen as a running test failure. `make check` stops at lint and mypy before any test runs, so it can't show a RED.
+- **RED step:** run the single test file, `uv run pytest <path> -v`, or `make test-docker` when the test needs real infrastructure. For a single infrastructure test file, `make test-docker-file path=<path>` runs just that file in the same throwaway Docker test stack, in a minute or two instead of the full suite. A RED has to be seen as a running test failure. `make check` stops at lint and mypy before any test runs, so it can't show a RED.
 - **GREEN step:** run `make check`, not just `uv run pytest tests/unit`. `make check` covers everything the narrower command does and more (ruff format and lint, the import-linter layer and CQRS contracts, mypy, then the light test paths). It catches a GREEN whose tests pass but that breaks a type, a layer contract or formatting.
-- **Anything touching infrastructure (Postgres, Redis, Celery, the worker):** run `make check`, then `make test-docker`, and only then do manual checks (`make upd` and inspection). Don't skip the automated integration tier.
+- **Anything touching infrastructure (Postgres, Redis, Celery, the worker):** run `make check`, then `make test-docker`, and only then do manual checks (`make upd` and inspection). Don't skip the automated integration tier. While iterating on one step, `make test-docker-file path=<path>` may confirm its RED and GREEN; the full `make test-docker` still runs before every commit and before the manual checks.
 - **The final and ultimate check: simple, human-driven, common-sense verification.** Automated tests prove what they were written to prove. The last rung is a small list of manual checks the human maintainer can do and see for themselves, without complex container workflows or reading test output:
   - a request from Postman or the browser
   - an AI-assisted `curl` command
@@ -90,6 +94,8 @@ When giving manual verification steps, use the real top-level command a user or 
 ### 1.4 Git follows the README exactly
 
 When committing, pushing or opening a PR, give the human maintainer the README's documented Commit Protocol as written (branch, `git add`/`git commit`, `gh pr create`, `gh pr merge --squash --delete-branch`). Don't add extra steps, elaborate heredoc bodies or inferred prerequisites. If a genuinely necessary step is missing, mention it briefly and mark it as an addition.
+
+**A commit closes a whole plan** (ideally, and unless the human maintainer says otherwise), after its human checks pass, never a single TDD step. The human maintainer's words: "Human checks are what make a commit legitimate."
 
 Every commit includes its release bookkeeping; a commit with only code is incomplete:
 - a `CHANGELOG.md` entry, following its existing Keep a Changelog format and Semantic Versioning (a new version heading with a date and a short title, then `Added`/`Changed`/`Fixed` sections describing what changed and why)
@@ -134,6 +140,10 @@ The only exceptions:
 
 **Test-support code is not itself tested.** Unit and integration tests are for application code. Seed scripts (`scripts/seed_db.py`) and test helpers are part of the testing *methods*, not application code: a seed script supports manual testing the way a fixture supports automated testing. Tests are not tested by other tests, and the same goes for seed scripts. They are written directly, without a RED/GREEN cycle.
 
+**Never break application code to prove a test can fail.** No mutation checks: no temporarily weakening a policy, editing production code or regenerating a migration just to watch a test go red. Tests exist to report the health of the app; tests that need their own tests bring back the problem TDD solves. The human maintainer's words: "Otherwise we need tests for our unit tests and that causes problems that TDD is supposed to solve in the first place."
+- **Design the test so only the mechanism under test can produce its result.** For example, a test that a policy's `WITH CHECK` refuses an `INSERT` uses no `RETURNING`, because with `RETURNING` the `SELECT` policy can raise the same error.
+- **Where doubt remains, prove the mechanism by hand** as a human check: raw SQL in the database shell, as the role in question.
+
 **Ports are not exempt.** A Protocol port is introduced in the same TDD cycle as the first test that needs it: an adapter's integration test, or a consumer's unit test with a fake. The missing port is part of that test's RED. Never write a port as a standalone step "because it has no behavior".
 
 ### 2.2 Keep REDs simple, and never suppress tests
@@ -165,7 +175,13 @@ Never tamper with existing code whose full consequences aren't understood. That 
 - **The "feature delete" test:** it should be possible to delete what was just added and get the original composition back completely unaltered. If deleting the addition would also mean undoing changes to existing files, the work has strayed into risky territory.
 - **Prefer a little duplication over editing an existing class** to fit a new use case. The model is domain events: a major feature added without altering what it was built on, and `WorkerProvider`, a new provider that leaves `CoreProvider` untouched.
 - **The limit in the other direction:** separate providers (`WorkerProvider`, `PublicApiProvider`) exist only because those entrypoints needed different concrete bindings for the same port, which can't coexist in one Dishka container. When a feature runs in the same web process and just needs a few more bindings, appending those lines to `CoreProvider` in `main/ioc/core.py` is fine. Still flag it as a touch to an original file, and never restructure, split or reorder the existing bindings.
-- **The one named exception:** a future move to a modular-monolith folder layout may *relocate* original-author files into per-bounded-context folders. That means moving files and updating import paths only, never rewriting or "improving" the moved code. It is a single decision the human maintainer made for that one change, not a precedent for touching the original author's code more freely elsewhere.
+- **The one named exception: the modular monolith restructuring** (`docs/plans/16-modular-monolith.md`). It is the only time this codebase makes major changes to the original author's code. The human maintainer's words: "This is the only time I am giving us permission to break this rule." Within that one change:
+  - original-author files are *relocated* into per-module folders: files move and import paths change, and the moved code is never rewritten or "improved";
+  - the composition code that names every piece by hand (the DI providers, the routers, the table mappings) may be changed so it builds the app from a registry of modules;
+  - any new code the restructuring needs is test-first (section 2); only pure moves are exempt;
+  - every known behaviour is the same afterwards, and it starts from a codebase in a clean state: everything committed, nothing half-done.
+
+  It is not a precedent for touching the original author's code more freely anywhere else, before or after.
 
 The reasoning: the original author's code is, right now, at the highest quality and the most battle-tested it will ever be. Every edit is a chance to introduce a regression into code that has none.
 
@@ -241,6 +257,14 @@ Every line of code, every file, every document and every comment is a liability.
 - **Prefer the smallest change that fully solves the problem,** and the shortest wording that fully explains it. Remove what's redundant rather than piling on more.
 - **Weigh it at review time too.** A large diff, a new file or a long explanation spends the human maintainer's attention, so it has to be worth that cost.
 - **Being a liability doesn't mean "don't add".** Code is a liability too, and we still write it whenever a feature needs it. The point is to add deliberately, not to add less at all costs. Once a feature is decided, the code, tests, seed data and comments that feature needs are all worth their cost. Not all additions weigh the same: application logic carries the most risk, and comments the least, because they are not logic (see 5.1).
+
+### 4.7 No application or security logic in generated files
+
+Application and security logic never lives in a folder of generated files, such as Alembic's `versions/`, unless the human maintainer advises otherwise. A person debugging a design or security issue looks in the application code, not in a folder of files a tool wrote. The human maintainer's words: "It never makes sense to write application/security logic in a folder that is generated by code (like alembic migrations)."
+
+- **The source of truth is readable application code,** such as the SQLAlchemy mappings for tables, or a module declaring roles, grants and Row-Level Security policies.
+- **Generated files are snapshots of that source,** written by the tool: `make migration` turns the source into a migration, the way it turns a mapping into `CREATE TABLE`. When the tool can't yet express something (grants, RLS, policies), extend the generator so it can, rather than hand-writing the logic into the generated file.
+- **A generated file never imports the live source.** Old migrations must stay frozen; if they imported a module that later changes, they would silently change what they do.
 
 ---
 
