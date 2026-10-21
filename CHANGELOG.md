@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.1] - 2026-10-21: Row-Level Security parked, modular monolith plan, one-file Docker test runs
+
+### Added
+- **`make test-docker-file path=...`:** runs one integration test file (or directory) in the same throwaway Docker test stack as `make test-docker`, migrations first and without coverage, in a minute or two instead of the full suite. For quick RED/GREEN cycles; the full `make test-docker` still runs before every commit. Documented in the README and `docs/plans/agents.md` 1.3.
+- **`docs/plans/16-modular-monolith.md`:** the researched plan to restructure into one registrable module per bounded context (Identity, Organizations, Notifications, plus a shared kernel and a platform module), not yet started.
+- **Roadmap items:** cross-organization staff access and an audit table for staff corrections (both split out of plan 14), a frontend template (candidate: https://github.com/rmanguinho/clean-react), and replacing the dishka container with dependency injection written in plain Python.
+- **`docs/plans/agents.md`:** commands come as one ordered checklist, each in its own block with a purpose and a breakdown, nothing new is proposed while outputs are outstanding, and an edit's approval and its commands never share a message (1.1); a commit closes a whole plan (1.4); never break application code to prove a test can fail (2.1); no application or security logic in generated files such as migrations (4.7, new).
+- `ai_research/` is git-ignored, so local research copies stay on the machine that downloaded them.
+
+### Changed
+- **Postgres Row-Level Security (`docs/plans/14-row-level-security.md`) is parked.** The work so far is on the branch `wip/row-level-security`, not merged; none of its code is on `master`. The plan now covers customer isolation only (staff access and the audit table moved to the roadmap), records the research since 2026-10-02 and a new order of work, and its status says how to resume.
+- **Sequencing** (roadmap, README and plan 16): RLS no longer comes before the modular monolith; the modular monolith comes before search and file storage, and file storage follows search.
+- **`docs/plans/agents.md` 3.1:** the modular monolith restructuring is the one exception to the original-author rule, widened on 2026-10-17 to allow rebuilding the composition from a module registry (also recorded in `docs/plans/9-organizations.md`).
+- **README:** a callout telling AI agents to read `docs/plans/agents.md` first.
+
 ## [0.19.0] - 2026-10-12: Profile editing: user descriptions, self-service and admin profile edits
 
 ### Added
