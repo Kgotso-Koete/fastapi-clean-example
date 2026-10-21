@@ -9,6 +9,7 @@ from app.core.common.authorization.organization_ports import MembershipChecker
 from app.core.common.entities.organization import OrganizationId
 from app.core.common.entities.organization_membership import OrganizationRole
 from app.core.common.entities.user import User
+from app.core.common.ports.row_security_context import RowSecurityContext
 
 
 class CurrentOrganizationService:
@@ -26,9 +27,11 @@ class CurrentOrganizationService:
         self,
         current_user_service: CurrentUserService,
         membership_checker: MembershipChecker,
+        row_security_context: RowSecurityContext,
     ) -> None:
         self._current_user_service = current_user_service
         self._membership_checker = membership_checker
+        self._row_security_context = row_security_context
 
     async def require_role(
         self,
@@ -38,6 +41,10 @@ class CurrentOrganizationService:
         # 1. Who is calling -- raises AuthorizationError itself for an
         #    unknown/inactive user, so the membership lookup never runs.
         current_user = await self._current_user_service.get_current_user()
+        # Tell the database who is asking (plan 14): the membership lookup
+        # below runs under Row-Level Security, and sees the caller's own row
+        # only once the user is bound.
+        await self._row_security_context.bind_user(current_user.id_)
         # 2. Their role in THIS organization. Async I/O, so it happens here,
         #    BEFORE authorize() -- CanAccessOrganization never does I/O.
         member_role = await self._membership_checker.get_role(current_user.id_, organization_id)
@@ -51,4 +58,8 @@ class CurrentOrganizationService:
             CanAccessOrganization(),
             context=OrganizationAccessContext(member_role=member_role, minimum_role=minimum_role),
         )
+        # 5. Only now, with the caller verified as a member at the required
+        #    level, bind the organization, so every query after this is
+        #    limited to it.
+        await self._row_security_context.bind_organization(organization_id)
         return organization_id, current_user

@@ -34,7 +34,7 @@ from app.core.common.value_objects.organization_name import OrganizationName
 from app.core.common.value_objects.username import Username
 from app.core.common.value_objects.utc_datetime import UtcDatetime
 from tests.unit.core.commands.api_keys.factories import FakeTransactionManager, FakeUserFinder, FakeUtcTimer
-from tests.unit.core.common.authorization.factories import create_current_user_service
+from tests.unit.core.common.authorization.factories import FakeRowSecurityContext, create_current_user_service
 from tests.unit.core.common.services.factories import create_user
 
 # InviteOrganizationMember (docs/plans/9-organizations.md, Step 6): an OWNER or
@@ -154,6 +154,7 @@ class _Harness:
             current_organization_service=CurrentOrganizationService(
                 current_user_service=create_current_user_service(self.caller),
                 membership_checker=_FakeMembershipChecker(caller_role),
+                row_security_context=FakeRowSecurityContext(),
             ),
             user_finder=self.user_finder,
             organization_repository=self.repository,

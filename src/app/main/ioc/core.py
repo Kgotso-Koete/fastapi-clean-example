@@ -39,6 +39,7 @@ from app.core.common.ports.event_dispatcher import EventDispatcher
 from app.core.common.ports.event_handler import EventHandler
 from app.core.common.ports.identity_provider import IdentityProvider
 from app.core.common.ports.password_hasher import PasswordHasher
+from app.core.common.ports.row_security_context import RowSecurityContext
 from app.core.common.ports.user_finder import UserFinder
 from app.core.common.services.user import UserService
 from app.core.queries.get_own_profile import GetOwnProfile
@@ -64,6 +65,7 @@ from app.outbound.adapters.sqla_membership_checker import SqlaMembershipChecker
 from app.outbound.adapters.sqla_organization_reader import SqlaOrganizationReader
 from app.outbound.adapters.sqla_organization_repository import SqlaOrganizationRepository
 from app.outbound.adapters.sqla_outbox_repository import SqlaOutboxRepository
+from app.outbound.adapters.sqla_row_security_context import SqlaRowSecurityContext
 from app.outbound.adapters.sqla_transaction_manager import SqlaTransactionManager
 from app.outbound.adapters.sqla_user_finder import SqlaUserFinder
 from app.outbound.adapters.sqla_user_reader import SqlaUserReader
@@ -136,6 +138,11 @@ class CoreProvider(Provider):
     # until this point only PublicApiProvider had UserFinder).
     membership_checker = provide(SqlaMembershipChecker, provides=MembershipChecker)
     current_organization_service = provide(CurrentOrganizationService)
+    # Row-Level Security (docs/plans/14-row-level-security.md): require_role()
+    # binds the caller and the organization on this request's session, so the
+    # Postgres policies filter every query after it. Request-scoped like the
+    # session it wraps: one per request, never shared between requests.
+    row_security_context = provide(SqlaRowSecurityContext, provides=RowSecurityContext)
     user_finder = provide(SqlaUserFinder, provides=UserFinder)
     accept_organization_invitation = provide(AcceptOrganizationInvitation)
     decline_organization_invitation = provide(DeclineOrganizationInvitation)

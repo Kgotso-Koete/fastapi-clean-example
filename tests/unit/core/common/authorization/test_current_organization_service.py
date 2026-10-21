@@ -13,6 +13,7 @@ from tests.unit.core.common.authorization.factories import (
     FakeAccessRevoker,
     FakeAuthzUserFinder,
     FakeIdentityProvider,
+    FakeRowSecurityContext,
     create_current_user_service,
 )
 from tests.unit.core.common.services.factories import create_user
@@ -26,14 +27,19 @@ from tests.unit.core.common.services.factories import create_user
 
 class FakeMembershipChecker(MembershipChecker):
     """Returns a fixed role (or None) and records every lookup it's asked
-    for, so a test can assert on WHO was checked in WHICH organization."""
+    for, so a test can assert on WHO was checked in WHICH organization. An
+    optional shared `log` also records the lookup alongside another fake's
+    entries (FakeRowSecurityContext's binds), so their order can be checked."""
 
-    def __init__(self, role: OrganizationRole | None) -> None:
+    def __init__(self, role: OrganizationRole | None, log: list[tuple[str, object]] | None = None) -> None:
         self._role = role
+        self._log = log
         self.calls: list[tuple[UserId, OrganizationId]] = []
 
     async def get_role(self, user_id: UserId, organization_id: OrganizationId) -> OrganizationRole | None:
         self.calls.append((user_id, organization_id))
+        if self._log is not None:
+            self._log.append(("get_role", (user_id, organization_id)))
         return self._role
 
 
@@ -44,6 +50,7 @@ async def test_a_member_meeting_the_minimum_role_gets_the_organization_id_and_cu
     sut = CurrentOrganizationService(
         current_user_service=create_current_user_service(user),
         membership_checker=FakeMembershipChecker(OrganizationRole.ADMIN),
+        row_security_context=FakeRowSecurityContext(),
     )
 
     result = await sut.require_role(organization_id, OrganizationRole.ADMIN)
@@ -57,6 +64,7 @@ async def test_a_member_below_the_minimum_role_is_denied() -> None:
     sut = CurrentOrganizationService(
         current_user_service=create_current_user_service(user),
         membership_checker=FakeMembershipChecker(OrganizationRole.MEMBER),
+        row_security_context=FakeRowSecurityContext(),
     )
 
     with pytest.raises(AuthorizationError):
@@ -74,6 +82,7 @@ async def test_a_non_member_is_told_the_organization_does_not_exist() -> None:
     sut = CurrentOrganizationService(
         current_user_service=create_current_user_service(user),
         membership_checker=FakeMembershipChecker(None),
+        row_security_context=FakeRowSecurityContext(),
     )
 
     with pytest.raises(OrganizationNotFoundError):
@@ -90,6 +99,7 @@ async def test_the_membership_lookup_uses_the_current_users_id_and_the_given_org
     sut = CurrentOrganizationService(
         current_user_service=create_current_user_service(user),
         membership_checker=membership_checker,
+        row_security_context=FakeRowSecurityContext(),
     )
 
     await sut.require_role(organization_id, OrganizationRole.MEMBER)
@@ -112,9 +122,91 @@ async def test_an_unresolvable_current_user_is_denied_before_any_membership_look
     sut = CurrentOrganizationService(
         current_user_service=current_user_service,
         membership_checker=membership_checker,
+        row_security_context=FakeRowSecurityContext(),
     )
 
     with pytest.raises(AuthorizationError):
         await sut.require_role(create_organization_id(), OrganizationRole.MEMBER)
 
     assert membership_checker.calls == []
+
+
+# Plan 14, "Order of work": require_role tells the database who is asking and
+# for which organization, so Row-Level Security filters every query after it.
+
+
+@pytest.mark.asyncio
+async def test_the_user_is_bound_before_the_membership_check_and_the_organization_after_the_role_check() -> None:
+    # Plan 14: the membership check runs under Row-Level Security, so it can
+    # only see the caller's own row once the user is bound. The organization
+    # is bound last, once the caller is known to be a member at the required
+    # level: only a verified id is ever bound.
+    user = create_user()
+    organization_id = create_organization_id()
+    log: list[tuple[str, object]] = []
+    sut = CurrentOrganizationService(
+        current_user_service=create_current_user_service(user),
+        membership_checker=FakeMembershipChecker(OrganizationRole.ADMIN, log=log),
+        row_security_context=FakeRowSecurityContext(log),
+    )
+
+    await sut.require_role(organization_id, OrganizationRole.MEMBER)
+
+    assert log == [
+        ("bind_user", user.id_),
+        ("get_role", (user.id_, organization_id)),
+        ("bind_organization", organization_id),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_non_member_never_gets_the_organization_bound() -> None:
+    user = create_user()
+    context = FakeRowSecurityContext()
+    sut = CurrentOrganizationService(
+        current_user_service=create_current_user_service(user),
+        membership_checker=FakeMembershipChecker(None),
+        row_security_context=context,
+    )
+
+    with pytest.raises(OrganizationNotFoundError):
+        await sut.require_role(create_organization_id(), OrganizationRole.MEMBER)
+
+    assert context.log == [("bind_user", user.id_)]
+
+
+@pytest.mark.asyncio
+async def test_a_member_below_the_minimum_role_never_gets_the_organization_bound() -> None:
+    user = create_user()
+    context = FakeRowSecurityContext()
+    sut = CurrentOrganizationService(
+        current_user_service=create_current_user_service(user),
+        membership_checker=FakeMembershipChecker(OrganizationRole.MEMBER),
+        row_security_context=context,
+    )
+
+    with pytest.raises(AuthorizationError):
+        await sut.require_role(create_organization_id(), OrganizationRole.ADMIN)
+
+    assert context.log == [("bind_user", user.id_)]
+
+
+@pytest.mark.asyncio
+async def test_an_unresolvable_current_user_gets_nothing_bound() -> None:
+    # A deleted or deactivated account is refused before anything is bound.
+    user = create_user()
+    context = FakeRowSecurityContext()
+    sut = CurrentOrganizationService(
+        current_user_service=CurrentUserService(
+            identity_provider=FakeIdentityProvider(user.id_),
+            authz_user_finder=FakeAuthzUserFinder(None),
+            access_revoker=FakeAccessRevoker(),
+        ),
+        membership_checker=FakeMembershipChecker(OrganizationRole.OWNER),
+        row_security_context=context,
+    )
+
+    with pytest.raises(AuthorizationError):
+        await sut.require_role(create_organization_id(), OrganizationRole.MEMBER)
+
+    assert context.log == []

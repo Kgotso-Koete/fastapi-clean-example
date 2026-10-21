@@ -1,9 +1,11 @@
 from app.core.common.authorization.current_user_service import CurrentUserService
 from app.core.common.authorization.ports import AuthzUserFinder
+from app.core.common.entities.organization import OrganizationId
 from app.core.common.entities.types_ import UserId, UserRole
 from app.core.common.entities.user import User
 from app.core.common.ports.access_revoker import AccessRevoker
 from app.core.common.ports.identity_provider import IdentityProvider
+from app.core.common.ports.row_security_context import RowSecurityContext
 from tests.unit.core.common.services.factories import create_super_user, create_user
 
 
@@ -59,3 +61,21 @@ def create_current_user_service(user: User) -> CurrentUserService:
         authz_user_finder=FakeAuthzUserFinder(user),
         access_revoker=FakeAccessRevoker(),
     )
+
+
+# --- RowSecurityContext fake ---
+
+
+class FakeRowSecurityContext(RowSecurityContext):
+    """Records every bind, in order, instead of talking to a database. Give
+    it a shared `log` to interleave its entries with another fake's (the
+    membership check, say), so a test can assert the order of the two."""
+
+    def __init__(self, log: list[tuple[str, object]] | None = None) -> None:
+        self.log: list[tuple[str, object]] = log if log is not None else []
+
+    async def bind_user(self, user_id: UserId) -> None:
+        self.log.append(("bind_user", user_id))
+
+    async def bind_organization(self, organization_id: OrganizationId) -> None:
+        self.log.append(("bind_organization", organization_id))

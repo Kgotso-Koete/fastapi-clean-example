@@ -13,6 +13,7 @@ from app.core.common.ports.access_revoker import AccessRevoker
 from app.core.common.ports.api_key_hasher import ApiKeyHasher
 from app.core.common.ports.identity_provider import IdentityProvider
 from app.core.common.ports.password_hasher import PasswordHasher
+from app.core.common.ports.row_security_context import RowSecurityContext
 from app.core.common.ports.user_finder import UserFinder
 from app.core.common.services.user import UserService
 from app.core.queries.get_api_key_usage_stats import GetApiKeyUsageStats
@@ -36,6 +37,7 @@ from app.outbound.adapters.sqla_api_key_reader import SqlaApiKeyReader
 from app.outbound.adapters.sqla_api_key_repository import SqlaApiKeyRepository
 from app.outbound.adapters.sqla_membership_checker import SqlaMembershipChecker
 from app.outbound.adapters.sqla_organization_reader import SqlaOrganizationReader
+from app.outbound.adapters.sqla_row_security_context import SqlaRowSecurityContext
 from app.outbound.adapters.sqla_transaction_manager import SqlaTransactionManager
 from app.outbound.adapters.sqla_user_finder import SqlaUserFinder
 from app.outbound.adapters.sqla_user_tx_storage import SqlaUserTxStorage
@@ -158,6 +160,8 @@ class PublicApiProvider(Provider):
     organization_reader = provide(SqlaOrganizationReader, provides=OrganizationReader)
     membership_checker = provide(SqlaMembershipChecker, provides=MembershipChecker)
     current_organization_service = provide(CurrentOrganizationService)
+    # Row-Level Security, the same binding as CoreProvider's (see there).
+    row_security_context = provide(SqlaRowSecurityContext, provides=RowSecurityContext)
     list_my_organizations = provide(ListMyOrganizations)
     list_organization_members = provide(ListOrganizationMembers)
 

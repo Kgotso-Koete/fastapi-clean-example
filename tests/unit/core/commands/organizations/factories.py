@@ -13,7 +13,7 @@ from app.core.common.entities.organization_membership import (
 from app.core.common.entities.types_ import UserId
 from app.core.common.entities.user import User
 from app.core.common.value_objects.utc_datetime import UtcDatetime
-from tests.unit.core.common.authorization.factories import create_current_user_service
+from tests.unit.core.common.authorization.factories import FakeRowSecurityContext, create_current_user_service
 
 # Shared fakes for the Step 7 membership-management tests
 # (RemoveOrganizationMember, ChangeOrganizationMemberRole), which both work on
@@ -113,4 +113,5 @@ def create_current_organization_service(
     return CurrentOrganizationService(
         current_user_service=create_current_user_service(caller),
         membership_checker=FakeMembershipChecker(caller_role),
+        row_security_context=FakeRowSecurityContext(),
     )
