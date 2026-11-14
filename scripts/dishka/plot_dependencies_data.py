@@ -2,7 +2,7 @@ import asyncio
 
 import dishka.plotter
 
-from app.main.run import make_app
+from app.base.main.run import make_app
 
 
 async def main() -> None:

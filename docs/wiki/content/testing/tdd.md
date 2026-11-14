@@ -3,9 +3,9 @@
 !!! sourcefiles "Relevant Source Files/Folders"
     - [`docs/plans/4-transactional-outbox.md`](../../../../docs/plans/4-transactional-outbox.md) — Step 4's "TDD order" line is this page's worked example
     - [`docs/plans/3-celery-redis-events.md`](../../../../docs/plans/3-celery-redis-events.md) — a second, shorter worked example
-    - [`tests/unit/main/worker/test_drain_outbox.py`](../../../../tests/unit/main/worker/test_drain_outbox.py) — the RED test written before `_drain_outbox()` existed
-    - [`src/app/main/worker/outbox_drain_loop.py`](../../../../src/app/main/worker/outbox_drain_loop.py) — the GREEN implementation that test now exercises
-    - [`tests/unit/core/common/events/handlers/test_send_welcome_email.py`](../../../../tests/unit/core/common/events/handlers/test_send_welcome_email.py) — the smaller, one-assertion worked example below
+    - [`tests/base/unit/main/worker/test_drain_outbox.py`](../../../../tests/base/unit/main/worker/test_drain_outbox.py) — the RED test written before `_drain_outbox()` existed
+    - [`src/app/base/main/worker/outbox_drain_loop.py`](../../../../src/app/base/main/worker/outbox_drain_loop.py) — the GREEN implementation that test now exercises
+    - [`tests/modules/notifications/unit/core/common/events/handlers/test_send_welcome_email.py`](../../../../tests/modules/notifications/unit/core/common/events/handlers/test_send_welcome_email.py) — the smaller, one-assertion worked example below
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
 
@@ -59,7 +59,7 @@ That is exactly what the repository contains today:
         style after stroke-width:1px,stroke:#333333
     ```
 
-Concretely, [`tests/unit/main/worker/test_drain_outbox.py`](../../../../tests/unit/main/worker/test_drain_outbox.py) hands `_drain_outbox()` a fake `OutboxRepository` (an `AsyncMock`) and a fake Celery client (a plain `Mock`) — no database, no broker — and asserts on how `_drain_outbox` calls them:
+Concretely, [`tests/base/unit/main/worker/test_drain_outbox.py`](../../../../tests/base/unit/main/worker/test_drain_outbox.py) hands `_drain_outbox()` a fake `OutboxRepository` (an `AsyncMock`) and a fake Celery client (a plain `Mock`) — no database, no broker — and asserts on how `_drain_outbox` calls them:
 
 ```python
 async def test_marks_processed_but_does_not_delete_when_retention_is_on(self) -> None:
@@ -75,7 +75,7 @@ async def test_marks_processed_but_does_not_delete_when_retention_is_on(self) ->
     outbox.commit.assert_called_once()
 ```
 
-Before [`src/app/main/worker/outbox_drain_loop.py`](../../../../src/app/main/worker/outbox_drain_loop.py) existed, this test failed at collection — `_drain_outbox` had nothing to import. That failure *is* RED: proof the test can actually detect the missing behavior, not a tautology that would pass regardless of whether the feature exists. Only once that failure was in hand did the plan call for writing the real `_drain_outbox()` body (relay each pending row via `send_task(..., task_id=str(message.id_))`, then `mark_processed()`/`delete()` depending on the retention setting, then a single `commit()` for the whole batch) — turning the same test GREEN, along with `test_outbox_drain_loop.py`'s cases for the perpetual-loop wrapper around it.
+Before [`src/app/base/main/worker/outbox_drain_loop.py`](../../../../src/app/base/main/worker/outbox_drain_loop.py) existed, this test failed at collection — `_drain_outbox` had nothing to import. That failure *is* RED: proof the test can actually detect the missing behavior, not a tautology that would pass regardless of whether the feature exists. Only once that failure was in hand did the plan call for writing the real `_drain_outbox()` body (relay each pending row via `send_task(..., task_id=str(message.id_))`, then `mark_processed()`/`delete()` depending on the retention setting, then a single `commit()` for the whole batch) — turning the same test GREEN, along with `test_outbox_drain_loop.py`'s cases for the perpetual-loop wrapper around it.
 
 ## A smaller example: a one-line behavior change
 

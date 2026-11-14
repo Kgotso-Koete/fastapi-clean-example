@@ -111,7 +111,7 @@ These sit at the top of the `Makefile` and change several targets' behavior at o
 | `INFRA_SERVICES` | `db_pg redis` | `upd-local`/`up-local` (which containers those start), `test-docker-app` |
 | `INFRA_INIT_SERVICES` | *(empty)* | One-shot services that prepare `INFRA_SERVICES` before tests run — none defined yet in this project |
 | `MIGRATION_DB_SERVICE` | `db_pg` | `migration`, `test-docker-migrations` |
-| `STAIRWAY_TEST` | `tests/integration/migrations/test_stairway.py` | `migration` (runs it after generating a new revision) |
+| `STAIRWAY_TEST` | `tests/base/integration/migrations/test_stairway.py` | `migration` (runs it after generating a new revision) |
 | `TEST_PROJECT` | `$(PROJECT_NAME)-test` | Every `test-docker*` target — an isolated Compose project name so test containers never collide with your normal dev stack |
 
 ## Safety
@@ -126,7 +126,7 @@ These sit at the top of the `Makefile` and change several targets' behavior at o
 |---|---|---|
 | `make lint` | `ruff check --fix`, `ruff format`, `tombi format`, `tombi lint`, `deptry`, `slotscheck`, `lint-imports`, `mypy` | Mutates files (`--fix`, `format` without `--check`) — this is the "fix it for me" variant |
 | `make slotscheck` | Runs [`scripts/makefile/slotscheck.sh`](../../../../scripts/makefile/slotscheck.sh) against `src` | Checks that classes using `__slots__` do so correctly; called by both `lint` and `check-ci` |
-| `make test` | `pytest -v` over `tests/sanity`, `tests/unit`, `tests/integration/no_infra`, with coverage (`--cov=src`, terminal + HTML (HyperText Markup Language) report) | No containers needed — this is the fast, infra-free test subset; see [Testing → Running Tests](../testing/running-tests.md) |
+| `make test` | `pytest -v` over `PYTEST_PATHS_LIGHT` (`tests/base/characterisation`, `tests/base/sanity`, `tests/base/unit`, `tests/base/integration/no_infra`, and every module's and `shared`'s `unit` folder), with coverage (`--cov=src`, terminal + HTML (HyperText Markup Language) report) | No containers needed — this is the fast, infra-free test subset; see [Testing → Running Tests](../testing/running-tests.md); `unit=<name>` narrows it to one unit's tests |
 | `make check` | `lint` then `test`, then `coverage html` | The everyday local gate: fast, mutates files freely, no Docker required |
 | `make check-ci` | `ruff check` / `ruff format --check` (non-mutating), `tombi format --check`, `tombi lint`, `deptry`, `slotscheck`, `lint-imports`, `mypy`, then `make test`, then `coverage html` | The CI-safe variant of `check` — fails instead of auto-fixing; this is what a pipeline should run, not `check` |
 
@@ -135,9 +135,9 @@ These sit at the top of the `Makefile` and change several targets' behavior at o
 | Command | What it does | Notes |
 |---|---|---|
 | `make test` | See Code Quality above | Listed there since it's also invoked by `check`/`check-ci` |
-| `make test-docker-app` | Spins up `INFRA_SERVICES` (+ `worker`) via `docker-compose.yml` + `docker-compose.test.yml`, then runs `pytest` (`tests/sanity`, `tests/unit`, `tests/integration/no_infra`, `tests/smoke`, `tests/integration/with_infra`) inside a throwaway `app` container, copies `.coverage` out, tears the stack down | Uses an isolated `$(TEST_PROJECT)` Compose project name so it never collides with a `make upd` stack already running |
-| `make test-docker-migrations` | Spins up just `MIGRATION_DB_SERVICE`, runs `tests/integration/migrations` (the [stairway test](database-migrations.md#the-stairway-test)) inside a throwaway container, tears the stack down | Skips cleanly if `PYTEST_PATHS_MIGRATIONS` or `MIGRATION_DB_SERVICE` is unset |
-| `make test-docker` | Runs `test-docker-app` then `test-docker-migrations`, then builds a combined `htmlcov-docker/index.html` report | This is the full "real Postgres/Redis" test run — see [Testing → Running Tests](../testing/running-tests.md) |
+| `make test-docker-app` | Spins up `INFRA_SERVICES` (+ `worker`) via `docker-compose.yml` + `docker-compose.test.yml`, then runs `pytest` over `PYTEST_PATHS_APP_INFRA` (the light paths, plus `tests/base/smoke`, `tests/base/integration/with_infra` and every module's and `shared`'s `integration/with_infra`) inside a throwaway `app` container, copies `.coverage` out, tears the stack down | Uses an isolated `$(TEST_PROJECT)` Compose project name so it never collides with a `make upd` stack already running |
+| `make test-docker-migrations` | Spins up just `MIGRATION_DB_SERVICE`, runs `tests/base/integration/migrations` (the [stairway test](database-migrations.md#the-stairway-test)) inside a throwaway container, tears the stack down | Skips cleanly if `PYTEST_PATHS_MIGRATIONS` or `MIGRATION_DB_SERVICE` is unset |
+| `make test-docker` | Runs `test-docker-app` then `test-docker-migrations`, then builds a combined `htmlcov-docker/index.html` report | This is the full "real Postgres/Redis" test run — see [Testing → Running Tests](../testing/running-tests.md); `unit=<name>` narrows it to one unit's tests |
 
 ## Docker
 
@@ -155,8 +155,8 @@ These sit at the top of the `Makefile` and change several targets' behavior at o
 | `make logs` / `make logs service=app` / `make logs service=app tail=500` | `docker compose logs -f --tail=<N>` for this project, every service by default (`-f` follows; `Ctrl+C` stops) | `service=<name>` narrows to one container's logs; `tail=<N>` overrides the default 200-line scrollback |
 | `make stop-all` | `docker ps -q \| xargs -r docker stop` — stops **every** running container on your machine, not just this project's | Blunt-instrument command; reach for `make down` first unless you specifically need to stop unrelated containers too |
 | `make prune` | Runs [`scripts/makefile/docker_prune.sh`](../../../../scripts/makefile/docker_prune.sh) | Cleans up dangling Docker resources (images/volumes/networks) this project has accumulated |
-| `make cli-up args="<cli args>"` | `docker compose up -d --wait` (idempotent -- a no-op if the stack's already healthy, unlike `upd`'s `--force-recreate`), then `docker compose exec app python -m app.main.cli $(args)` | `args` is required; see [CLI (Terminal Adapter)](../core-patterns/inbound-cli.md). Use this the first time, or whenever you're not sure the stack is already up |
-| `make cli args="<cli args>"` | Same `docker compose exec app python -m app.main.cli $(args)`, without the bring-up step | Faster for repeated invocations once the stack is confirmed running |
+| `make cli-up args="<cli args>"` | `docker compose up -d --wait` (idempotent -- a no-op if the stack's already healthy, unlike `upd`'s `--force-recreate`), then `docker compose exec app python -m app.base.main.cli $(args)` | `args` is required; see [CLI (Terminal Adapter)](../core-patterns/inbound-cli.md). Use this the first time, or whenever you're not sure the stack is already up |
+| `make cli args="<cli args>"` | Same `docker compose exec app python -m app.base.main.cli $(args)`, without the bring-up step | Faster for repeated invocations once the stack is confirmed running |
 
 ## Database
 

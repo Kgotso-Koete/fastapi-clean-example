@@ -1,15 +1,15 @@
 # Error Handling (error_map Pattern)
 
 !!! sourcefiles "Relevant Source Files/Folders"
-    - [`src/app/inbound/http/errors/router.py`](../../../../src/app/inbound/http/errors/router.py) — `make_error_aware_router()`, the factory every router in this codebase is built from
-    - [`src/app/inbound/http/errors/rules.py`](../../../../src/app/inbound/http/errors/rules.py) — shared `Rule` constants, e.g. `HTTP_503_SERVICE_UNAVAILABLE_RULE`
-    - [`src/app/inbound/http/errors/callbacks.py`](../../../../src/app/inbound/http/errors/callbacks.py) — `log_info`, an `on_error` callback
-    - [`src/app/inbound/http/errors/exception_middleware.py`](../../../../src/app/inbound/http/errors/exception_middleware.py) — `GlobalExceptionMiddleware`, the catch-all for everything `error_map` doesn't cover
-    - [`src/app/inbound/http/errors/internal_server_error.py`](../../../../src/app/inbound/http/errors/internal_server_error.py) — the JSON body `GlobalExceptionMiddleware` returns for a genuine 500
-    - [`src/app/inbound/http/errors/openapi_responses.py`](../../../../src/app/inbound/http/errors/openapi_responses.py) — `SERVER_ERROR_RESPONSES`, the app-wide OpenAPI 500 entry
-    - [`src/app/inbound/http/errors/alerting.py`](../../../../src/app/inbound/http/errors/alerting.py) — `AlertCooldown`, used by `GlobalExceptionMiddleware` (full depth on [Observability](../infrastructure-services/observability.md))
-    - [`src/app/inbound/http/api_v1_router.py`](../../../../src/app/inbound/http/api_v1_router.py) — where `SERVER_ERROR_RESPONSES` is applied, once, for the whole `/api/v1` tree
-    - [`src/app/inbound/http/users/create_user.py`](../../../../src/app/inbound/http/users/create_user.py) and [`src/app/inbound/http/account/sign_up.py`](../../../../src/app/inbound/http/account/sign_up.py) — two real `error_map={...}` declarations
+    - [`src/app/base/inbound/http/errors/router.py`](../../../../src/app/base/inbound/http/errors/router.py) — `make_error_aware_router()`, the factory every router in this codebase is built from
+    - [`src/app/base/inbound/http/errors/rules.py`](../../../../src/app/base/inbound/http/errors/rules.py) — shared `Rule` constants, e.g. `HTTP_503_SERVICE_UNAVAILABLE_RULE`
+    - [`src/app/base/inbound/http/errors/callbacks.py`](../../../../src/app/base/inbound/http/errors/callbacks.py) — `log_info`, an `on_error` callback
+    - [`src/app/base/inbound/http/errors/exception_middleware.py`](../../../../src/app/base/inbound/http/errors/exception_middleware.py) — `GlobalExceptionMiddleware`, the catch-all for everything `error_map` doesn't cover
+    - [`src/app/base/inbound/http/errors/internal_server_error.py`](../../../../src/app/base/inbound/http/errors/internal_server_error.py) — the JSON body `GlobalExceptionMiddleware` returns for a genuine 500
+    - [`src/app/base/inbound/http/errors/openapi_responses.py`](../../../../src/app/base/inbound/http/errors/openapi_responses.py) — `SERVER_ERROR_RESPONSES`, the app-wide OpenAPI 500 entry
+    - [`src/app/base/inbound/http/errors/alerting.py`](../../../../src/app/base/inbound/http/errors/alerting.py) — `AlertCooldown`, used by `GlobalExceptionMiddleware` (full depth on [Observability](../infrastructure-services/observability.md))
+    - [`src/app/base/inbound/http/api_v1_router.py`](../../../../src/app/base/inbound/http/api_v1_router.py) — where `SERVER_ERROR_RESPONSES` is applied, once, for the whole `/api/v1` tree
+    - [`src/app/base/inbound/http/users/create_user.py`](../../../../src/app/base/inbound/http/users/create_user.py) and [`src/app/base/inbound/http/account/sign_up.py`](../../../../src/app/base/inbound/http/account/sign_up.py) — two real `error_map={...}` declarations
     - Third-party: [`fastapi-error-map`](https://pypi.org/project/fastapi-error-map/) (installed as `fastapi_error_map`) — the library this whole page documents the usage of
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
@@ -44,7 +44,7 @@ Every route in this codebase declares, right on its `@router.post(...)`/`@router
         style tier2 stroke-width:1px,stroke:#333333
     ```
 
-    > This page is about Tier 1 — the per-route, declarative `error_map`. Tier 2 is [`GlobalExceptionMiddleware`](../../../../src/app/inbound/http/errors/exception_middleware.py), which already has its own page ([Observability](../infrastructure-services/observability.md)); it's mentioned here only to draw the boundary precisely: `error_map` handles the exception types a route's author already knows can happen (a duplicate username, a down database, a missing session) and has deliberately chosen an HTTP status for. `GlobalExceptionMiddleware` handles everything else — by definition, the exceptions nobody wrote a rule for, which is exactly why those are the ones worth an on-call email rather than just an HTTP status.
+    > This page is about Tier 1 — the per-route, declarative `error_map`. Tier 2 is [`GlobalExceptionMiddleware`](../../../../src/app/base/inbound/http/errors/exception_middleware.py), which already has its own page ([Observability](../infrastructure-services/observability.md)); it's mentioned here only to draw the boundary precisely: `error_map` handles the exception types a route's author already knows can happen (a duplicate username, a down database, a missing session) and has deliberately chosen an HTTP status for. `GlobalExceptionMiddleware` handles everything else — by definition, the exceptions nobody wrote a rule for, which is exactly why those are the ones worth an on-call email rather than just an HTTP status.
 
 ## A concrete request, both ways
 
@@ -70,11 +70,11 @@ Every route in this codebase declares, right on its `@router.post(...)`/`@router
         linkStyle default stroke-width:3px,stroke:#333333
     ```
 
-    > The `AuthenticationError` branch is real: it's one of the entries in [`create_user.py`](../../../../src/app/inbound/http/users/create_user.py)'s `error_map` below, mapped to `401 Unauthorized`. The right-hand branch isn't any one specific exception — it's whatever a route's author didn't anticipate, which is the entire point of having a second, unconditional net underneath the first.
+    > The `AuthenticationError` branch is real: it's one of the entries in [`create_user.py`](../../../../src/app/base/inbound/http/users/create_user.py)'s `error_map` below, mapped to `401 Unauthorized`. The right-hand branch isn't any one specific exception — it's whatever a route's author didn't anticipate, which is the entire point of having a second, unconditional net underneath the first.
 
 ## `make_error_aware_router`: the one factory every router goes through
 
-[`router.py`](../../../../src/app/inbound/http/errors/router.py):
+[`router.py`](../../../../src/app/base/inbound/http/errors/router.py):
 
 ```python
 def make_error_aware_router(
@@ -105,7 +105,7 @@ An `error_map` entry can be as short as `ExceptionType: 409` — a bare `int` st
 - **`rule(status, ...)`** is the constructor function that builds a `Rule` — this codebase only ever needs it for the one case where the default translator isn't enough (see `HTTP_503_SERVICE_UNAVAILABLE_RULE` below).
 - **`structured(...)`** is a *translator factory*: calling it returns a callable that, given an HTTP status, returns a `Translator` — a function `Exception -> StructuredErrorResponse`, where `StructuredErrorResponse` is a `TypedDict` with `code`, an optional `message`, and an optional `details`. By default `code` reads `err.code` (falling back to the status's name, e.g. `"HTTP_404_NOT_FOUND"`), `message` reads `str(err)`, and `details` reads `err.details` — all overridable via keyword arguments to `structured()`. Critically, **`structured()` treats 5xx specially**: for any status `>= 500`, unless the exception's type is explicitly whitelisted via `exposed_5xx_types`, the real exception message is replaced by a fixed `server_message` and `details` is dropped — so a 503/500 body never leaks internal exception text to a client, regardless of what the underlying exception's `str()` happens to say.
 
-[`rules.py`](../../../../src/app/inbound/http/errors/rules.py) is where this codebase reaches for `rule()` once, to get a friendlier message on `503` than the library's default status-name fallback:
+[`rules.py`](../../../../src/app/base/inbound/http/errors/rules.py) is where this codebase reaches for `rule()` once, to get a friendlier message on `503` than the library's default status-name fallback:
 
 ```python
 SERVICE_UNAVAILABLE_MESSAGE: Final[str] = "Service temporarily unavailable. Please try again later."
@@ -120,7 +120,7 @@ This builds one specific `Translator` — `structured(server_message=...)` retur
 
 ## The pattern in practice: two real routers, same shape
 
-[`create_user.py`](../../../../src/app/inbound/http/users/create_user.py):
+[`create_user.py`](../../../../src/app/base/inbound/http/users/create_user.py):
 
 ```python
 def make_create_user_router() -> APIRouter:
@@ -151,7 +151,7 @@ def make_create_user_router() -> APIRouter:
     return router
 ```
 
-[`sign_up.py`](../../../../src/app/inbound/http/account/sign_up.py):
+[`sign_up.py`](../../../../src/app/base/inbound/http/account/sign_up.py):
 
 ```python
 def make_sign_up_router() -> APIRouter:
@@ -186,7 +186,7 @@ def make_sign_up_router() -> APIRouter:
 
 The overlap is the point, not a coincidence: `StorageError`, `BusinessTypeError`, `PasswordHasherBusyError`, and the three `*AlreadyExistsError`s map to the exact same statuses in both routers, because they mean the exact same thing regardless of which use case (a **command**, in this codebase's terms — see [Adding a New Use Case (Command)](../use-case-examples/adding-a-use-case.md)) raised them. What differs is only what's *specific* to each endpoint's own authorization shape — `create_user`'s `AuthenticationError → 401` (an admin-only endpoint needs a valid session first) has no counterpart in `sign_up` (public, unauthenticated by design), while `sign_up`'s `AlreadyAuthenticatedError → 403` (an already-logged-in caller can't sign up again) has no counterpart in `create_user`. `HTTP_503_SERVICE_UNAVAILABLE_RULE` — the shared constant from `rules.py` — is reused by name in both, rather than each router rebuilding an equivalent `rule(...)` call from scratch.
 
-Both routers are also built with `on_error=log_info` ([`callbacks.py`](../../../../src/app/inbound/http/errors/callbacks.py)):
+Both routers are also built with `on_error=log_info` ([`callbacks.py`](../../../../src/app/base/inbound/http/errors/callbacks.py)):
 
 ```python
 def log_info(err: Exception) -> None:
@@ -216,7 +216,7 @@ Two more guardrails worth knowing about, both enforced by the library itself rat
 
 Because `error_map` is declared once, on the route, `fastapi-error-map` can read it back to build the route's OpenAPI (the machine-readable API (Application Programming Interface) description FastAPI generates, rendered as the interactive Swagger UI at `/docs`) `responses=` entries — grouping every mapped exception by its resulting status and inferring each one's response model from its `Translator`'s return type. A developer adding a new `error_map` entry gets that status documented in Swagger UI for free, without a second, hand-maintained `responses={...}` dict to keep in sync.
 
-That per-route documentation only covers the statuses a route's own `error_map` produces — it says nothing about the *unconditional* possibility of a genuine 500 from Tier 2. [`openapi_responses.py`](../../../../src/app/inbound/http/errors/openapi_responses.py) covers that gap once, for the whole API, instead of per route:
+That per-route documentation only covers the statuses a route's own `error_map` produces — it says nothing about the *unconditional* possibility of a genuine 500 from Tier 2. [`openapi_responses.py`](../../../../src/app/base/inbound/http/errors/openapi_responses.py) covers that gap once, for the whole API, instead of per route:
 
 ```python
 SERVER_ERROR_RESPONSES: Final[OpenApiResponses] = {
@@ -224,7 +224,7 @@ SERVER_ERROR_RESPONSES: Final[OpenApiResponses] = {
 }
 ```
 
-[`api_v1_router.py`](../../../../src/app/inbound/http/api_v1_router.py) applies it exactly once, on the top-level `/api/v1` router, via plain FastAPI's own `responses=` kwarg (nothing `fastapi-error-map`-specific here — `APIRouter.responses` merges into every route beneath it):
+[`api_v1_router.py`](../../../../src/app/base/inbound/http/api_v1_router.py) applies it exactly once, on the top-level `/api/v1` router, via plain FastAPI's own `responses=` kwarg (nothing `fastapi-error-map`-specific here — `APIRouter.responses` merges into every route beneath it):
 
 ```python
 def make_v1_router(*, cookie_name: str) -> APIRouter:
@@ -238,7 +238,7 @@ So every endpoint's Swagger UI page ends up documenting both halves of this page
 
 ## The same response shape on both tiers
 
-[`internal_server_error.py`](../../../../src/app/inbound/http/errors/internal_server_error.py) is what `GlobalExceptionMiddleware` (Tier 2) actually returns as its JSON body:
+[`internal_server_error.py`](../../../../src/app/base/inbound/http/errors/internal_server_error.py) is what `GlobalExceptionMiddleware` (Tier 2) actually returns as its JSON body:
 
 ```python
 def internal_server_error(exc: Exception) -> StructuredErrorResponse:
@@ -250,7 +250,7 @@ This calls the exact same `structured()` translator factory `make_error_aware_ro
 
 ## Where Tier 2 picks up: `alerting.py`, briefly
 
-[`alerting.py`](../../../../src/app/inbound/http/errors/alerting.py)'s `AlertCooldown` — a per-exception-type, in-memory rate limiter that gates whether `GlobalExceptionMiddleware` emails an on-call address for a given unhandled 500 — is documented in full on [Observability (Prometheus, Grafana, Loki)](../infrastructure-services/observability.md#the-5xx-email-alerting-path). The only thing worth restating here is the boundary this page has been drawing throughout: `AlertCooldown` only ever runs for exceptions that reach `GlobalExceptionMiddleware` in the first place — which, by construction, is exactly the set of exceptions *not* covered by any route's `error_map`. A route that correctly maps `UsernameAlreadyExistsError → 409` will never trigger an alert email for that exception, no matter how often real users hit it; only a genuinely unanticipated failure mode does.
+[`alerting.py`](../../../../src/app/base/inbound/http/errors/alerting.py)'s `AlertCooldown` — a per-exception-type, in-memory rate limiter that gates whether `GlobalExceptionMiddleware` emails an on-call address for a given unhandled 500 — is documented in full on [Observability (Prometheus, Grafana, Loki)](../infrastructure-services/observability.md#the-5xx-email-alerting-path). The only thing worth restating here is the boundary this page has been drawing throughout: `AlertCooldown` only ever runs for exceptions that reach `GlobalExceptionMiddleware` in the first place — which, by construction, is exactly the set of exceptions *not* covered by any route's `error_map`. A route that correctly maps `UsernameAlreadyExistsError → 409` will never trigger an alert email for that exception, no matter how often real users hit it; only a genuinely unanticipated failure mode does.
 
 ## Where to go next
 

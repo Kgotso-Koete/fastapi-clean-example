@@ -8,7 +8,7 @@
 
 ## What this actually is — and its one real limitation
 
-`make test-docker` runs `tests/smoke` + `tests/integration/with_infra` (real Postgres, real Redis, a real `worker` container — see [Running Tests](running-tests.md)) with its own separate coverage data file (`.coverage.docker`, never merged with the plain `make check` run's `.coverage`), then writes a full, browsable report to `htmlcov-docker/index.html` at the repo root. The page below embeds that exact file directly.
+`make test-docker` runs `tests/base/smoke` + `tests/base/integration/with_infra`, plus each module's and `shared`'s `integration/with_infra` folder (real Postgres, real Redis, a real `worker` container — see [Running Tests](running-tests.md)) with its own separate coverage data file (`.coverage.docker`, never merged with the plain `make check` run's `.coverage`), then writes a full, browsable report to `htmlcov-docker/index.html` at the repo root. The page below embeds that exact file directly.
 
 Same caveat as [Unit Test Coverage Report](unit-coverage-report.md): `htmlcov-docker/` is a gitignored build artifact that only updates when you actually run `make test-docker` yourself, and doesn't exist at all on a fresh clone until then — unlike the [dependency graph](../architecture/layer-dependencies.md#the-real-import-graph-generated-from-the-code-itself)/[Complexity](../complexity.md) pages, this one isn't regenerated on every `make wiki-build`. Treat it as a snapshot of your last local `make test-docker` run.
 
@@ -18,4 +18,4 @@ Same caveat as [Unit Test Coverage Report](unit-coverage-report.md): `htmlcov-do
 
 - [Unit Test Coverage Report](unit-coverage-report.md) — the counterpart for `make check`'s fast, no-infrastructure test tiers.
 - [Running Tests](running-tests.md) — exactly which test paths `make test-docker` runs, and why its coverage data stays separate from `make check`'s.
-- [Test Infrastructure & Fixtures](test-infrastructure.md) — what `tests/integration/with_infra`/`tests/smoke` actually provision.
+- [Test Infrastructure & Fixtures](test-infrastructure.md) — what `tests/base/integration/with_infra`/`tests/base/smoke` actually provision.

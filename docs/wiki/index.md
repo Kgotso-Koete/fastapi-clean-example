@@ -1,11 +1,11 @@
 # Overview
 
 !!! sourcefiles "Relevant Source Files/Folders"
-    - [`src/app/main/run.py`](../../src/app/main/run.py) — the entry point; `make_app()` is what `uvicorn` actually runs
-    - [`src/app/core/`](../../src/app/core/) — business rules (innermost layer)
-    - [`src/app/outbound/`](../../src/app/outbound/) — infrastructure adapters
-    - [`src/app/inbound/`](../../src/app/inbound/) — HTTP adapters
-    - [`src/app/main/`](../../src/app/main/) — composition root (outermost layer)
+    - [`src/app/base/main/run.py`](../../src/app/base/main/run.py) — the entry point; `make_app()` is what `uvicorn` actually runs
+    - [`src/app/base/core/`](../../src/app/base/core/) — business rules (innermost layer)
+    - [`src/app/base/outbound/`](../../src/app/base/outbound/) — infrastructure adapters
+    - [`src/app/base/inbound/`](../../src/app/base/inbound/) — HTTP adapters
+    - [`src/app/base/main/`](../../src/app/base/main/) — composition root (outermost layer)
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
 
@@ -23,6 +23,8 @@ It also serves a second purpose beyond documenting the architecture itself: the 
     > One rule, enforced by a real, passing/failing CI (Continuous Integration) check (`import-linter`), not just convention: an import can only point from an outer layer toward an inner one, never back. `core` — the innermost ring — never knows it's running behind HTTP (Hypertext Transfer Protocol), or that its data lives in Postgres.
 
 See [Architecture → Layer Dependencies & Import Rules](content/architecture/layer-dependencies.md) for the full explanation, including what the linter does and doesn't actually catch.
+
+The app is also split into **units**: the original app (`base`), removable modules such as Organizations and Notifications, and domain-free building blocks (`shared`), each keeping these same four layers inside. See [Architecture → Units: base, Modules and shared](content/architecture/units.md).
 
 ## What's actually implemented
 

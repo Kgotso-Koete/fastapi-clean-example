@@ -1,13 +1,13 @@
 # Database Migrations (Alembic)
 
 !!! sourcefiles "Relevant Source Files/Folders"
-    - [`src/app/outbound/persistence_sqla/alembic/env.py`](../../../../src/app/outbound/persistence_sqla/alembic/env.py) — wires Alembic to this project's real settings and SQLAlchemy mappings
-    - [`src/app/outbound/persistence_sqla/alembic/versions/`](../../../../src/app/outbound/persistence_sqla/alembic/versions/) — every real migration file, in date order
-    - [`src/app/outbound/persistence_sqla/alembic/script.py.mako`](../../../../src/app/outbound/persistence_sqla/alembic/script.py.mako) — the template every new migration file is generated from
+    - [`src/app/base/outbound/persistence_sqla/alembic/env.py`](../../../../src/app/base/outbound/persistence_sqla/alembic/env.py) — wires Alembic to this project's real settings and SQLAlchemy mappings
+    - [`src/app/base/outbound/persistence_sqla/alembic/versions/`](../../../../src/app/base/outbound/persistence_sqla/alembic/versions/) — every real migration file, in date order
+    - [`src/app/base/outbound/persistence_sqla/alembic/script.py.mako`](../../../../src/app/base/outbound/persistence_sqla/alembic/script.py.mako) — the template every new migration file is generated from
     - [`alembic.ini`](../../../../alembic.ini) — `file_template`, controlling the `YYYY-MM-DD_HHMMSS_<slug>.py` filenames
     - [`scripts/makefile/migration.sh`](../../../../scripts/makefile/migration.sh) — what `make migration` actually runs
-    - [`tests/integration/migrations/test_stairway.py`](../../../../tests/integration/migrations/test_stairway.py) — the "stairway" test that walks every migration up and down
-    - [`tests/integration/conftest.py`](../../../../tests/integration/conftest.py) — the `allow_destructive` safety-guard fixture the stairway test requires
+    - [`tests/base/integration/migrations/test_stairway.py`](../../../../tests/base/integration/migrations/test_stairway.py) — the "stairway" test that walks every migration up and down
+    - [`tests/base/integration/conftest.py`](../../../../tests/base/integration/conftest.py) — the `allow_destructive` safety-guard fixture the stairway test requires
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
 
@@ -38,7 +38,7 @@ Every step above is a real line in [`scripts/makefile/migration.sh`](../../../..
 
 ## How Alembic knows what "the current models" look like
 
-[`env.py`](../../../../src/app/outbound/persistence_sqla/alembic/env.py) is what connects Alembic's generic machinery to this specific codebase:
+[`env.py`](../../../../src/app/base/outbound/persistence_sqla/alembic/env.py) is what connects Alembic's generic machinery to this specific codebase:
 
 ```python
 map_tables()
@@ -52,7 +52,7 @@ config.set_main_option("sqlalchemy.url", settings.dsn)
 
 ## Migration file anatomy
 
-Every file under [`alembic/versions/`](../../../../src/app/outbound/persistence_sqla/alembic/versions/) follows the same shape, generated from [`script.py.mako`](../../../../src/app/outbound/persistence_sqla/alembic/script.py.mako). Take [`2026-08-21_151755_add_event_outbox_table.py`](../../../../src/app/outbound/persistence_sqla/alembic/versions/2026-08-21_151755_add_event_outbox_table.py) (the migration that added the transactional outbox's table — see [Core Patterns → Domain Events & the Transactional Outbox](../core-patterns/domain-events-outbox.md)):
+Every file under [`alembic/versions/`](../../../../src/app/base/outbound/persistence_sqla/alembic/versions/) follows the same shape, generated from [`script.py.mako`](../../../../src/app/base/outbound/persistence_sqla/alembic/script.py.mako). Take [`2026-08-21_151755_add_event_outbox_table.py`](../../../../src/app/base/outbound/persistence_sqla/alembic/versions/2026-08-21_151755_add_event_outbox_table.py) (the migration that added the transactional outbox's table — see [Core Patterns → Domain Events & the Transactional Outbox](../core-patterns/domain-events-outbox.md)):
 
 ```python
 revision: str = "6376b41ed669"
@@ -71,7 +71,7 @@ def downgrade() -> None:
 ```
 
 - **Filename**: `alembic.ini`'s `file_template = %%(year)d-%%(month).2d-%%(day).2d_%%(hour).2d%%(minute).2d%%(second).2d_%%(slug)s` — a sortable timestamp prefix plus the `msg` you passed to `make migration`, so `ls` on the `versions/` folder already shows them in chronological order without needing to open each file.
-- **`revision`/`down_revision`**: a random hex id for this migration, and the hex id of the migration it chains onto — this linked list, not the filename, is what Alembic actually walks; `down_revision = None` marks the very first migration ([`2026-04-01_222815_users.py`](../../../../src/app/outbound/persistence_sqla/alembic/versions/2026-04-01_222815_users.py)).
+- **`revision`/`down_revision`**: a random hex id for this migration, and the hex id of the migration it chains onto — this linked list, not the filename, is what Alembic actually walks; `down_revision = None` marks the very first migration ([`2026-04-01_222815_users.py`](../../../../src/app/base/outbound/persistence_sqla/alembic/versions/2026-04-01_222815_users.py)).
 - **`upgrade()`/`downgrade()`**: autogenerated from the schema diff, but the `# please adjust!` comment autogenerate leaves in every new file is a real warning, not boilerplate — autogenerate reliably catches structural changes (new tables/columns/constraints) but won't write data migrations (backfilling a new non-nullable column, for instance) for you; that part is always manual.
 
 ## Applying migrations: where `alembic upgrade head` actually runs
@@ -109,7 +109,7 @@ There's no single "the app runs migrations" step — it happens at a few differe
 
 ## The stairway test
 
-[`tests/integration/migrations/test_stairway.py`](../../../../tests/integration/migrations/test_stairway.py) is a correctness check on the migrations themselves, not on application behavior — for every revision from the very first migration up to `head`, in order, it does:
+[`tests/base/integration/migrations/test_stairway.py`](../../../../tests/base/integration/migrations/test_stairway.py) is a correctness check on the migrations themselves, not on application behavior — for every revision from the very first migration up to `head`, in order, it does:
 
 ```python
 upgrade(alembic_config, revision.revision)
@@ -119,7 +119,7 @@ upgrade(alembic_config, revision.revision)
 
 i.e. upgrade to that revision, downgrade back one step, then upgrade forward again — parametrized so every single migration in the chain gets this treatment, not just the newest one. This catches a specific, easy-to-miss class of bug: a `downgrade()` that was never actually tested (because in normal use nobody downgrades), left broken, incomplete, or referencing a column/type that a *later* migration already renamed or dropped. `make migration` runs this test automatically against every new migration (via `STAIRWAY_TEST` in the Makefile) before the throwaway database is torn down, and [`make test-docker-migrations`](makefile-commands.md#testing) runs it independently against the full existing chain.
 
-The test requires the session-scoped `allow_destructive` fixture from [`tests/integration/conftest.py`](../../../../tests/integration/conftest.py), which raises `pytest.UsageError` unless `ALLOW_DESTRUCTIVE_TEST_CLEANUP=1` is set in the environment — a deliberate guard, since repeatedly upgrading/downgrading is exactly the kind of destructive operation you don't want silently possible against whatever database happens to be configured. Both `migration.sh` and the Docker test Compose override (`docker-compose.test.yml`) set this explicitly rather than leaving it to chance.
+The test requires the session-scoped `allow_destructive` fixture from [`tests/base/integration/conftest.py`](../../../../tests/base/integration/conftest.py), which raises `pytest.UsageError` unless `ALLOW_DESTRUCTIVE_TEST_CLEANUP=1` is set in the environment — a deliberate guard, since repeatedly upgrading/downgrading is exactly the kind of destructive operation you don't want silently possible against whatever database happens to be configured. Both `migration.sh` and the Docker test Compose override (`docker-compose.test.yml`) set this explicitly rather than leaving it to chance.
 
 ## Applying an existing migration yourself
 

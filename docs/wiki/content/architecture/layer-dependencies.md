@@ -2,11 +2,11 @@
 
 !!! sourcefiles "Relevant Source Files/Folders"
     - [`pyproject.toml`](../../../../pyproject.toml) — the `[tool.importlinter]` section (real, enforced contracts)
-    - [`src/app/core/`](../../../../src/app/core/) — business rules (innermost layer)
-    - [`src/app/outbound/`](../../../../src/app/outbound/) — infrastructure adapters
-    - [`src/app/inbound/`](../../../../src/app/inbound/) — HTTP adapters
-    - [`src/app/main/`](../../../../src/app/main/) — composition root (outermost layer)
-    - [`src/app/inbound/http/health/checks.py`](../../../../src/app/inbound/http/health/checks.py) — a concrete example of what the linter does *not* catch
+    - [`src/app/base/core/`](../../../../src/app/base/core/) — business rules (innermost layer)
+    - [`src/app/base/outbound/`](../../../../src/app/base/outbound/) — infrastructure adapters
+    - [`src/app/base/inbound/`](../../../../src/app/base/inbound/) — HTTP adapters
+    - [`src/app/base/main/`](../../../../src/app/base/main/) — composition root (outermost layer)
+    - [`src/app/base/inbound/http/health/checks.py`](../../../../src/app/base/inbound/http/health/checks.py) — a concrete example of what the linter does *not* catch
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
 
@@ -17,6 +17,8 @@
 **Domain-Driven Design** ([Eric Evans' term](https://martinfowler.com/bliki/DomainDrivenDesign.html)) is a complementary discipline for what goes *inside* that innermost layer: modeling code around the real business domain and its own vocabulary, using a small, deliberate set of building blocks — **Entities** (things with identity that persists over time, like `User`), **Value Objects** (things defined purely by their value, like `Email` or `Username`), and **Domain Events** (things that happened, like `UserRegisteredEvent`). Clean Architecture says *where* business logic lives and what it can't depend on; DDD says *how* to shape that business logic once it's there. This codebase uses both together — [Core Layer (Domain & Business Rules)](core-layer.md) is where the DDD building blocks actually live.
 
 This project's four rings (`main`/`inbound`/`outbound`/`core`) are a concrete, codebase-specific naming of the same idea Martin's original diagram draws more generically (Entities → Use Cases → Interface Adapters → Frameworks & Drivers): `core` corresponds to Entities-plus-Use-Cases, `inbound`/`outbound` together are Interface Adapters, and `main` is Frameworks & Drivers plus the composition root that wires them all together. The rest of this page is the one concrete, enforced rule that makes that separation real rather than aspirational.
+
+These four layers are `base`'s. Every module, and `shared`, keeps the same four inside it — see [Units: base, Modules and shared](units.md).
 
 ## The one rule
 
@@ -34,7 +36,7 @@ The first, load-bearing contract, declared in [`pyproject.toml`](../../../../pyp
 id = "clean-architecture"
 name = "inner must not import outer"
 type = "layers"
-containers = ["app"]
+containers = ["app.base"]
 layers = [
   "(main)",
   "inbound",
@@ -93,7 +95,7 @@ The diagram above is hand-drawn, for a clean, minimal illustration of the rule. 
 
 ## Why: Dependency Inversion / Ports-and-Adapters
 
-`core` doesn't import `outbound` — it can't, the linter forbids it. Instead, `core` declares a **port**: an abstract contract stating "I need something that can `get_user_by_id`, or `hash` a password, or `commit` a transaction." Look at [`src/app/core/commands/ports/transaction_manager.py`](../../../../src/app/core/commands/ports/transaction_manager.py) — a plain `Protocol` with one abstract method, no SQLAlchemy import in sight. `outbound`'s [`SqlaTransactionManager`](../../../../src/app/outbound/adapters/sqla_transaction_manager.py) then *implements* that same shape, wrapping a real `AsyncSession`. Nothing in `core` ever imports `SqlaTransactionManager` — the composition root (`main`) is the only place that imports both the port and the concrete adapter, and hands the adapter to `core`'s use case through dependency injection (see [`src/app/main/ioc/core.py`](../../../../src/app/main/ioc/core.py)'s `provide(SqlaTransactionManager, provides=TransactionManager)` line).
+`core` doesn't import `outbound` — it can't, the linter forbids it. Instead, `core` declares a **port**: an abstract contract stating "I need something that can `get_user_by_id`, or `hash` a password, or `commit` a transaction." Look at [`src/app/base/core/commands/ports/transaction_manager.py`](../../../../src/app/base/core/commands/ports/transaction_manager.py) — a plain `Protocol` with one abstract method, no SQLAlchemy import in sight. `outbound`'s [`SqlaTransactionManager`](../../../../src/app/base/outbound/adapters/sqla_transaction_manager.py) then *implements* that same shape, wrapping a real `AsyncSession`. Nothing in `core` ever imports `SqlaTransactionManager` — the composition root (`main`) is the only place that imports both the port and the concrete adapter, and hands the adapter to `core`'s use case through dependency injection (see [`src/app/base/main/ioc/core.py`](../../../../src/app/base/main/ioc/core.py)'s `provide(SqlaTransactionManager, provides=TransactionManager)` line).
 
 !!! figure "A real dependency being injected: CreateUser's full constructor, wired by CoreProvider"
     ```mermaid
@@ -135,11 +137,11 @@ The diagram above is hand-drawn, for a clean, minimal illustration of the rule. 
         style ctor stroke-width:1px,stroke:#333333
     ```
 
-    > [`CreateUser`](../../../../src/app/core/commands/create_user.py) is a real, unsimplified `core.commands` class — it declares seven constructor dependencies purely by type: two plain concrete services (`CurrentUserService`, `UserService`) and five ports. [`CoreProvider`](../../../../src/app/main/ioc/core.py) is the only place in the codebase that knows the concrete adapter behind each port — `provide(SqlaTransactionManager, provides=TransactionManager)` tells Dishka "when something asks for a `TransactionManager`, hand it a `SqlaTransactionManager`," and so on for each of the other four. At request time, the router's `handler: FromDishka[CreateUser]` parameter asks Dishka for a fully-constructed `CreateUser`; Dishka resolves all seven dependencies recursively from `CoreProvider`'s bindings and calls `CreateUser.__init__` with the results, before a single line of `CreateUser.execute()` runs. `CreateUser` itself never imports Dishka, `SqlaTransactionManager`, or any other concrete adapter — everything it received arrived by type alone. See [Core Patterns → Dependency Injection with Dishka](../core-patterns/dependency-injection.md) for how `CoreProvider`'s bindings themselves are structured.
+    > [`CreateUser`](../../../../src/app/base/core/commands/create_user.py) is a real, unsimplified `core.commands` class — it declares seven constructor dependencies purely by type: two plain concrete services (`CurrentUserService`, `UserService`) and five ports. [`CoreProvider`](../../../../src/app/base/main/ioc/core.py) is the only place in the codebase that knows the concrete adapter behind each port — `provide(SqlaTransactionManager, provides=TransactionManager)` tells Dishka "when something asks for a `TransactionManager`, hand it a `SqlaTransactionManager`," and so on for each of the other four. At request time, the router's `handler: FromDishka[CreateUser]` parameter asks Dishka for a fully-constructed `CreateUser`; Dishka resolves all seven dependencies recursively from `CoreProvider`'s bindings and calls `CreateUser.__init__` with the results, before a single line of `CreateUser.execute()` runs. `CreateUser` itself never imports Dishka, `SqlaTransactionManager`, or any other concrete adapter — everything it received arrived by type alone. See [Core Patterns → Dependency Injection with Dishka](../core-patterns/dependency-injection.md) for how `CoreProvider`'s bindings themselves are structured.
 
 This buys three concrete things, all real in this codebase today:
 
-1. **Swap infrastructure without touching business rules.** `EmailSettings.USE_CONSOLE` switches between `ConsoleEmailSender` and `SmtpEmailSender` (see [`src/app/main/ioc/core.py`](../../../../src/app/main/ioc/core.py)'s `provide_email_sender`) — every use case that sends email keeps calling the same `EmailSender` port, unaware which one is behind it.
+1. **Swap infrastructure without touching business rules.** `EmailSettings.USE_CONSOLE` switches between `ConsoleEmailSender` and `SmtpEmailSender` (see [`src/app/shared/main/ioc/providers.py`](../../../../src/app/shared/main/ioc/providers.py)'s `SharedEmailProvider`) — every use case that sends email keeps calling the same `EmailSender` port, unaware which one is behind it.
 2. **Add a second way in.** Nothing about `core.commands.create_user.CreateUser` assumes HTTP. A future CLI (Command-Line Interface) or gRPC entrypoint could call the exact same class — it would live in its own package alongside `inbound`, not inside it.
 3. **Unit-test business rules with zero database or web server.** Every port can be faked in a unit test; the real Postgres/SQLAlchemy stack is only exercised by integration tests.
 
@@ -150,29 +152,29 @@ Four more `forbidden`-type contracts, also declared in [`pyproject.toml`](../../
 ```toml
 [[tool.importlinter.contracts]]
 id = "cqrs-common-must-not-import-commands"
-source_modules = ["app.core.common"]
-forbidden_modules = ["app.core.commands"]
+source_modules = ["app.base.core.common", "app.modules.*.core.common"]
+forbidden_modules = ["app.base.core.commands", "app.modules.*.core.commands"]
 
 [[tool.importlinter.contracts]]
 id = "cqrs-common-must-not-import-queries"
-source_modules = ["app.core.common"]
-forbidden_modules = ["app.core.queries"]
+source_modules = ["app.base.core.common", "app.modules.*.core.common"]
+forbidden_modules = ["app.base.core.queries", "app.modules.*.core.queries"]
 
 [[tool.importlinter.contracts]]
 id = "cqrs-commands-must-not-import-queries"
-source_modules = ["app.core.commands"]
-forbidden_modules = ["app.core.queries"]
+source_modules = ["app.base.core.commands", "app.modules.*.core.commands"]
+forbidden_modules = ["app.base.core.queries", "app.modules.*.core.queries"]
 
 [[tool.importlinter.contracts]]
 id = "cqrs-queries-must-not-import-commands"
-source_modules = ["app.core.queries"]
-forbidden_modules = ["app.core.commands"]
+source_modules = ["app.base.core.queries", "app.modules.*.core.queries"]
+forbidden_modules = ["app.base.core.commands", "app.modules.*.core.commands"]
 
 [[tool.importlinter.contracts]]
 id = "auth-ctx"
 name = "auth-ctx must use its own adapters"
-source_modules = ["app.outbound.auth_ctx"]
-forbidden_modules = ["app.outbound.adapters"]
+source_modules = ["app.base.outbound.auth_ctx"]
+forbidden_modules = ["app.base.outbound.adapters"]
 ```
 
 !!! figure "Forbidden-import contracts inside core and outbound"
@@ -223,9 +225,9 @@ forbidden_modules = ["app.outbound.adapters"]
 
 ## What the linter does *not* catch
 
-`import-linter`'s contracts only police imports **between the four named top-level packages** (`app.main`, `app.inbound`, `app.outbound`, `app.core`) and, for the `forbidden` contracts, between specific sub-packages inside `core`/`outbound`. It says nothing about which *third-party* libraries any given layer reaches for directly.
+`import-linter`'s contracts only police imports **between the app's own packages** (`base`'s four layers — `app.base.main`, `app.base.inbound`, `app.base.outbound`, `app.base.core` — plus `app.modules` and `app.shared`) and, for the `forbidden` and `protected` contracts, between specific sub-packages inside them. It says nothing about which *third-party* libraries any given layer reaches for directly.
 
-A real example already living in this codebase: [`src/app/inbound/http/health/router.py`](../../../../src/app/inbound/http/health/router.py) injects a plain `sqlalchemy.ext.asyncio.AsyncSession` straight from Dishka (`session: FromDishka[AsyncSession]`) and hands it to [`src/app/inbound/http/health/checks.py`](../../../../src/app/inbound/http/health/checks.py)'s `db_check`:
+A real example already living in this codebase: [`src/app/base/inbound/http/health/router.py`](../../../../src/app/base/inbound/http/health/router.py) injects a plain `sqlalchemy.ext.asyncio.AsyncSession` straight from Dishka (`session: FromDishka[AsyncSession]`) and hands it to [`src/app/base/inbound/http/health/checks.py`](../../../../src/app/base/inbound/http/health/checks.py)'s `db_check`:
 
 ```python
 from sqlalchemy import text
@@ -239,7 +241,7 @@ async def db_check(session: AsyncSession) -> None:
         raise ProbeError from e
 ```
 
-This is `inbound` importing `sqlalchemy` directly — no `core` port in sight, no `outbound` adapter in between. `lint-imports` passes on this without complaint, because `sqlalchemy` isn't part of the `app` package the contracts are scoped to (`containers = ["app"]`); the contract simply has no opinion on it. In practice this is a deliberate, low-stakes shortcut for a liveness/readiness probe that only ever runs `SELECT 1` and has no business logic to protect — but it's a genuine, real gap between "the rule as stated" (imports only ever point inward, through ports) and "the rule as enforced" (imports between four specific packages only). Anywhere a stricter guarantee mattered, this same gap could just as easily hide a `core` layer file reaching for `requests` or `boto3` directly — the linter would stay green throughout.
+This is `inbound` importing `sqlalchemy` directly — no `core` port in sight, no `outbound` adapter in between. `lint-imports` passes on this without complaint, because `sqlalchemy` isn't part of the `app` package the contracts are scoped to (`containers = ["app.base"]`); the contract simply has no opinion on it. In practice this is a deliberate, low-stakes shortcut for a liveness/readiness probe that only ever runs `SELECT 1` and has no business logic to protect — but it's a genuine, real gap between "the rule as stated" (imports only ever point inward, through ports) and "the rule as enforced" (imports between four specific packages only). Anywhere a stricter guarantee mattered, this same gap could just as easily hide a `core` layer file reaching for `requests` or `boto3` directly — the linter would stay green throughout.
 
 ## Where to go next
 

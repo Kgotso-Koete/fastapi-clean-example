@@ -1,13 +1,13 @@
 # Users: Set User Password
 
 !!! sourcefiles "Relevant Source Files/Folders"
-    - [`src/app/inbound/http/users/set_user_password.py`](../../../../src/app/inbound/http/users/set_user_password.py) — HTTP router
-    - [`src/app/core/commands/set_user_password.py`](../../../../src/app/core/commands/set_user_password.py) — the `SetUserPassword` command
-    - [`src/app/core/common/services/user.py`](../../../../src/app/core/common/services/user.py) — `UserService.change_password()`
-    - [`src/app/core/common/authorization/permissions.py`](../../../../src/app/core/common/authorization/permissions.py) — `CanManageRole`, `CanManageSubordinate`
-    - [`src/app/core/common/value_objects/raw_password.py`](../../../../src/app/core/common/value_objects/raw_password.py) — `RawPassword` value object
-    - [`src/app/core/commands/exceptions.py`](../../../../src/app/core/commands/exceptions.py) — `UserNotFoundError`
-    - [`src/app/main/ioc/core.py`](../../../../src/app/main/ioc/core.py) — DI wiring (`CoreProvider`)
+    - [`src/app/base/inbound/http/users/set_user_password.py`](../../../../src/app/base/inbound/http/users/set_user_password.py) — HTTP router
+    - [`src/app/base/core/commands/set_user_password.py`](../../../../src/app/base/core/commands/set_user_password.py) — the `SetUserPassword` command
+    - [`src/app/base/core/common/services/user.py`](../../../../src/app/base/core/common/services/user.py) — `UserService.change_password()`
+    - [`src/app/base/core/common/authorization/permissions.py`](../../../../src/app/base/core/common/authorization/permissions.py) — `CanManageRole`, `CanManageSubordinate`
+    - [`src/app/base/core/common/value_objects/raw_password.py`](../../../../src/app/base/core/common/value_objects/raw_password.py) — `RawPassword` value object
+    - [`src/app/base/core/commands/exceptions.py`](../../../../src/app/base/core/commands/exceptions.py) — `UserNotFoundError`
+    - [`src/app/base/main/ioc/core.py`](../../../../src/app/base/main/ioc/core.py) — DI wiring (`CoreProvider`)
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
 

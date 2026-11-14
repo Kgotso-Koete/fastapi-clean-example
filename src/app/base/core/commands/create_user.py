@@ -1,0 +1,120 @@
+import logging
+from dataclasses import dataclass
+from datetime import datetime
+from enum import StrEnum
+from typing import TypedDict
+from uuid import UUID
+
+from app.base.core.commands.exceptions import (
+    EmailAlreadyExistsError,
+    PhoneNumberAlreadyExistsError,
+    UsernameAlreadyExistsError,
+)
+from app.base.core.commands.ports.flusher import Flusher
+from app.base.core.commands.ports.transaction_manager import TransactionManager
+from app.base.core.commands.ports.user_tx_storage import UserTxStorage
+from app.base.core.commands.ports.utc_timer import UtcTimer
+from app.base.core.common.authorization.authorize import authorize
+from app.base.core.common.authorization.current_user_service import CurrentUserService
+from app.base.core.common.authorization.permissions import CanManageRole, RoleManagementContext
+from app.base.core.common.entities.types_ import UserRole
+from app.base.core.common.factories.id_factory import create_user_id
+from app.base.core.common.ports.event_dispatcher import EventDispatcher
+from app.base.core.common.services.user import UserService
+from app.base.core.common.value_objects.email import Email
+from app.base.core.common.value_objects.phone_number import PhoneNumber
+from app.base.core.common.value_objects.raw_password import RawPassword
+from app.base.core.common.value_objects.username import Username
+
+logger = logging.getLogger(__name__)
+
+
+class UserRoleRequestEnum(StrEnum):
+    USER = "user"
+    ADMIN = "admin"
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class CreateUserRequest:
+    username: str
+    email: str
+    phone_number: str
+    password: str
+    role: UserRoleRequestEnum
+
+
+class CreateUserResponse(TypedDict):
+    id: UUID
+    created_at: datetime
+
+
+class CreateUser:
+    """
+    - Open to admins.
+    - Creates new user, including admins, if the username is unique.
+    - Only super admins can create new admins.
+    """
+
+    def __init__(
+        self,
+        current_user_service: CurrentUserService,
+        user_service: UserService,
+        utc_timer: UtcTimer,
+        user_tx_storage: UserTxStorage,
+        flusher: Flusher,
+        transaction_manager: TransactionManager,
+        event_dispatcher: EventDispatcher,
+    ) -> None:
+        self._current_user_service = current_user_service
+        self._user_service = user_service
+        self._utc_timer = utc_timer
+        self._user_tx_storage = user_tx_storage
+        self._flusher = flusher
+        self._transaction_manager = transaction_manager
+        self._event_dispatcher = event_dispatcher
+
+    async def execute(self, request: CreateUserRequest) -> CreateUserResponse:
+        logger.info("Create user: started.")
+
+        current_user = await self._current_user_service.get_current_user()
+        role = UserRole(request.role)
+        authorize(
+            CanManageRole(),
+            context=RoleManagementContext(
+                subject=current_user,
+                target_role=role,
+            ),
+        )
+        username = Username(request.username)
+        password = RawPassword(request.password)
+        email = Email(request.email)
+        phone_number = PhoneNumber(request.phone_number)
+        user = await self._user_service.create_user_with_raw_password(
+            user_id=create_user_id(),
+            username=username,
+            email=email,
+            phone_number=phone_number,
+            raw_password=password,
+            now=self._utc_timer.now,
+            role=role,
+        )
+        self._user_tx_storage.add(user)
+        events = user.collect_events()
+        await self._event_dispatcher.stage(events)
+        try:
+            await self._flusher.flush()
+        except UsernameAlreadyExistsError:
+            raise
+        except EmailAlreadyExistsError:
+            raise
+        except PhoneNumberAlreadyExistsError:
+            raise
+
+        await self._transaction_manager.commit()
+        await self._event_dispatcher.dispatch(events)
+
+        logger.info("Create user: done.")
+        return CreateUserResponse(
+            id=user.id_,
+            created_at=user.created_at.value,
+        )

@@ -1,19 +1,19 @@
 # Adding a New Use Case (Command)
 
 !!! sourcefiles "Relevant Source Files/Folders"
-    - [`src/app/core/commands/create_user.py`](../../../../src/app/core/commands/create_user.py) — the worked template for this page
-    - [`src/app/core/commands/ports/flusher.py`](../../../../src/app/core/commands/ports/flusher.py)
-    - [`src/app/core/commands/ports/transaction_manager.py`](../../../../src/app/core/commands/ports/transaction_manager.py)
-    - [`src/app/core/commands/ports/user_tx_storage.py`](../../../../src/app/core/commands/ports/user_tx_storage.py)
-    - [`src/app/core/commands/ports/utc_timer.py`](../../../../src/app/core/commands/ports/utc_timer.py)
-    - [`src/app/core/common/ports/event_dispatcher.py`](../../../../src/app/core/common/ports/event_dispatcher.py)
-    - [`src/app/core/common/services/user.py`](../../../../src/app/core/common/services/user.py)
-    - [`src/app/main/ioc/core.py`](../../../../src/app/main/ioc/core.py) — where `CreateUser` and its ports get wired
-    - [`tests/unit/core/common/services/factories.py`](../../../../tests/unit/core/common/services/factories.py) — the factory-function pattern used for unit test fixtures in this codebase
+    - [`src/app/base/core/commands/create_user.py`](../../../../src/app/base/core/commands/create_user.py) — the worked template for this page
+    - [`src/app/base/core/commands/ports/flusher.py`](../../../../src/app/base/core/commands/ports/flusher.py)
+    - [`src/app/base/core/commands/ports/transaction_manager.py`](../../../../src/app/base/core/commands/ports/transaction_manager.py)
+    - [`src/app/base/core/commands/ports/user_tx_storage.py`](../../../../src/app/base/core/commands/ports/user_tx_storage.py)
+    - [`src/app/base/core/commands/ports/utc_timer.py`](../../../../src/app/base/core/commands/ports/utc_timer.py)
+    - [`src/app/base/core/common/ports/event_dispatcher.py`](../../../../src/app/base/core/common/ports/event_dispatcher.py)
+    - [`src/app/base/core/common/services/user.py`](../../../../src/app/base/core/common/services/user.py)
+    - [`src/app/base/main/ioc/core.py`](../../../../src/app/base/main/ioc/core.py) — where `CreateUser` and its ports get wired
+    - [`tests/base/unit/core/common/services/factories.py`](../../../../tests/base/unit/core/common/services/factories.py) — the factory-function pattern used for unit test fixtures in this codebase
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
 
-A "use case" here is a **Command**: a single class in [`src/app/core/`](../../../../src/app/core/) with one public `execute()` method, that expresses one business operation end to end. [`CreateUser`](../../../../src/app/core/commands/create_user.py) — "an admin creates a new user, possibly an admin, subject to role-management authorization" — is the most complete example already in this codebase, so it's the template this page walks through literally, step by step.
+A "use case" here is a **Command**: a single class in [`src/app/base/core/`](../../../../src/app/base/core/) with one public `execute()` method, that expresses one business operation end to end. [`CreateUser`](../../../../src/app/base/core/commands/create_user.py) — "an admin creates a new user, possibly an admin, subject to role-management authorization" — is the most complete example already in this codebase, so it's the template this page walks through literally, step by step.
 
 ## The layers a new command touches
 
@@ -32,7 +32,7 @@ A "use case" here is a **Command**: a single class in [`src/app/core/`](../../..
         end
 
         subgraph tests["tests (unit)"]
-            factory["4. Add/extend a factory\n(tests/unit/.../factories.py)"]
+            factory["4. Add/extend a factory\n(tests/base/unit/.../factories.py)"]
             unit["5. Unit test execute()\nwith stubbed ports"]
             factory --> unit
         end
@@ -49,7 +49,7 @@ A "use case" here is a **Command**: a single class in [`src/app/core/`](../../..
 
 ## Step 1 — Reuse or define the ports it needs
 
-[`CreateUser.__init__`](../../../../src/app/core/commands/create_user.py) takes seven collaborators, every one of them a `Protocol` (a port) rather than a concrete class:
+[`CreateUser.__init__`](../../../../src/app/base/core/commands/create_user.py) takes seven collaborators, every one of them a `Protocol` (a port) rather than a concrete class:
 
 ```python
 def __init__(
@@ -64,7 +64,7 @@ def __init__(
 ) -> None:
 ```
 
-Most of these already exist and are reused as-is — `UtcTimer`, `Flusher`, `TransactionManager`, `EventDispatcher` are generic enough that almost every command needs them and none are specific to users. [`UserTxStorage`](../../../../src/app/core/commands/ports/user_tx_storage.py) is the one port specific to this command's aggregate (a Domain-Driven Design term for a cluster of related objects — here just `User` — treated as one consistency boundary, with a single entity as its root) — it only declares `add()` and `get_by_id()`, exactly what `CreateUser` needs, nothing more:
+Most of these already exist and are reused as-is — `UtcTimer`, `Flusher`, `TransactionManager`, `EventDispatcher` are generic enough that almost every command needs them and none are specific to users. [`UserTxStorage`](../../../../src/app/base/core/commands/ports/user_tx_storage.py) is the one port specific to this command's aggregate (a Domain-Driven Design term for a cluster of related objects — here just `User` — treated as one consistency boundary, with a single entity as its root) — it only declares `add()` and `get_by_id()`, exactly what `CreateUser` needs, nothing more:
 
 ```python
 class UserTxStorage(Protocol):
@@ -77,7 +77,7 @@ class UserTxStorage(Protocol):
     async def get_by_id(self, user_id: UserId, *, for_update: bool = False) -> User | None: ...
 ```
 
-When your new command needs to read or write a kind of data no existing port covers, define a new, narrowly-scoped `Protocol` next to the others under `core/commands/ports/` (or `core/queries/ports/` for a read-only query) — one method per real need, not a general-purpose repository interface. This is the Ports-and-Adapters pattern covered in more depth on [Core Patterns → Ports and Adapters](../core-patterns/ports-and-adapters.md): `core` only ever describes *what* it needs; concrete adapters that satisfy the port live in [`outbound/`](../../../../src/app/outbound/).
+When your new command needs to read or write a kind of data no existing port covers, define a new, narrowly-scoped `Protocol` next to the others under `core/commands/ports/` (or `core/queries/ports/` for a read-only query) — one method per real need, not a general-purpose repository interface. This is the Ports-and-Adapters pattern covered in more depth on [Core Patterns → Ports and Adapters](../core-patterns/ports-and-adapters.md): `core` only ever describes *what* it needs; concrete adapters that satisfy the port live in [`outbound/`](../../../../src/app/base/outbound/).
 
 ## Step 2 — Write the command class
 
@@ -86,7 +86,7 @@ When your new command needs to read or write a kind of data no existing port cov
 1. **A frozen `@dataclass` request** (`CreateUserRequest`) — the input, decoupled from any HTTP schema.
 2. **A response type** (`CreateUserResponse`, here a `TypedDict`) — the output.
 3. **The command class itself**, holding only its injected ports as private attributes, with a docstring stating its authorization rules in plain English (this docstring is later reused verbatim as the OpenAPI route description — see [Adding a New REST Endpoint](adding-a-rest-endpoint.md)).
-4. **One [`execute()`](../../../../src/app/core/commands/create_user.py) method** that, in order: resolves the current user, authorizes the operation, validates/parses input into value objects (small, immutable types defined purely by their value, like `Username` or `Email` — see [Layer Dependencies & Import Rules](../architecture/layer-dependencies.md)), performs the business operation via a domain service, stages any resulting domain events, flushes to catch uniqueness/constraint violations early, commits, then dispatches the already-staged events:
+4. **One [`execute()`](../../../../src/app/base/core/commands/create_user.py) method** that, in order: resolves the current user, authorizes the operation, validates/parses input into value objects (small, immutable types defined purely by their value, like `Username` or `Email` — see [Layer Dependencies & Import Rules](../architecture/layer-dependencies.md)), performs the business operation via a domain service, stages any resulting domain events, flushes to catch uniqueness/constraint violations early, commits, then dispatches the already-staged events:
 
 ```python
 async def execute(self, request: CreateUserRequest) -> CreateUserResponse:
@@ -121,7 +121,7 @@ The `stage()` → `flush()` → `commit()` → `dispatch()` ordering is not arbi
 
 ## Step 3 — Wire it into the composition root
 
-`CoreProvider` in [`main/ioc/core.py`](../../../../src/app/main/ioc/core.py) is where every command, query, and port gets bound to a concrete implementation via [Dishka](../core-patterns/dependency-injection.md). Adding `CreateUser` was a single line under the `# Commands` section:
+`CoreProvider` in [`main/ioc/core.py`](../../../../src/app/base/main/ioc/core.py) is where every command, query, and port gets bound to a concrete implementation via [Dishka](../core-patterns/dependency-injection.md). Adding `CreateUser` was a single line under the `# Commands` section:
 
 ```python
 # Commands
@@ -132,7 +132,7 @@ Dishka resolves `CreateUser.__init__`'s other parameters by type from whatever e
 
 ## Step 4 — Unit-test it with a factory
 
-This codebase's unit tests build their fixtures with small, composable **factory functions** rather than fixture classes or hardcoded literals — see [`tests/unit/core/common/services/factories.py`](../../../../tests/unit/core/common/services/factories.py), which `CreateUser`'s own domain service (`UserService`) is tested against in [`tests/unit/core/common/services/test_user.py`](../../../../tests/unit/core/common/services/test_user.py):
+This codebase's unit tests build their fixtures with small, composable **factory functions** rather than fixture classes or hardcoded literals — see [`tests/base/unit/core/common/services/factories.py`](../../../../tests/base/unit/core/common/services/factories.py), which `CreateUser`'s own domain service (`UserService`) is tested against in [`tests/base/unit/core/common/services/test_user.py`](../../../../tests/base/unit/core/common/services/test_user.py):
 
 ```python
 def create_username(value: str | None = None) -> Username:

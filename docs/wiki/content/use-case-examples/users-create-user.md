@@ -1,14 +1,14 @@
 # Users: Create User
 
 !!! sourcefiles "Relevant Source Files/Folders"
-    - [`src/app/inbound/http/users/create_user.py`](../../../../src/app/inbound/http/users/create_user.py) — HTTP router
-    - [`src/app/core/commands/create_user.py`](../../../../src/app/core/commands/create_user.py) — the `CreateUser` command
-    - [`src/app/core/common/services/user.py`](../../../../src/app/core/common/services/user.py) — `UserService.create_user_with_raw_password()`
-    - [`src/app/core/common/authorization/permissions.py`](../../../../src/app/core/common/authorization/permissions.py) — `CanManageRole`
-    - [`src/app/core/common/authorization/role_hierarchy.py`](../../../../src/app/core/common/authorization/role_hierarchy.py) — `ROLE_HIERARCHY`
-    - [`src/app/core/commands/exceptions.py`](../../../../src/app/core/commands/exceptions.py) — uniqueness errors
-    - [`src/app/outbound/adapters/sqla_flusher.py`](../../../../src/app/outbound/adapters/sqla_flusher.py) — translates DB unique-constraint violations into those errors
-    - [`src/app/main/ioc/core.py`](../../../../src/app/main/ioc/core.py) — DI wiring (`CoreProvider`)
+    - [`src/app/base/inbound/http/users/create_user.py`](../../../../src/app/base/inbound/http/users/create_user.py) — HTTP router
+    - [`src/app/base/core/commands/create_user.py`](../../../../src/app/base/core/commands/create_user.py) — the `CreateUser` command
+    - [`src/app/base/core/common/services/user.py`](../../../../src/app/base/core/common/services/user.py) — `UserService.create_user_with_raw_password()`
+    - [`src/app/base/core/common/authorization/permissions.py`](../../../../src/app/base/core/common/authorization/permissions.py) — `CanManageRole`
+    - [`src/app/base/core/common/authorization/role_hierarchy.py`](../../../../src/app/base/core/common/authorization/role_hierarchy.py) — `ROLE_HIERARCHY`
+    - [`src/app/base/core/commands/exceptions.py`](../../../../src/app/base/core/commands/exceptions.py) — uniqueness errors
+    - [`src/app/base/outbound/adapters/sqla_flusher.py`](../../../../src/app/base/outbound/adapters/sqla_flusher.py) — translates DB unique-constraint violations into those errors
+    - [`src/app/base/main/ioc/core.py`](../../../../src/app/base/main/ioc/core.py) — DI wiring (`CoreProvider`)
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
 
@@ -88,7 +88,7 @@ Note there is no separate "does this user already exist" authorization check on 
 
 ## Uniqueness is enforced at flush, not pre-checked
 
-`CreateUser.execute()` does not query the database first to see if the username/email/phone number is already taken. It builds the `User` entity (an **Entity** — a Domain-Driven Design object with identity that persists over time, per [Layer Dependencies & Import Rules](../architecture/layer-dependencies.md#what-clean-architecture-and-domain-driven-design-actually-are)), stages it via `UserTxStorage.add()`, and calls `Flusher.flush()` inside a `try`/`except` that re-raises `UsernameAlreadyExistsError`, `EmailAlreadyExistsError`, and `PhoneNumberAlreadyExistsError`. Those three exceptions are raised by [`SqlaFlusher`](../../../../src/app/outbound/adapters/sqla_flusher.py), which catches the real Postgres unique-constraint violation from `session.flush()` and translates it by constraint name (`UQ_USERS_USERNAME`, `UQ_USERS_EMAIL`, `UQ_USERS_PHONE_NUMBER`) into the matching domain exception. The router's `error_map` then turns each into `409 Conflict`. This closes the race-condition window a separate SELECT-then-INSERT pre-check would leave open between two concurrent signups.
+`CreateUser.execute()` does not query the database first to see if the username/email/phone number is already taken. It builds the `User` entity (an **Entity** — a Domain-Driven Design object with identity that persists over time, per [Layer Dependencies & Import Rules](../architecture/layer-dependencies.md#what-clean-architecture-and-domain-driven-design-actually-are)), stages it via `UserTxStorage.add()`, and calls `Flusher.flush()` inside a `try`/`except` that re-raises `UsernameAlreadyExistsError`, `EmailAlreadyExistsError`, and `PhoneNumberAlreadyExistsError`. Those three exceptions are raised by [`SqlaFlusher`](../../../../src/app/base/outbound/adapters/sqla_flusher.py), which catches the real Postgres unique-constraint violation from `session.flush()` and translates it by constraint name (`UQ_USERS_USERNAME`, `UQ_USERS_EMAIL`, `UQ_USERS_PHONE_NUMBER`) into the matching domain exception. The router's `error_map` then turns each into `409 Conflict`. This closes the race-condition window a separate SELECT-then-INSERT pre-check would leave open between two concurrent signups.
 
 ## Domain events: stage before commit, dispatch after
 

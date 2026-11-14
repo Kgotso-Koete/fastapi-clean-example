@@ -1,12 +1,12 @@
 # Users: Update User Profile
 
 !!! sourcefiles "Relevant Source Files/Folders"
-    - [`src/app/inbound/http/users/update_user_profile.py`](../../../../src/app/inbound/http/users/update_user_profile.py) — HTTP router
-    - [`src/app/core/commands/update_user_profile.py`](../../../../src/app/core/commands/update_user_profile.py) — the `UpdateUserProfile` command
-    - [`src/app/core/common/authorization/permissions.py`](../../../../src/app/core/common/authorization/permissions.py) — `CanManageRole`, `CanManageSubordinate`
-    - [`src/app/core/common/sentinels.py`](../../../../src/app/core/common/sentinels.py) — `OMITTED` and `apply_when_present()`
-    - [`src/app/core/commands/exceptions.py`](../../../../src/app/core/commands/exceptions.py) — `UserNotFoundError`
-    - [`src/app/main/ioc/core.py`](../../../../src/app/main/ioc/core.py) — DI wiring (`CoreProvider`)
+    - [`src/app/base/inbound/http/users/update_user_profile.py`](../../../../src/app/base/inbound/http/users/update_user_profile.py) — HTTP router
+    - [`src/app/base/core/commands/update_user_profile.py`](../../../../src/app/base/core/commands/update_user_profile.py) — the `UpdateUserProfile` command
+    - [`src/app/base/core/common/authorization/permissions.py`](../../../../src/app/base/core/common/authorization/permissions.py) — `CanManageRole`, `CanManageSubordinate`
+    - [`src/app/base/core/common/sentinels.py`](../../../../src/app/base/core/common/sentinels.py) — `OMITTED` and `apply_when_present()`
+    - [`src/app/base/core/commands/exceptions.py`](../../../../src/app/base/core/commands/exceptions.py) — `UserNotFoundError`
+    - [`src/app/base/main/ioc/core.py`](../../../../src/app/base/main/ioc/core.py) — DI wiring (`CoreProvider`)
     - [`docs/plans/10-profile-editing.md`](../../../../docs/plans/10-profile-editing.md) — the design, its decisions and the human checks
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
@@ -75,7 +75,7 @@ Structurally it's [Set User Password](users-set-user-password.md) with different
 
 The target's password isn't asked for: the role hierarchy is the authorization, as for [Set User Password](users-set-user-password.md). An admin changing a USER's email is therefore an account takeover only an admin can do, which is what `CanManageSubordinate` is for.
 
-The command returns its own `UpdateUserProfileResponse` (a `TypedDict` with the profile's fields), not the query side's `UserQm`, because import-linter's CQRS contract forbids a `core` command from importing a query model. [`UpdateOrganization`](../../../../src/app/core/commands/update_organization.py) does the same with its own response type.
+The command returns its own `UpdateUserProfileResponse` (a `TypedDict` with the profile's fields), not the query side's `UserQm`, because import-linter's CQRS contract forbids a `core` command from importing a query model. [`UpdateOrganization`](../../../../src/app/modules/organizations/core/commands/update_organization.py) does the same with its own response type.
 
 ## Where to go next
 

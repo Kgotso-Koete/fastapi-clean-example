@@ -1,13 +1,13 @@
 # Users: Revoke Admin
 
 !!! sourcefiles "Relevant Source Files/Folders"
-    - [`src/app/inbound/http/users/revoke_admin.py`](../../../../src/app/inbound/http/users/revoke_admin.py) — HTTP router
-    - [`src/app/core/commands/revoke_admin.py`](../../../../src/app/core/commands/revoke_admin.py) — the `RevokeAdmin` command
-    - [`src/app/core/common/services/user.py`](../../../../src/app/core/common/services/user.py) — `UserService.set_role()`
-    - [`src/app/core/common/authorization/permissions.py`](../../../../src/app/core/common/authorization/permissions.py) — `CanManageRole`, `CanManageSubordinate`
-    - [`src/app/core/common/authorization/role_hierarchy.py`](../../../../src/app/core/common/authorization/role_hierarchy.py) — `ROLE_HIERARCHY`
-    - [`src/app/core/commands/exceptions.py`](../../../../src/app/core/commands/exceptions.py) — `UserNotFoundError`
-    - [`src/app/main/ioc/core.py`](../../../../src/app/main/ioc/core.py) — DI wiring (`CoreProvider`)
+    - [`src/app/base/inbound/http/users/revoke_admin.py`](../../../../src/app/base/inbound/http/users/revoke_admin.py) — HTTP router
+    - [`src/app/base/core/commands/revoke_admin.py`](../../../../src/app/base/core/commands/revoke_admin.py) — the `RevokeAdmin` command
+    - [`src/app/base/core/common/services/user.py`](../../../../src/app/base/core/common/services/user.py) — `UserService.set_role()`
+    - [`src/app/base/core/common/authorization/permissions.py`](../../../../src/app/base/core/common/authorization/permissions.py) — `CanManageRole`, `CanManageSubordinate`
+    - [`src/app/base/core/common/authorization/role_hierarchy.py`](../../../../src/app/base/core/common/authorization/role_hierarchy.py) — `ROLE_HIERARCHY`
+    - [`src/app/base/core/commands/exceptions.py`](../../../../src/app/base/core/commands/exceptions.py) — `UserNotFoundError`
+    - [`src/app/base/main/ioc/core.py`](../../../../src/app/base/main/ioc/core.py) — DI wiring (`CoreProvider`)
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
 

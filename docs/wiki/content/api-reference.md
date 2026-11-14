@@ -1,12 +1,12 @@
 # API Reference
 
 !!! sourcefiles "Relevant Source Files/Folders"
-    - [`src/app/main/run.py`](../../../src/app/main/run.py) — `make_app()`: the exact `FastAPI(...)` constructor call that sets up `docs_url`/`redoc_url`/`title`/`version`/`summary`/`root_path`
-    - [`src/app/main/run_public_api.py`](../../../src/app/main/run_public_api.py) — `make_app_with_public_api()`: mounts a second, always-docs-reachable FastAPI app at `/public` alongside `make_app()`'s own — the actual entrypoint `docker-entrypoint.sh` boots; see [Public API (Server-to-Server Clients)](core-patterns/public-api.md)
-    - [`src/app/main/config/settings.py`](../../../src/app/main/config/settings.py) — `AppSettings` (`SERVICE_NAME`, `VERSION`, `ENVIRONMENT`, `ROOT_PATH`) — the values plugged into the constructor above
-    - [`src/app/inbound/http/root_router.py`](../../../src/app/inbound/http/root_router.py) — mounts every router below `/`
-    - [`src/app/inbound/http/api_v1_router.py`](../../../src/app/inbound/http/api_v1_router.py) — mounts `account`/`users`/`organizations` under `/api/v1` (the organization routes are listed in [Organizations (Multi-Tenancy)](core-patterns/organizations.md#endpoints))
-    - [`src/app/inbound/http/errors/openapi_responses.py`](../../../src/app/inbound/http/errors/openapi_responses.py) — shared error-response schemas shown in the generated docs
+    - [`src/app/base/main/run.py`](../../../src/app/base/main/run.py) — `make_app()`: the exact `FastAPI(...)` constructor call that sets up `docs_url`/`redoc_url`/`title`/`version`/`summary`/`root_path`
+    - [`src/app/base/main/run_public_api.py`](../../../src/app/base/main/run_public_api.py) — `make_app_with_public_api()`: mounts a second, always-docs-reachable FastAPI app at `/public` alongside `make_app()`'s own — the actual entrypoint `docker-entrypoint.sh` boots; see [Public API (Server-to-Server Clients)](core-patterns/public-api.md)
+    - [`src/app/base/main/config/settings.py`](../../../src/app/base/main/config/settings.py) — `AppSettings` (`SERVICE_NAME`, `VERSION`, `ENVIRONMENT`, `ROOT_PATH`) — the values plugged into the constructor above
+    - [`src/app/base/inbound/http/root_router.py`](../../../src/app/base/inbound/http/root_router.py) — mounts every router below `/`
+    - [`src/app/base/inbound/http/api_v1_router.py`](../../../src/app/base/inbound/http/api_v1_router.py) — mounts `account`/`users` under `/api/v1`, then each registered module's routers, such as `organizations` (its routes are listed in [Organizations (Multi-Tenancy)](core-patterns/organizations.md#endpoints))
+    - [`src/app/base/inbound/http/errors/openapi_responses.py`](../../../src/app/base/inbound/http/errors/openapi_responses.py) — shared error-response schemas shown in the generated docs
     - [`docs/wiki/content/getting-started/quick-start-docker.md`](getting-started/quick-start-docker.md) / [`quick-start-local.md`](getting-started/quick-start-local.md) — the commands referenced below
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
@@ -19,7 +19,7 @@ This page is deliberately thin. FastAPI already generates a complete, always-cur
     ```mermaid
     %%{init: {"theme": "default", "themeVariables": {"fontSize": "14px"}, "flowchart": {"nodeSpacing": 20, "rankSpacing": 16, "padding": 10, "subGraphTitleMargin": {"top": 5, "bottom": 12}, "useMaxWidth": false}}}%%
     flowchart LR
-        routes["Route + Pydantic schema definitions\n(src/app/inbound/http/**)"] --> openapi["FastAPI's generated OpenAPI schema\n(/openapi.json)"]
+        routes["Route + Pydantic schema definitions\n(src/app/base/inbound/http/**)"] --> openapi["FastAPI's generated OpenAPI schema\n(/openapi.json)"]
         openapi --> docs["Swagger UI\n(/docs)"]
         openapi --> redoc["ReDoc\n(/redoc)"]
 
@@ -30,7 +30,7 @@ This page is deliberately thin. FastAPI already generates a complete, always-cur
 
 ## Exactly how Swagger/ReDoc are set up here
 
-There is no custom Swagger/OpenAPI configuration in this codebase beyond three constructor arguments on the single `FastAPI(...)` call in [`make_app()`](../../../src/app/main/run.py) — no custom `openapi()` override, no hand-written schema, no extra Swagger UI theming:
+There is no custom Swagger/OpenAPI configuration in this codebase beyond three constructor arguments on the single `FastAPI(...)` call in [`make_app()`](../../../src/app/base/main/run.py) — no custom `openapi()` override, no hand-written schema, no extra Swagger UI theming:
 
 ```python
 docs_reachable = app_settings.ENVIRONMENT == "development"
@@ -56,7 +56,7 @@ app = FastAPI(
 | Path | Command that starts the app | Swagger UI URL | ReDoc URL |
 |---|---|---|---|
 | Docker ([Quick Start with Docker](getting-started/quick-start-docker.md)) | `make upd` | <http://localhost:8000/docs> | <http://localhost:8000/redoc> |
-| Local, no Docker for `app` ([Quick Start Locally](getting-started/quick-start-local.md)) | `alembic upgrade head` then `uvicorn app.main.run_public_api:make_app_with_public_api --host 0.0.0.0 --port 8000 --reload` | <http://localhost:8000/docs> | <http://localhost:8000/redoc> |
+| Local, no Docker for `app` ([Quick Start Locally](getting-started/quick-start-local.md)) | `alembic upgrade head` then `uvicorn app.base.main.run_public_api:make_app_with_public_api --host 0.0.0.0 --port 8000 --reload` | <http://localhost:8000/docs> | <http://localhost:8000/redoc> |
 
 > Both paths land on the same port (`8000`, `UVICORN_PORT` in `env.example`) because both ultimately run the same `make_app_with_public_api()` — the only difference is whether `uvicorn` runs inside the `app` container or directly on your host. Both require `ENVIRONMENT=development` (the `env.example` default) for `/docs`/`/redoc` to be reachable at all — see the next section. `make_app_with_public_api()` mounts the exact same private app `make_app()` builds, plus a second, independent public API sub-app at `/public` — see [Public API (Server-to-Server Clients)](core-patterns/public-api.md) for what that second surface is and why it needs its own composition root.
 

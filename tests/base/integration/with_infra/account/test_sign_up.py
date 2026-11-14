@@ -1,0 +1,171 @@
+from collections.abc import Sequence
+
+import httpx2
+import pytest
+from dishka import Provider, Scope
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.base.core.common.entities.types_ import UserRole
+from app.base.core.common.entities.user import User
+from app.base.core.common.events.user_registered import UserRegisteredEvent
+from app.base.core.common.ports.email_sender import EmailSender
+from app.base.core.common.services.user import UserService
+from app.base.core.common.value_objects.raw_password import RawPassword
+from app.base.core.common.value_objects.username import Username
+from app.base.outbound.adapters.event_serialization import dotted_path
+from app.base.outbound.adapters.outbox_message import OutboxMessage
+from app.base.outbound.persistence_sqla.mappings.outbox_message import event_outbox_table
+from app.base.outbound.persistence_sqla.mappings.user import users_table
+from app.modules.notifications.core.common.events.handlers.send_welcome_email import SendWelcomeEmail
+from tests.base.integration.with_infra.account.constants import SIGN_UP_ENDPOINT
+from tests.base.integration.with_infra.authentication import authenticate
+from tests.base.integration.with_infra.factories import (
+    create_raw_email,
+    create_raw_password,
+    create_raw_phone_number,
+    create_raw_username,
+    create_user,
+    create_user_with_password,
+)
+from tests.base.integration.with_infra.spy_email_sender import SpyEmailSender
+
+
+@pytest.fixture
+def it_spy_email_sender() -> SpyEmailSender:
+    return SpyEmailSender()
+
+
+@pytest.fixture
+def it_di_overrides(it_spy_email_sender: SpyEmailSender) -> Sequence[Provider]:
+    provider = Provider()
+    provider.provide(lambda: it_spy_email_sender, provides=EmailSender, scope=Scope.APP)
+    return (provider,)
+
+
+async def test_returns_200_and_creates_user(
+    it_client: httpx2.AsyncClient,
+    it_session: AsyncSession,
+    it_spy_email_sender: SpyEmailSender,
+) -> None:
+    username = create_raw_username()
+    password = create_raw_password()
+    payload = {
+        "username": username,
+        "email": create_raw_email(),
+        "phone_number": create_raw_phone_number(),
+        "password": password,
+    }
+
+    r = await it_client.post(SIGN_UP_ENDPOINT, json=payload)
+
+    assert r.status_code == 200
+    stmt = select(User).where(users_table.c.username == username)
+    user = await it_session.scalar(stmt)
+    assert isinstance(user, User)
+    assert user.role == UserRole.USER
+    assert user.is_active is True
+
+    data = r.json()
+    assert data["username"] == username
+    assert data["role"] == UserRole.USER.value
+    assert data["is_active"] is True
+    assert "id" in data
+    assert "password_hash" not in data
+
+    # SendWelcomeEmail is "background"-mode, so HybridEventDispatcher.stage()
+    # -- called before commit -- writes its outbox row transactionally with
+    # the new user, instead of relaying it to Celery (and sending the email)
+    # by response time. Nothing has drained the outbox yet, so the row is
+    # still pending and no email has gone out; app.base.main.worker's outbox
+    # drain loop (Step 4) is what will eventually relay it.
+    outbox_stmt = select(OutboxMessage).where(
+        event_outbox_table.c.event_type == dotted_path(UserRegisteredEvent),
+        event_outbox_table.c.handler_type == dotted_path(SendWelcomeEmail),
+    )
+    outbox_message = await it_session.scalar(outbox_stmt)
+    assert isinstance(outbox_message, OutboxMessage)
+    assert outbox_message.processed_at is None
+    assert outbox_message.payload["email"] == payload["email"]
+    assert len(it_spy_email_sender.sent) == 0
+
+
+async def test_returns_400_when_username_is_too_short(
+    it_client: httpx2.AsyncClient,
+) -> None:
+    payload = {
+        "username": "x" * (Username.MIN_LEN - 1),
+        "email": create_raw_email(),
+        "phone_number": create_raw_phone_number(),
+        "password": create_raw_password(),
+    }
+
+    r = await it_client.post(SIGN_UP_ENDPOINT, json=payload)
+
+    assert r.status_code == 400
+
+
+async def test_returns_400_when_password_is_too_short(
+    it_client: httpx2.AsyncClient,
+) -> None:
+    payload = {
+        "username": create_raw_username(),
+        "email": create_raw_email(),
+        "phone_number": create_raw_phone_number(),
+        "password": "x" * (RawPassword.MIN_LEN - 1),
+    }
+
+    r = await it_client.post(SIGN_UP_ENDPOINT, json=payload)
+
+    assert r.status_code == 400
+
+
+async def test_returns_409_when_username_already_exists(
+    it_client: httpx2.AsyncClient,
+    it_session: AsyncSession,
+    it_user_service: UserService,
+) -> None:
+    username = create_raw_username()
+    user = create_user(it_user_service, raw_username=username)
+    it_session.add(user)
+    await it_session.commit()
+    payload = {
+        "username": username,
+        "email": create_raw_email(),
+        "phone_number": create_raw_phone_number(),
+        "password": create_raw_password(),
+    }
+
+    r = await it_client.post(SIGN_UP_ENDPOINT, json=payload)
+
+    assert r.status_code == 409
+    stmt = select(func.count()).select_from(User)
+    count = await it_session.scalar(stmt)
+    assert count == 1
+
+
+async def test_returns_403_when_already_authenticated(
+    it_client: httpx2.AsyncClient,
+    it_session: AsyncSession,
+    it_user_service: UserService,
+) -> None:
+    password = create_raw_password()
+    user = await create_user_with_password(it_user_service, raw_password=password)
+    it_session.add(user)
+    await it_session.commit()
+    await authenticate(it_client, user.username.value, password)
+    payload = {
+        "username": create_raw_username(),
+        "email": create_raw_email(),
+        "phone_number": create_raw_phone_number(),
+        "password": create_raw_password(),
+    }
+
+    r = await it_client.post(SIGN_UP_ENDPOINT, json=payload)
+
+    assert r.status_code == 403
+    # A refused sign-up creates no user: the logged-in requester is still the
+    # only one (the original author's check; docs/plans/15-upstream-autumn-2026.md,
+    # Step 5, item 6).
+    count = await it_session.scalar(select(func.count()).select_from(User))
+    assert count == 1

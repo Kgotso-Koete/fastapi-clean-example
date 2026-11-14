@@ -80,7 +80,8 @@ relative_files = true
 source = ["src"]
 omit = [
   "**/__init__.py",
-  "src/app/main/**",
+  "src/app/base/main/**",
+  "**/main/seed.py",  # development seed data, never tested (docs/plans/agents.md 2.1)
   "**/health/**",
   "**/alembic/**",
 ]
@@ -101,11 +102,35 @@ packages = ["src/app"]
 root_package = "app"
 exclude_type_checking_imports = true
 
+# The dependency order between units (docs/plans/16-modular-monolith.md, import rule 1).
+# src/app/base/ appears twice: its main/ (the composition root) is at the top, its other
+# layers at the bottom, so each part is named on its own. modules and shared are both
+# required layers, so renaming or deleting either breaks the contract (tested in
+# tests/base/unit/architecture/test_import_contracts.py). The alembic exception for the
+# registry (-> app.base.main.modules) lets env.py map every registered unit's tables (Step 4d).
+[[tool.importlinter.contracts]]
+id = "unit-order"
+name = "units depend only on the units below them"
+type = "layers"
+layers = [
+  "app.base.main",
+  "app.modules",
+  "app.shared",
+  "app.base.inbound",
+  "app.base.outbound",
+  "app.base.core",
+]
+ignore_imports = [
+  "app.base.outbound.persistence_sqla.alembic.env ->  app.base.main.config.loader",
+  "app.base.outbound.persistence_sqla.alembic.env ->  app.base.main.config.settings",
+  "app.base.outbound.persistence_sqla.alembic.env ->  app.base.main.modules",
+]
+
 [[tool.importlinter.contracts]]
 id = "clean-architecture"
 name = "inner must not import outer"
 type = "layers"
-containers = ["app"]
+containers = ["app.base"]
 layers = [
   "(main)",
   "inbound",
@@ -113,44 +138,135 @@ layers = [
   "core",
 ]
 ignore_imports = [
-  "app.outbound.persistence_sqla.alembic.env ->  app.main.config.loader",
-  "app.outbound.persistence_sqla.alembic.env ->  app.main.config.settings",
+  "app.base.outbound.persistence_sqla.alembic.env ->  app.base.main.config.loader",
+  "app.base.outbound.persistence_sqla.alembic.env ->  app.base.main.config.settings",
+  "app.base.outbound.persistence_sqla.alembic.env ->  app.base.main.modules",
 ]
 
+# The same layers inside every module (docs/plans/16-modular-monolith.md, import rule 2).
+# Every layer is optional, since a module has only the layers it needs; exhaustive makes
+# any other folder directly inside a module an error. src/app/shared/ keeps the same
+# layers (Step 5), so its outbound adapters can never reach up into its main/.
+[[tool.importlinter.contracts]]
+id = "unit-layers"
+name = "every module, and shared, keeps the same layers inside"
+type = "layers"
+containers = ["app.modules.*", "app.shared"]
+layers = [
+  "(main)",
+  "(inbound)",
+  "(outbound)",
+  "(core)",
+]
+exhaustive = true
+
+# Modules depend on each other one way only (docs/plans/16-modular-monolith.md, import
+# rule 3): Notifications may use Organizations' public API, never the reverse. exhaustive
+# makes a module missing from this list an error, so each new module is placed on
+# purpose. Every registered module is a required layer, so renaming or deleting its
+# package breaks the contract (tested in tests/base/unit/architecture/test_import_contracts.py).
+[[tool.importlinter.contracts]]
+id = "module-order"
+name = "modules depend on each other one way only"
+type = "layers"
+containers = ["app.modules"]
+layers = [
+  "notifications",
+  "organizations",
+]
+exhaustive = true
+
+# Across the boundary, a module's core reaches only base's core (docs/plans/16-modular-monolith.md,
+# import rule 4): base's ports, events and entities, never its adapters or routes. The wildcard
+# covers every module's core/, Organizations' too once it moves in, in Step 4.
+[[tool.importlinter.contracts]]
+id = "module-core-uses-base-core-only"
+name = "a module's core imports only base's core"
+type = "forbidden"
+source_modules = ["app.modules.*.core"]
+forbidden_modules = ["app.base.inbound", "app.base.outbound"]
+
+# Across the boundary, a module's outbound never reaches base's inbound (docs/plans/16-modular-
+# monolith.md, import rule 4): an adapter the app drives must not depend on what drives the app.
+# It may use base's outbound and core (Organizations' reader joins base's users table). No module
+# has an outbound/ yet, so on the real code this holds trivially until Organizations moves in, in
+# Step 4; the fake-graph test proves it catches a violation today. shared is a source as a whole
+# (Step 5): every layer of it imports only base's outbound and core, never base's inbound, which
+# unit-order alone allows (shared sits above base's inbound there).
+[[tool.importlinter.contracts]]
+id = "outbound-not-base-inbound"
+name = "a module's outbound and shared never import base's inbound"
+type = "forbidden"
+source_modules = ["app.modules.*.outbound", "app.shared"]
+forbidden_modules = ["app.base.inbound"]
+
+# Other modules see only Organizations' public API, its core/api.py (docs/plans/16-modular-
+# monolith.md, import rule 5). The rest of the module is protected: only Organizations itself
+# and base's main/ (the composition root: it registers the module and loads its settings) may
+# import it. core/api.py is left off the list on purpose, so any module may import it.
+[[tool.importlinter.contracts]]
+id = "organizations-internals"
+name = "other modules import only Organizations' core/api.py"
+type = "protected"
+protected_modules = [
+  "app.modules.organizations.core.common",
+  "app.modules.organizations.core.commands",
+  "app.modules.organizations.core.queries",
+  "app.modules.organizations.inbound",
+  "app.modules.organizations.outbound",
+  "app.modules.organizations.main",
+]
+allowed_importers = ["app.modules.organizations", "app.base.main"]
+
+# Nobody but the composition root imports shared (docs/plans/16-modular-monolith.md, import
+# rule 5): base's main/ binds shared's adapters to base's ports and loads its settings. No
+# module and no other base layer imports it, and it has no core/api.py, since nobody needs one.
+# shared's own packages may import each other: a protected contract always allows that.
+[[tool.importlinter.contracts]]
+id = "shared-internals"
+name = "only base's main/ imports shared"
+type = "protected"
+protected_modules = ["app.shared"]
+allowed_importers = ["app.base.main"]
+
+# The four CQRS rules hold in base and in every module, and across the boundary between them
+# (docs/plans/16-modular-monolith.md, import rule 6): each rule is one contract spanning every
+# unit, so a module can't drift from base's rules. Notifications has only core/common/, so the
+# module side holds trivially until Organizations moves in, in Step 4.
 [[tool.importlinter.contracts]]
 id = "cqrs-common-must-not-import-commands"
 name = "cqrs: common must not import commands"
 type = "forbidden"
-source_modules = ["app.core.common"]
-forbidden_modules = ["app.core.commands"]
+source_modules = ["app.base.core.common", "app.modules.*.core.common"]
+forbidden_modules = ["app.base.core.commands", "app.modules.*.core.commands"]
 
 [[tool.importlinter.contracts]]
 id = "cqrs-common-must-not-import-queries"
 name = "cqrs: common must not import queries"
 type = "forbidden"
-source_modules = ["app.core.common"]
-forbidden_modules = ["app.core.queries"]
+source_modules = ["app.base.core.common", "app.modules.*.core.common"]
+forbidden_modules = ["app.base.core.queries", "app.modules.*.core.queries"]
 
 [[tool.importlinter.contracts]]
 id = "cqrs-commands-must-not-import-queries"
 name = "cqrs: commands must not import queries"
 type = "forbidden"
-source_modules = ["app.core.commands"]
-forbidden_modules = ["app.core.queries"]
+source_modules = ["app.base.core.commands", "app.modules.*.core.commands"]
+forbidden_modules = ["app.base.core.queries", "app.modules.*.core.queries"]
 
 [[tool.importlinter.contracts]]
 id = "cqrs-queries-must-not-import-commands"
 name = "cqrs: queries must not import commands"
 type = "forbidden"
-source_modules = ["app.core.queries"]
-forbidden_modules = ["app.core.commands"]
+source_modules = ["app.base.core.queries", "app.modules.*.core.queries"]
+forbidden_modules = ["app.base.core.commands", "app.modules.*.core.commands"]
 
 [[tool.importlinter.contracts]]
 id = "auth-ctx"
 name = "auth-ctx must use its own adapters"
 type = "forbidden"
-source_modules = ["app.outbound.auth_ctx"]
-forbidden_modules = ["app.outbound.adapters"]
+source_modules = ["app.base.outbound.auth_ctx"]
+forbidden_modules = ["app.base.outbound.adapters"]
 
 [tool.mypy]
 mypy_path = ["src"]
@@ -274,7 +390,7 @@ split-on-trailing-comma = true
 "scripts/seed_db.py" = [
   "S105",  # hardcoded-password-string -- dev-only fixture password, not a real secret
 ]
-"src/app/outbound/persistence_sqla/alembic/**" = ["ALL"]
+"src/app/base/outbound/persistence_sqla/alembic/**" = ["ALL"]
 "tests/**" = [
   "ARG002",  # unused-method-argument
   "PLC2801",  # unnecessary-dunder-call
@@ -290,8 +406,15 @@ split-on-trailing-comma = true
 [tool.slotscheck]
 strict-imports = true
 exclude-modules = '''
-^app\.outbound\.persistence_sqla\.alembic
+^app\.base\.outbound\.persistence_sqla\.alembic
 '''
+
+# The original author's username fixtures (tests/base/unit/core/common/value_objects/test_username.py)
+# split "user" with separators on purpose ("u.ser-name123", "u-ser_name", "u-ser.name"), and typos
+# reads the "ser" part as a misspelling. The file is the original author's and only moved in plan 16,
+# so its data stays; this ignores exactly that pattern rather than allowing "ser" everywhere.
+[tool.typos.default]
+extend-ignore-re = ["u[._-]ser"]
 
 [tool.typos.files]
 extend-exclude = []

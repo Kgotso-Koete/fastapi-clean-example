@@ -1,29 +1,29 @@
 # Domain Entities & Value Objects
 
 !!! sourcefiles "Relevant Source Files/Folders"
-    - [`src/app/core/common/entities/base.py`](../../../../src/app/core/common/entities/base.py) — the `Entity` base class: identity, mutability, event recording
-    - [`src/app/core/common/entities/user.py`](../../../../src/app/core/common/entities/user.py) — the `User` entity itself
-    - [`src/app/core/common/entities/types_.py`](../../../../src/app/core/common/entities/types_.py) — `UserId`, `UserPasswordHash`, `UserRole`
-    - [`src/app/core/common/value_objects/base.py`](../../../../src/app/core/common/value_objects/base.py) — the `ValueObject` base class
-    - [`src/app/core/common/value_objects/email.py`](../../../../src/app/core/common/value_objects/email.py) — `Email`
-    - [`src/app/core/common/value_objects/phone_number.py`](../../../../src/app/core/common/value_objects/phone_number.py) — `PhoneNumber`
-    - [`src/app/core/common/value_objects/username.py`](../../../../src/app/core/common/value_objects/username.py) — `Username`
-    - [`src/app/core/common/value_objects/raw_password.py`](../../../../src/app/core/common/value_objects/raw_password.py) — `RawPassword`
-    - [`src/app/core/common/value_objects/utc_datetime.py`](../../../../src/app/core/common/value_objects/utc_datetime.py) — `UtcDatetime`
-    - [`src/app/core/common/entities/organization.py`](../../../../src/app/core/common/entities/organization.py) — the `Organization` entity and `OrganizationId`
-    - [`src/app/core/common/entities/organization_membership.py`](../../../../src/app/core/common/entities/organization_membership.py) — the `OrganizationMembership` entity, `OrganizationMembershipId` and `OrganizationRole`
-    - [`src/app/core/common/value_objects/organization_name.py`](../../../../src/app/core/common/value_objects/organization_name.py) — `OrganizationName`
-    - [`src/app/core/common/value_objects/description.py`](../../../../src/app/core/common/value_objects/description.py) — `Description`
-    - [`src/app/core/common/events/domain_event.py`](../../../../src/app/core/common/events/domain_event.py) — the `DomainEvent` base class that `collect_events()` returns instances of
+    - [`src/app/base/core/common/entities/base.py`](../../../../src/app/base/core/common/entities/base.py) — the `Entity` base class: identity, mutability, event recording
+    - [`src/app/base/core/common/entities/user.py`](../../../../src/app/base/core/common/entities/user.py) — the `User` entity itself
+    - [`src/app/base/core/common/entities/types_.py`](../../../../src/app/base/core/common/entities/types_.py) — `UserId`, `UserPasswordHash`, `UserRole`
+    - [`src/app/base/core/common/value_objects/base.py`](../../../../src/app/base/core/common/value_objects/base.py) — the `ValueObject` base class
+    - [`src/app/base/core/common/value_objects/email.py`](../../../../src/app/base/core/common/value_objects/email.py) — `Email`
+    - [`src/app/base/core/common/value_objects/phone_number.py`](../../../../src/app/base/core/common/value_objects/phone_number.py) — `PhoneNumber`
+    - [`src/app/base/core/common/value_objects/username.py`](../../../../src/app/base/core/common/value_objects/username.py) — `Username`
+    - [`src/app/base/core/common/value_objects/raw_password.py`](../../../../src/app/base/core/common/value_objects/raw_password.py) — `RawPassword`
+    - [`src/app/base/core/common/value_objects/utc_datetime.py`](../../../../src/app/base/core/common/value_objects/utc_datetime.py) — `UtcDatetime`
+    - [`src/app/modules/organizations/core/common/entities/organization.py`](../../../../src/app/modules/organizations/core/common/entities/organization.py) — the `Organization` entity and `OrganizationId`
+    - [`src/app/modules/organizations/core/common/entities/organization_membership.py`](../../../../src/app/modules/organizations/core/common/entities/organization_membership.py) — the `OrganizationMembership` entity, `OrganizationMembershipId` and `OrganizationRole`
+    - [`src/app/modules/organizations/core/common/value_objects/organization_name.py`](../../../../src/app/modules/organizations/core/common/value_objects/organization_name.py) — `OrganizationName`
+    - [`src/app/base/core/common/value_objects/description.py`](../../../../src/app/base/core/common/value_objects/description.py) — `Description`
+    - [`src/app/base/core/common/events/domain_event.py`](../../../../src/app/base/core/common/events/domain_event.py) — the `DomainEvent` base class that `collect_events()` returns instances of
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
 
 ## Two kinds of object, one distinction
 
-Everything under `src/app/core/common/` that models "a thing in the domain" is either an **Entity** or a **Value Object**, and the codebase draws the line in exactly one place: how equality works.
+Everything under `src/app/base/core/common/` (and a module's own `core/common/`, such as Organizations') that models "a thing in the domain" is either an **Entity** or a **Value Object**, and the codebase draws the line in exactly one place: how equality works.
 
-- An **Entity** ([`base.py`](../../../../src/app/core/common/entities/base.py)) is compared by its `id_` alone. Two `User` instances with the same `id_` are the *same* user even if every other field differs — because one of them is a stale read and the other reflects a later update. Identity, not attribute values, is what makes them "the same thing."
-- A **Value Object** ([`value_objects/base.py`](../../../../src/app/core/common/value_objects/base.py)) has no identity at all — it *is* its attributes. `Email("a@b.com") == Email("a@b.com")` is `True` because `ValueObject` is a frozen `@dataclass`, and dataclasses generate structural `__eq__` for free. There's nothing to compare but the value.
+- An **Entity** ([`base.py`](../../../../src/app/base/core/common/entities/base.py)) is compared by its `id_` alone. Two `User` instances with the same `id_` are the *same* user even if every other field differs — because one of them is a stale read and the other reflects a later update. Identity, not attribute values, is what makes them "the same thing."
+- A **Value Object** ([`value_objects/base.py`](../../../../src/app/base/core/common/value_objects/base.py)) has no identity at all — it *is* its attributes. `Email("a@b.com") == Email("a@b.com")` is `True` because `ValueObject` is a frozen `@dataclass`, and dataclasses generate structural `__eq__` for free. There's nothing to compare but the value.
 
 !!! figure "Entity vs. Value Object: what makes them equal"
     ```mermaid
@@ -53,13 +53,13 @@ Everything under `src/app/core/common/` that models "a thing in the domain" is e
 
 ## `Entity`: identity, controlled mutation, and event recording
 
-[`Entity[T: Hashable]`](../../../../src/app/core/common/entities/base.py) is a generic base class parameterized on the type of its id (`User` is `Entity[UserId]`, where `UserId = NewType("UserId", UUID)` — UUID (Universally Unique Identifier) is Python's standard 128-bit identifier type). Three mechanisms worth calling out, all in a class that is otherwise a thin ~60 lines:
+[`Entity[T: Hashable]`](../../../../src/app/base/core/common/entities/base.py) is a generic base class parameterized on the type of its id (`User` is `Entity[UserId]`, where `UserId = NewType("UserId", UUID)` — UUID (Universally Unique Identifier) is Python's standard 128-bit identifier type). Three mechanisms worth calling out, all in a class that is otherwise a thin ~60 lines:
 
 - **`id_` is write-once.** `__setattr__` is overridden so that any attempt to reassign `id_` after it's already set raises `AttributeError`. Every other attribute can be freely reassigned — entities are mutable by design, just not in their identity.
 - **`__new__` blocks direct instantiation of the base class.** `Entity` itself isn't meant to be used — only concrete subclasses like `User` — so `Entity()` raises `TypeError` before `__init__` ever runs.
 - **Event recording is a queue, not a side channel.** `record_event(event)` appends a `DomainEvent` to a private `_events` list; `collect_events()` returns a copy of that list and clears it in the same call. This is the entity's only public way to communicate "something worth telling the rest of the system happened" — it never dispatches or publishes anything itself, it just remembers.
 
-Here is the whole mechanism, verbatim, from [`entities/base.py`](../../../../src/app/core/common/entities/base.py):
+Here is the whole mechanism, verbatim, from [`entities/base.py`](../../../../src/app/base/core/common/entities/base.py):
 
 ```python
 def record_event(self, event: DomainEvent) -> None:
@@ -74,21 +74,21 @@ def collect_events(self) -> list[DomainEvent]:
     return events
 ```
 
-The intent, stated in the docstring, is a strict ordering: a use case mutates the entity (which internally calls `record_event`), persists the change, and only *then* calls `collect_events()` — turning "events that happened during this unit of work" into a value it can hand off for dispatch, with no risk of an event escaping before its cause is durably committed. [`create_user.py`](../../../../src/app/core/commands/create_user.py) shows the real sequence: `self._user_tx_storage.add(user)` persists the new `User`, then `events = user.collect_events()` immediately after, then `await self._event_dispatcher.stage(events)`. The full dispatch story — sync vs. background handlers, the transactional outbox — is covered in [Core Patterns → Domain Events & the Transactional Outbox](../core-patterns/domain-events-outbox.md); this page only covers where events come from.
+The intent, stated in the docstring, is a strict ordering: a use case mutates the entity (which internally calls `record_event`), persists the change, and only *then* calls `collect_events()` — turning "events that happened during this unit of work" into a value it can hand off for dispatch, with no risk of an event escaping before its cause is durably committed. [`create_user.py`](../../../../src/app/base/core/commands/create_user.py) shows the real sequence: `self._user_tx_storage.add(user)` persists the new `User`, then `events = user.collect_events()` immediately after, then `await self._event_dispatcher.stage(events)`. The full dispatch story — sync vs. background handlers, the transactional outbox — is covered in [Core Patterns → Domain Events & the Transactional Outbox](../core-patterns/domain-events-outbox.md); this page only covers where events come from.
 
 ## `ValueObject`: pure value, validated at construction
 
-[`ValueObject`](../../../../src/app/core/common/value_objects/base.py) is a frozen (`frozen=True, slots=True`) dataclass base. Every concrete value object in this codebase follows the same shape: validate the raw input in `__init__` or `__post_init__`, normalize it if needed, and store the result with `object.__setattr__` (the only way to set an attribute on a frozen dataclass from inside its own `__init__`). Once constructed, it cannot be mutated — any "change" means constructing a new instance.
+[`ValueObject`](../../../../src/app/base/core/common/value_objects/base.py) is a frozen (`frozen=True, slots=True`) dataclass base. Every concrete value object in this codebase follows the same shape: validate the raw input in `__init__` or `__post_init__`, normalize it if needed, and store the result with `object.__setattr__` (the only way to set an attribute on a frozen dataclass from inside its own `__init__`). Once constructed, it cannot be mutated — any "change" means constructing a new instance.
 
 | Value Object | Validates / normalizes | Example |
 |---|---|---|
-| [`Email`](../../../../src/app/core/common/value_objects/email.py) | strips + lowercases, enforces max length and a regex shape | `Email("A@Example.COM")` → stored as `"a@example.com"` |
-| [`PhoneNumber`](../../../../src/app/core/common/value_objects/phone_number.py) | strips all non-digits, accepts leading `0` or `+27`, normalizes to `27XXXXXXXXX` | `PhoneNumber("083 123 4567")` → stored as `"27831234567"` |
-| [`Username`](../../../../src/app/core/common/value_objects/username.py) | length bounds, allowed alphabet, no leading/trailing/consecutive specials | rejects `"..bad--name.."` |
-| [`RawPassword`](../../../../src/app/core/common/value_objects/raw_password.py) | minimum length, then encodes to `bytes` | never stored as plaintext beyond this object's lifetime |
-| [`UtcDatetime`](../../../../src/app/core/common/value_objects/utc_datetime.py) | rejects naive datetimes, normalizes any timezone to UTC (Coordinated Universal Time) | orderable via `@total_ordering` + `__lt__` |
-| [`OrganizationName`](../../../../src/app/core/common/value_objects/organization_name.py) | strips, 1 to 100 characters, ASCII letters/digits with single spaces, hyphens or underscores between them | `OrganizationName("  Midnight Suns ")` → stored as `"Midnight Suns"` |
-| [`Description`](../../../../src/app/core/common/value_objects/description.py) | strips, 1 to 1000 characters, any printable text plus tab/newline/carriage return; other control characters rejected | rejects `"   "` (blank) and `"Escape\x1b[31m"` |
+| [`Email`](../../../../src/app/base/core/common/value_objects/email.py) | strips + lowercases, enforces max length and a regex shape | `Email("A@Example.COM")` → stored as `"a@example.com"` |
+| [`PhoneNumber`](../../../../src/app/base/core/common/value_objects/phone_number.py) | strips all non-digits, accepts leading `0` or `+27`, normalizes to `27XXXXXXXXX` | `PhoneNumber("083 123 4567")` → stored as `"27831234567"` |
+| [`Username`](../../../../src/app/base/core/common/value_objects/username.py) | length bounds, allowed alphabet, no leading/trailing/consecutive specials | rejects `"..bad--name.."` |
+| [`RawPassword`](../../../../src/app/base/core/common/value_objects/raw_password.py) | minimum length, then encodes to `bytes` | never stored as plaintext beyond this object's lifetime |
+| [`UtcDatetime`](../../../../src/app/base/core/common/value_objects/utc_datetime.py) | rejects naive datetimes, normalizes any timezone to UTC (Coordinated Universal Time) | orderable via `@total_ordering` + `__lt__` |
+| [`OrganizationName`](../../../../src/app/modules/organizations/core/common/value_objects/organization_name.py) | strips, 1 to 100 characters, ASCII letters/digits with single spaces, hyphens or underscores between them | `OrganizationName("  Midnight Suns ")` → stored as `"Midnight Suns"` |
+| [`Description`](../../../../src/app/base/core/common/value_objects/description.py) | strips, 1 to 1000 characters, any printable text plus tab/newline/carriage return; other control characters rejected | rejects `"   "` (blank) and `"Escape\x1b[31m"` |
 
 > Every one of these raises `BusinessTypeError` (not a generic `ValueError`) on invalid input — a domain-specific exception type that inbound adapters can catch and translate into an HTTP (Hypertext Transfer Protocol) 4xx, without the core layer knowing HTTP exists. That translation lives in the inbound layer, not here; see [Architecture → Inbound Layer](../architecture/inbound-layer.md).
 
@@ -150,7 +150,7 @@ The intent, stated in the docstring, is a strict ordering: a use case mutates th
         User *-- Description : optional
     ```
 
-    > `User` (in [`user.py`](../../../../src/app/core/common/entities/user.py)) subclasses `Entity[UserId]` and composes four value objects (`Username`, `Email`, `PhoneNumber`, `UtcDatetime` used twice, for `created_at` and `updated_at`) plus two plain-typed fields that aren't value objects: `password_hash` (a `NewType`-tagged `bytes`, not a validated shape — validation of the *raw* password happens earlier, in `RawPassword`) and `role` (a plain `StrEnum`, `UserRole`, since role membership doesn't need the validate-and-normalize machinery a value object provides). `created_at` is deliberately read-only from outside — it's stored as `_created_at` and exposed only via a `@property` with no setter, since a user's creation timestamp should never change after construction, even though nothing at the `Entity`/`ValueObject` base-class level enforces that; it's a convention applied at the `User` class itself. `description` is the one optional field: a plain `Description | None` attribute, `None` when the user has written none, using the same `Description` value object as `Organization` (see [Database Models](database-models.md#nullable-value-objects-the-nullable-composite-recipe) for how a `NULL` column loads as `None`).
+    > `User` (in [`user.py`](../../../../src/app/base/core/common/entities/user.py)) subclasses `Entity[UserId]` and composes four value objects (`Username`, `Email`, `PhoneNumber`, `UtcDatetime` used twice, for `created_at` and `updated_at`) plus two plain-typed fields that aren't value objects: `password_hash` (a `NewType`-tagged `bytes`, not a validated shape — validation of the *raw* password happens earlier, in `RawPassword`) and `role` (a plain `StrEnum`, `UserRole`, since role membership doesn't need the validate-and-normalize machinery a value object provides). `created_at` is deliberately read-only from outside — it's stored as `_created_at` and exposed only via a `@property` with no setter, since a user's creation timestamp should never change after construction, even though nothing at the `Entity`/`ValueObject` base-class level enforces that; it's a convention applied at the `User` class itself. `description` is the one optional field: a plain `Description | None` attribute, `None` when the user has written none, using the same `Description` value object as `Organization` (see [Database Models](database-models.md#nullable-value-objects-the-nullable-composite-recipe) for how a `NULL` column loads as `None`).
 
 `UserRole` also carries one small piece of business logic beyond being a plain enum: `is_system`, a property that's `True` only for `SUPER_ADMIN` — used elsewhere in the authorization code to keep the bootstrap superadmin role from being granted or revoked like an ordinary admin role.
 
@@ -192,7 +192,7 @@ Two entities make up the Organizations context — see [Core Patterns → Organi
         OrganizationMembership *-- OrganizationRole
     ```
 
-    > `Organization` (in [`organization.py`](../../../../src/app/core/common/entities/organization.py)) composes two value objects, `OrganizationName` and `Description`, both mandatory (a user's `Description` is optional), plus a plain `created_by_user_id` reference to Identity's `User`. It knows nothing about who belongs to it. That lives on `OrganizationMembership` (in [`organization_membership.py`](../../../../src/app/core/common/entities/organization_membership.py)), one row per (organization, user). A pending invitation and an accepted membership are the same row: `accepted_at` is `None` while it's pending, `expires_at` is `None` once it's accepted, and the constructor raises `InvalidMembershipExpiryError` unless exactly one of the two is set. `accepted_at` and `expires_at` are properties over plain nullable `datetime` attributes, not `composite()`-mapped value objects, for the reason given in [Database Models](database-models.md#the-organization-tables).
+    > `Organization` (in [`organization.py`](../../../../src/app/modules/organizations/core/common/entities/organization.py)) composes two value objects, `OrganizationName` and `Description`, both mandatory (a user's `Description` is optional), plus a plain `created_by_user_id` reference to Identity's `User`. It knows nothing about who belongs to it. That lives on `OrganizationMembership` (in [`organization_membership.py`](../../../../src/app/modules/organizations/core/common/entities/organization_membership.py)), one row per (organization, user). A pending invitation and an accepted membership are the same row: `accepted_at` is `None` while it's pending, `expires_at` is `None` once it's accepted, and the constructor raises `InvalidMembershipExpiryError` unless exactly one of the two is set. `accepted_at` and `expires_at` are properties over plain nullable `datetime` attributes, not `composite()`-mapped value objects, for the reason given in [Database Models](database-models.md#the-organization-tables).
 
 ## Where to go next
 

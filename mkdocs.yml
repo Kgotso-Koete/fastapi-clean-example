@@ -49,6 +49,7 @@ nav:
       - Quick Start Locally: content/getting-started/quick-start-local.md
   - Architecture:
       - Layer Dependencies & Import Rules: content/architecture/layer-dependencies.md
+      - "Units: base, Modules and shared": content/architecture/units.md
       - Core Layer (Domain & Business Rules): content/architecture/core-layer.md
       - Outbound Layer (Infrastructure Adapters): content/architecture/outbound-layer.md
       - Inbound Layer (HTTP / Presentation): content/architecture/inbound-layer.md
@@ -80,6 +81,7 @@ nav:
   - Testing:
       - TDD (Red-Green-Refactor): content/testing/tdd.md
       - Test Infrastructure & Fixtures: content/testing/test-infrastructure.md
+      - Characterisation Tests: content/testing/characterisation-tests.md
       - Test Factories: content/testing/test-factories.md
       - Running Tests: content/testing/running-tests.md
       - Code Quality Tools: content/testing/code-quality-tools.md

@@ -1,0 +1,72 @@
+from inspect import getdoc
+from typing import Annotated, Any, Final
+from uuid import UUID
+
+from dishka import FromDishka
+from dishka.integrations.fastapi import inject
+from fastapi import APIRouter, Body, Path
+from pydantic import BaseModel, ConfigDict
+from starlette import status
+
+from app.base.core.commands.exceptions import UserNotFoundError
+from app.base.core.commands.set_user_password import SetUserPassword, SetUserPasswordRequest
+from app.base.core.common.authorization.exceptions import AuthorizationError
+from app.base.core.common.exceptions import BusinessTypeError
+from app.base.inbound.http.errors.callbacks import log_info
+from app.base.inbound.http.errors.router import make_error_aware_router
+from app.base.inbound.http.errors.rules import HTTP_503_SERVICE_UNAVAILABLE_RULE
+from app.base.outbound.adapters.exceptions import PasswordHasherBusyError
+from app.base.outbound.auth_ctx.exceptions import AuthenticationError
+from app.base.outbound.exceptions import StorageError
+
+
+class SetUserPasswordRequestSchema(BaseModel):
+    """
+    Using Pydantic model here is generally unnecessary.
+    It's only implemented to render specific Swagger UI.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    password: str
+
+
+# Sample request body shown in Swagger (/docs); see account/sign_up.py for why
+# the value is chosen by hand.
+SET_USER_PASSWORD_EXAMPLES: Final[dict[str, Any]] = {
+    "set_password": {
+        "summary": "Set another user's password",
+        "value": {"password": "TemporaryPass2024!"},
+    },
+}
+
+
+def make_set_user_password_router() -> APIRouter:
+    router = make_error_aware_router(on_error=log_info)
+
+    @router.put(
+        "/{user_id}/password/",
+        error_map={
+            AuthenticationError: status.HTTP_401_UNAUTHORIZED,
+            StorageError: HTTP_503_SERVICE_UNAVAILABLE_RULE,
+            AuthorizationError: status.HTTP_403_FORBIDDEN,
+            BusinessTypeError: status.HTTP_400_BAD_REQUEST,
+            UserNotFoundError: status.HTTP_404_NOT_FOUND,
+            PasswordHasherBusyError: HTTP_503_SERVICE_UNAVAILABLE_RULE,
+        },
+        status_code=status.HTTP_204_NO_CONTENT,
+        description=getdoc(SetUserPassword),
+    )
+    @inject
+    async def set_user_password(
+        user_id: Annotated[UUID, Path()],
+        request_schema: Annotated[SetUserPasswordRequestSchema, Body(openapi_examples=SET_USER_PASSWORD_EXAMPLES)],
+        interactor: FromDishka[SetUserPassword],
+    ) -> None:
+        request = SetUserPasswordRequest(
+            user_id=user_id,
+            password=request_schema.password,
+        )
+        await interactor.execute(request)
+
+    return router

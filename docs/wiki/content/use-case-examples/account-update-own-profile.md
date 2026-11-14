@@ -1,12 +1,12 @@
 # Account: Update Own Profile
 
 !!! sourcefiles "Relevant Source Files/Folders"
-    - [`src/app/inbound/http/account/update_own_profile.py`](../../../../src/app/inbound/http/account/update_own_profile.py) — the route
-    - [`src/app/outbound/auth_ctx/handlers/update_own_profile.py`](../../../../src/app/outbound/auth_ctx/handlers/update_own_profile.py) — the `UpdateOwnProfile` handler
-    - [`src/app/core/common/sentinels.py`](../../../../src/app/core/common/sentinels.py) — `OMITTED`, `Omitted` and `apply_when_present()`, for "left out" vs `null`
-    - [`src/app/inbound/missing.py`](../../../../src/app/inbound/missing.py) — `omit_if_missing()`, turning pydantic's `MISSING` into `OMITTED`
-    - [`src/app/outbound/auth_ctx/exceptions.py`](../../../../src/app/outbound/auth_ctx/exceptions.py) — `ReAuthenticationError`
-    - [`src/app/main/ioc/outbound.py`](../../../../src/app/main/ioc/outbound.py) — DI wiring (`AuthProvider`)
+    - [`src/app/base/inbound/http/account/update_own_profile.py`](../../../../src/app/base/inbound/http/account/update_own_profile.py) — the route
+    - [`src/app/base/outbound/auth_ctx/handlers/update_own_profile.py`](../../../../src/app/base/outbound/auth_ctx/handlers/update_own_profile.py) — the `UpdateOwnProfile` handler
+    - [`src/app/base/core/common/sentinels.py`](../../../../src/app/base/core/common/sentinels.py) — `OMITTED`, `Omitted` and `apply_when_present()`, for "left out" vs `null`
+    - [`src/app/base/inbound/missing.py`](../../../../src/app/base/inbound/missing.py) — `omit_if_missing()`, turning pydantic's `MISSING` into `OMITTED`
+    - [`src/app/base/outbound/auth_ctx/exceptions.py`](../../../../src/app/base/outbound/auth_ctx/exceptions.py) — `ReAuthenticationError`
+    - [`src/app/base/main/ioc/outbound.py`](../../../../src/app/base/main/ioc/outbound.py) — DI wiring (`AuthProvider`)
     - [`docs/plans/10-profile-editing.md`](../../../../docs/plans/10-profile-editing.md) — the design, its decisions and the human checks
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
@@ -30,7 +30,7 @@ A `PATCH` has to tell three cases apart for the description: left out (keep it),
 - The route's request schema defaults every field to pydantic's `MISSING`. `omit_if_missing()` turns `MISSING` into core's `OMITTED` before the handler sees it, so the handler never depends on pydantic.
 - The handler validates each field with `apply_when_present()`, which leaves `OMITTED` and `None` as they are and builds the value object otherwise.
 
-[`update_own_profile.py`](../../../../src/app/outbound/auth_ctx/handlers/update_own_profile.py) — validate everything first, then re-authenticate a changed email:
+[`update_own_profile.py`](../../../../src/app/base/outbound/auth_ctx/handlers/update_own_profile.py) — validate everything first, then re-authenticate a changed email:
 ```python
 username = apply_when_present(Username, request.username)
 email = apply_when_present(Email, request.email)

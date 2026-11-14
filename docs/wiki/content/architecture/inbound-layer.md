@@ -1,14 +1,14 @@
 # Inbound Layer (HTTP / Presentation)
 
 !!! sourcefiles "Relevant Source Files/Folders"
-    - [`src/app/inbound/http/root_router.py`](../../../../src/app/inbound/http/root_router.py) — the top-level FastAPI router
-    - [`src/app/inbound/http/api_v1_router.py`](../../../../src/app/inbound/http/api_v1_router.py) — mounts `/api/v1`
-    - [`src/app/inbound/http/account/`](../../../../src/app/inbound/http/account/) — signup/login/logout/change-password and own-profile (view, edit) endpoints
-    - [`src/app/inbound/http/users/`](../../../../src/app/inbound/http/users/) — admin user-management endpoints
-    - [`src/app/inbound/http/errors/`](../../../../src/app/inbound/http/errors/) — the error-mapping router wrapper and the global exception middleware
-    - [`src/app/inbound/http/health/`](../../../../src/app/inbound/http/health/) — liveness/readiness probes
-    - [`src/app/inbound/http/debug/`](../../../../src/app/inbound/http/debug/) — a deliberately temporary error-testing endpoint
-    - [`src/app/inbound/http/auth_cookie_middleware.py`](../../../../src/app/inbound/http/auth_cookie_middleware.py) — commits a staged cookie onto the response
+    - [`src/app/base/inbound/http/root_router.py`](../../../../src/app/base/inbound/http/root_router.py) — the top-level FastAPI router
+    - [`src/app/base/inbound/http/api_v1_router.py`](../../../../src/app/base/inbound/http/api_v1_router.py) — mounts `/api/v1`
+    - [`src/app/base/inbound/http/account/`](../../../../src/app/base/inbound/http/account/) — signup/login/logout/change-password and own-profile (view, edit) endpoints
+    - [`src/app/base/inbound/http/users/`](../../../../src/app/base/inbound/http/users/) — admin user-management endpoints
+    - [`src/app/base/inbound/http/errors/`](../../../../src/app/base/inbound/http/errors/) — the error-mapping router wrapper and the global exception middleware
+    - [`src/app/base/inbound/http/health/`](../../../../src/app/base/inbound/http/health/) — liveness/readiness probes
+    - [`src/app/base/inbound/http/debug/`](../../../../src/app/base/inbound/http/debug/) — a deliberately temporary error-testing endpoint
+    - [`src/app/base/inbound/http/auth_cookie_middleware.py`](../../../../src/app/base/inbound/http/auth_cookie_middleware.py) — commits a staged cookie onto the response
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
 
@@ -61,11 +61,11 @@
         style users stroke-width:1px,stroke:#333333
     ```
 
-    > `make_fastapi_root_router()` (in [`root_router.py`](../../../../src/app/inbound/http/root_router.py)) mounts a bare `GET /` redirect to `/docs`, the health router, the debug router, and `make_v1_router()` (in [`api_v1_router.py`](../../../../src/app/inbound/http/api_v1_router.py)), which itself prefixes everything under it with `/api/v1` and mounts the `account` and `users` routers. `users` additionally carries a router-level `Depends(APIKeyCookie(name=cookie_name))` dependency — every route under `/api/v1/users` requires the session cookie to be present before any handler body runs, whereas `account`'s own routes (signup/login) are intentionally open. The debug router (`test_error.py`) is explicitly documented as temporary — its own docstring says "Remove this file after testing alerting functionality."
+    > `make_fastapi_root_router()` (in [`root_router.py`](../../../../src/app/base/inbound/http/root_router.py)) mounts a bare `GET /` redirect to `/docs`, the health router, the debug router, and `make_v1_router()` (in [`api_v1_router.py`](../../../../src/app/base/inbound/http/api_v1_router.py)), which itself prefixes everything under it with `/api/v1` and mounts the `account` and `users` routers, then the routers of every registered module it's given (`module_routers`, such as Organizations'). `users` additionally carries a router-level `Depends(APIKeyCookie(name=cookie_name))` dependency — every route under `/api/v1/users` requires the session cookie to be present before any handler body runs, whereas `account`'s own routes (signup/login) are intentionally open. The debug router (`test_error.py`) is explicitly documented as temporary — its own docstring says "Remove this file after testing alerting functionality."
 
 ## Anatomy of one route: error mapping
 
-Every route in `account/` and `users/` is built with `make_error_aware_router()` (from [`errors/router.py`](../../../../src/app/inbound/http/errors/router.py)), a thin wrapper around the third-party `fastapi-error-map` package's `ErrorAwareRouter`. Each endpoint declares an explicit `error_map` translating a `core`/`outbound` exception type straight to an HTTP status code — e.g. [`account/sign_up.py`](../../../../src/app/inbound/http/account/sign_up.py):
+Every route in `account/` and `users/` is built with `make_error_aware_router()` (from [`errors/router.py`](../../../../src/app/base/inbound/http/errors/router.py)), a thin wrapper around the third-party `fastapi-error-map` package's `ErrorAwareRouter`. Each endpoint declares an explicit `error_map` translating a `core`/`outbound` exception type straight to an HTTP status code — e.g. [`account/sign_up.py`](../../../../src/app/base/inbound/http/account/sign_up.py):
 
 ```python
 @router.post(
@@ -112,13 +112,13 @@ This keeps every knowledge of "what HTTP status a given business failure deserve
         linkStyle default stroke-width:3px,stroke:#333333
     ```
 
-    > `GlobalExceptionMiddleware` ([`errors/exception_middleware.py`](../../../../src/app/inbound/http/errors/exception_middleware.py)) is registered **above** `AuthCookieMiddleware` ([`auth_cookie_middleware.py`](../../../../src/app/inbound/http/auth_cookie_middleware.py)) in the stack, and is a plain ASGI (Asynchronous Server Gateway Interface) middleware rather than a `BaseHTTPMiddleware` subclass. Its own docstring explains why: `BaseHTTPMiddleware`'s `call_next` re-raises an exception even after Starlette's router-level `ExceptionMiddleware` already handled it, producing a duplicate traceback once it reaches uvicorn. Sitting above `AuthCookieMiddleware` as pure ASGI catches an unmapped exception before that duplication can happen. When it does catch one, it logs it, increments the `app_unhandled_exceptions_total` Prometheus counter (labeled by exception type), best-effort resolves the current user for the log/alert context, and — if `AlertSettings.ENABLED` and the per-exception-type cooldown allows it — sends an email alert. A mapped exception, by contrast, never reaches this middleware at all: `ErrorAwareRouter` translates it to the mapped status code directly at the route level.
+    > `GlobalExceptionMiddleware` ([`errors/exception_middleware.py`](../../../../src/app/base/inbound/http/errors/exception_middleware.py)) is registered **above** `AuthCookieMiddleware` ([`auth_cookie_middleware.py`](../../../../src/app/base/inbound/http/auth_cookie_middleware.py)) in the stack, and is a plain ASGI (Asynchronous Server Gateway Interface) middleware rather than a `BaseHTTPMiddleware` subclass. Its own docstring explains why: `BaseHTTPMiddleware`'s `call_next` re-raises an exception even after Starlette's router-level `ExceptionMiddleware` already handled it, producing a duplicate traceback once it reaches uvicorn. Sitting above `AuthCookieMiddleware` as pure ASGI catches an unmapped exception before that duplication can happen. When it does catch one, it logs it, increments the `app_unhandled_exceptions_total` Prometheus counter (labeled by exception type), best-effort resolves the current user for the log/alert context, and — if `AlertSettings.ENABLED` and the per-exception-type cooldown allows it — sends an email alert. A mapped exception, by contrast, never reaches this middleware at all: `ErrorAwareRouter` translates it to the mapped status code directly at the route level.
 
 `AuthCookieMiddleware` itself is unrelated to error handling — it's what commits a session cookie onto the outgoing response after a use case (e.g. `LogIn`) calls `CookieManager.stage_set()`/`stage_delete()` on `request.state`, since a use case in `outbound.auth_ctx` has no direct access to the FastAPI `Response` object being built.
 
 ## Health checks
 
-[`health/router.py`](../../../../src/app/inbound/http/health/router.py) exposes `/livez/` (always `"OK"`, no dependencies) and `/healthz/` (injects an `AsyncSession` and runs `db_check`, from [`health/checks.py`](../../../../src/app/inbound/http/health/checks.py), which executes `SELECT 1`). As covered in [Layer Dependencies & Import Rules](layer-dependencies.md#what-the-linter-does-not-catch), this is the concrete example of `inbound` reaching directly for a third-party type (`sqlalchemy.ext.asyncio.AsyncSession`) instead of going through a `core` port — the import-linter contracts don't flag it, since they only police imports between `app.main`/`app.inbound`/`app.outbound`/`app.core`, not which third-party libraries any one of them reaches for.
+[`health/router.py`](../../../../src/app/base/inbound/http/health/router.py) exposes `/livez/` (always `"OK"`, no dependencies) and `/healthz/` (injects an `AsyncSession` and runs `db_check`, from [`health/checks.py`](../../../../src/app/base/inbound/http/health/checks.py), which executes `SELECT 1`). As covered in [Layer Dependencies & Import Rules](layer-dependencies.md#what-the-linter-does-not-catch), this is the concrete example of `inbound` reaching directly for a third-party type (`sqlalchemy.ext.asyncio.AsyncSession`) instead of going through a `core` port — the import-linter contracts don't flag it, since they only police imports between the app's own packages (`app.base.*`, `app.modules`, `app.shared`), not which third-party libraries any one of them reaches for.
 
 ## Where to go next
 
