@@ -630,7 +630,7 @@ The order of Steps 3 and 4 follows O1 (closed 2026-11-03: Notifications first).
 
 ## Human checks
 
-One run, top to bottom, on one freshly seeded stack (rewritten 2026-11-14 under `docs/plans/agents.md` 1.3). They cover what only the running app shows: the worker importing the moved classes, the stored outbox rows, the CLI, the entrypoints with units removed and restored, and the per-unit test command on the real test tree. What the automated tests already prove is left out, apart from one public API read in check 5d. The stack is rebuilt only where a check changes code. They replace the per-step checks written as each step landed, which passed for Step 2 on 2026-11-03 and for Step 3 on 2026-11-06.
+One run, top to bottom, on one freshly seeded stack (rewritten 2026-11-14 under `docs/plans/agents.md` 1.3). They cover what only the running app shows: the worker importing the moved classes, the stored outbox rows, the CLI, the entrypoints with units removed and restored, the per-unit test command on the real test tree, and the import rules run on the real code. What the automated tests already prove is left out, apart from one public API read in check 5d. The stack is rebuilt only where a check changes code. They replace the per-step checks written as each step landed, which passed for Step 2 on 2026-11-03 and for Step 3 on 2026-11-06.
 
 Every command's output is human-readable (JSON goes through `python3 -m json.tool`), and every command is explained right under it, flags included (`docs/plans/agents.md` 1.3).
 
@@ -1064,6 +1064,146 @@ Every command's output is human-readable (JSON goes through `python3 -m json.too
    **Breakdown:** `grep -E '^tests/.*::'` keeps the lines naming a test (they start with `tests/` and contain `::`); `| grep -vc '…'` counts (`-c`) the lines that don't (`-v`) start with Organizations' test folder.
 
    Expect `0`.
+
+8. **Import boundaries: each rule catches one forbidden import in the real code.**
+
+   **Why:** the 13 import contracts in `pyproject.toml` keep the units apart ("Import rules" above). `tests/base/unit/architecture/test_import_contracts.py` proves each one against a small fake import graph; these run the real tool, `lint-imports`, on the real code. Each sub-check adds a throwaway file holding one forbidden import, shows it, runs `lint-imports`, and deletes the file, so nothing existing is edited. None of them need the dev stack. Added 2026-11-14, after the human maintainer ran them by hand.
+
+   **Acts on:** a throwaway file, `_boundary_check.py`, created and deleted within each sub-check.
+
+   **8a. `base`'s lower layers can't import a module.** Only `base`'s `main/`, the composition root, may know the modules. Create the file inside `base/core/`:
+   ```shell
+   printf '%s\n' 'from app.modules.organizations.core.api import OrganizationInvitationCreatedEvent' > src/app/base/core/_boundary_check.py
+   ```
+   **Breakdown:** `printf '%s\n' '…'` prints the quoted line followed by a newline; `>` writes it into the named file, creating it.
+
+   Look at it:
+   ```shell
+   cat -n src/app/base/core/_boundary_check.py
+   ```
+   **Breakdown:** `cat` prints the file; `-n` numbers each line.
+
+   Expect one line, the import of `OrganizationInvitationCreatedEvent`. Run the import contracts:
+   ```shell
+   uv run lint-imports
+   ```
+   **Breakdown:** `uv run` runs `lint-imports` from the project's environment; it reads the contracts from `pyproject.toml`.
+
+   Expect `units depend only on the units below them BROKEN`, `Contracts: 12 kept, 1 broken.`, and the report `app.base.core is not allowed to import app.modules:` naming `app.base.core._boundary_check -> app.modules.organizations.core.api (l.1)`. Remove the file:
+   ```shell
+   rm src/app/base/core/_boundary_check.py
+   ```
+   **Breakdown:** `rm` deletes the named file.
+
+   **8b. Modules depend on each other one way only.** Organizations must never import Notifications; that is what keeps Notifications removable. Create the file inside Organizations' `core/`:
+   ```shell
+   printf '%s\n' 'from app.modules.notifications.core.common.events.handlers.send_welcome_email import SendWelcomeEmail' > src/app/modules/organizations/core/_boundary_check.py
+   ```
+   **Breakdown:** `printf '%s\n' '…'` prints the quoted line followed by a newline; `>` writes it into the named file, creating it.
+
+   Look at it:
+   ```shell
+   cat -n src/app/modules/organizations/core/_boundary_check.py
+   ```
+   **Breakdown:** `cat` prints the file; `-n` numbers each line.
+
+   Expect one line, the import of `SendWelcomeEmail`. Run the import contracts:
+   ```shell
+   uv run lint-imports
+   ```
+   **Breakdown:** `uv run` runs `lint-imports` from the project's environment; it reads the contracts from `pyproject.toml`.
+
+   Expect `modules depend on each other one way only BROKEN`, `Contracts: 12 kept, 1 broken.`, and the report `app.modules.organizations is not allowed to import app.modules.notifications:`. Remove the file:
+   ```shell
+   rm src/app/modules/organizations/core/_boundary_check.py
+   ```
+   **Breakdown:** `rm` deletes the named file.
+
+   **8c. Another module may use only Organizations' `core/api.py`.** Create a file inside Notifications' `core/` that imports the event from its own file instead:
+   ```shell
+   printf '%s\n' 'from app.modules.organizations.core.common.events.organization_invitation_created import OrganizationInvitationCreatedEvent' > src/app/modules/notifications/core/_boundary_check.py
+   ```
+   **Breakdown:** `printf '%s\n' '…'` prints the quoted line followed by a newline; `>` writes it into the named file, creating it.
+
+   Look at it:
+   ```shell
+   cat -n src/app/modules/notifications/core/_boundary_check.py
+   ```
+   **Breakdown:** `cat` prints the file; `-n` numbers each line.
+
+   Expect one line, the direct import of `OrganizationInvitationCreatedEvent`. Run the import contracts:
+   ```shell
+   uv run lint-imports
+   ```
+   **Breakdown:** `uv run` runs `lint-imports` from the project's environment; it reads the contracts from `pyproject.toml`.
+
+   Expect `other modules import only Organizations' core/api.py BROKEN`, `Contracts: 12 kept, 1 broken.`, and the report `Illegal imports of protected package app.modules.organizations.core.common:`. Remove the file:
+   ```shell
+   rm src/app/modules/notifications/core/_boundary_check.py
+   ```
+   **Breakdown:** `rm` deletes the named file.
+
+   **8d. Nobody but `base`'s `main/` imports `shared`.** A module uses `base`'s `EmailSender` port, never `shared`'s adapter. Create a file inside Notifications' `core/` that imports the adapter:
+   ```shell
+   printf '%s\n' 'from app.shared.outbound.adapters.console_email_sender import ConsoleEmailSender' > src/app/modules/notifications/core/_boundary_check.py
+   ```
+   **Breakdown:** `printf '%s\n' '…'` prints the quoted line followed by a newline; `>` writes it into the named file, creating it.
+
+   Look at it:
+   ```shell
+   cat -n src/app/modules/notifications/core/_boundary_check.py
+   ```
+   **Breakdown:** `cat` prints the file; `-n` numbers each line.
+
+   Expect one line, the import of `ConsoleEmailSender`. Run the import contracts:
+   ```shell
+   uv run lint-imports
+   ```
+   **Breakdown:** `uv run` runs `lint-imports` from the project's environment; it reads the contracts from `pyproject.toml`.
+
+   Expect `only base's main/ imports shared BROKEN`, `Contracts: 12 kept, 1 broken.`, and the report `Illegal imports of protected package app.shared:`. Remove the file:
+   ```shell
+   rm src/app/modules/notifications/core/_boundary_check.py
+   ```
+   **Breakdown:** `rm` deletes the named file.
+
+   **8e. The inner layer can't reach the outer one.** The original author's Clean Architecture rule, unchanged by the move: `core` never imports an adapter. Create the file inside `base/core/`:
+   ```shell
+   printf '%s\n' 'from app.base.outbound.adapters.sqla_user_finder import SqlaUserFinder' > src/app/base/core/_boundary_check.py
+   ```
+   **Breakdown:** `printf '%s\n' '…'` prints the quoted line followed by a newline; `>` writes it into the named file, creating it.
+
+   Look at it:
+   ```shell
+   cat -n src/app/base/core/_boundary_check.py
+   ```
+   **Breakdown:** `cat` prints the file; `-n` numbers each line.
+
+   Expect one line, the import of `SqlaUserFinder`. Run the import contracts:
+   ```shell
+   uv run lint-imports
+   ```
+   **Breakdown:** `uv run` runs `lint-imports` from the project's environment; it reads the contracts from `pyproject.toml`.
+
+   Expect two contracts broken, `Contracts: 11 kept, 2 broken.`: `inner must not import outer BROKEN`, and `units depend only on the units below them BROKEN`, which orders `base`'s own layers too. Both report `app.base.core is not allowed to import app.base.outbound:`. Remove the file:
+   ```shell
+   rm src/app/base/core/_boundary_check.py
+   ```
+   **Breakdown:** `rm` deletes the named file.
+
+   **8f. Back to clean.** Run the import contracts once more:
+   ```shell
+   uv run lint-imports
+   ```
+   **Breakdown:** `uv run` runs `lint-imports` from the project's environment; it reads the contracts from `pyproject.toml`.
+
+   Expect `Contracts: 13 kept, 0 broken.` Then confirm no throwaway file was left behind:
+   ```shell
+   git status --short
+   ```
+   **Breakdown:** `--short` prints one line per changed or untracked file.
+
+   Expect no `_boundary_check.py` in the list (no output at all on a clean working tree).
 
 ### After the checks
 
