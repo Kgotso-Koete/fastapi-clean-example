@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.1] - 2026-11-14: Import-boundary human checks
+
+### Added
+- **Plan 16's human checks, check 8:** five checks that each add a throwaway file with one forbidden import, run `lint-imports` on the real code, see the matching contract broken, and delete the file (`base` importing a module, Organizations importing Notifications, another module reaching Organizations' internals, a module importing `shared`, `core` importing `outbound`), then a final check that all 13 contracts are kept and nothing was left behind.
+
 ## [0.20.0] - 2026-11-14: Modular monolith: base, Organizations and Notifications modules, shared
 
 The app is split into units (`docs/plans/16-modular-monolith.md`): the original app in `src/app/base/`, unchanged below the prefix; two modules, Organizations and Notifications, in `src/app/modules/`; and domain-free building blocks in `src/app/shared/`. Routes, responses, the database and the CLI's commands are unchanged; characterisation tests written before the first move prove it.
