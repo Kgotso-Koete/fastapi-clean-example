@@ -9,15 +9,15 @@ case "$1" in
         if [ "${ENVIRONMENT:-development}" != "production" ] && [ "${SEED_DB_WITH_TEST_DATA:-false}" = "true" ]; then
             python scripts/seed_db.py
         fi
-        exec uvicorn app.main.run_public_api:make_app_with_public_api --factory --host 0.0.0.0 --port "$PORT" --reload
+        exec uvicorn app.base.main.run_public_api:make_app_with_public_api --factory --host 0.0.0.0 --port "$PORT" --reload
         ;;
     worker)
         # No separate `beat` command: the worker process starts its own
         # outbox-draining loop itself (see
-        # src/app/main/worker/outbox_drain_loop.py, wired into
+        # src/app/base/main/worker/outbox_drain_loop.py, wired into
         # worker_process_init in celery_app.py) instead of a Celery Beat
         # schedule.
-        exec celery -A app.main.worker.celery_app:celery_app worker \
+        exec celery -A app.base.main.worker.celery_app:celery_app worker \
             --loglevel=INFO \
             --queues="${CELERY_TASK_DEFAULT_QUEUE:-events}" \
             --concurrency="${CELERY_WORKER_CONCURRENCY:-2}"

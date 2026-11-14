@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.0] - 2026-11-14: Modular monolith: base, Organizations and Notifications modules, shared
+
+The app is split into units (`docs/plans/16-modular-monolith.md`): the original app in `src/app/base/`, unchanged below the prefix; two modules, Organizations and Notifications, in `src/app/modules/`; and domain-free building blocks in `src/app/shared/`. Routes, responses, the database and the CLI's commands are unchanged; characterisation tests written before the first move prove it.
+
+### Added
+- **The module registry** (`src/app/base/main/modules.py`): each unit describes itself in its own `main/module.py` (needs, event subscriptions, providers per entrypoint, routers, table mappings, seeds), and every entrypoint builds itself from `UNITS`. Every entrypoint refuses to start, naming both, when a registered unit needs one that isn't registered.
+- **Seven import contracts for the units** (13 in all): `unit-order`, `unit-layers`, `module-order`, `module-core-uses-base-core-only`, `outbound-not-base-inbound`, `organizations-internals` and `shared-internals`; the four CQRS contracts now cover every module. Each is tested against a fake violation and the real graph (`tests/base/unit/architecture/`).
+- **Characterisation tests** (`tests/base/characterisation/`): both OpenAPI documents against committed snapshots, every container's bindings, the mapped tables and the CLI's command tree.
+- **Feature-delete tests:** the web app and the CLI built without Notifications start, sign up, and send no email.
+- **`unit=<name>`** for `make check` and `make test-docker`: one unit's tests, for quick feedback; an unknown name, or a unit with no tests for that run, stops make before pytest runs.
+- **Wiki:** a "Units: base, Modules and shared" page, a "Characterisation Tests" page, and a unit graph generated from the code by `scripts/wiki/dependency_graph.py`.
+
+### Changed
+- **Every import path:** `app.core…` → `app.base.core…` (and the same for `inbound`, `outbound`, `main`); Organizations under `app.modules.organizations…`, Notifications' handlers under `app.modules.notifications…`, the email adapters and `EmailSettings` under `app.shared…`. Tests mirror the code: `tests/base/`, `tests/modules/<name>/`, `tests/shared/`.
+- **Entrypoints:** `uvicorn app.base.main.run_public_api:make_app_with_public_api`, `python -m app.base.main.cli`, `celery -A app.base.main.worker.celery_app:celery_app`; the `make` targets are unchanged.
+- **Logger names:** every moved module's logger is named after its new path, which shows in the JSON logs' `logger` field; a log filter or dashboard that matches on the old names needs updating.
+- **Outbox rows and queued Celery messages written before this version** name event and handler classes by their old import paths and are not delivered after it.
+- **Email** is bound once, by `shared`'s `SharedEmailProvider`, for the web app, the CLI and the worker, replacing the two identical `provide_email_sender()` methods.
+- **Documentation:** every wiki page's paths; the sentences the restructuring made untrue; the README and roadmap; `docs/plans/agents.md` 1.1 (every value to copy in its own code block), 1.3 (`unit=`; human checks cover what the tests can't show, reuse the running stack, and explain every command and flag), 2.3 and 3.1.
+
+### Removed
+- `tests/integration/with_infra/organizations/test_rls_spike.py`: plan 9's Step 9 experiment, which tested no app code; the parked `wip/row-level-security` branch keeps its copy.
+
 ## [0.19.1] - 2026-10-21: Row-Level Security parked, modular monolith plan, one-file Docker test runs
 
 ### Added

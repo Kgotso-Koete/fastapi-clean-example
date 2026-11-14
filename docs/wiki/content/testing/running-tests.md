@@ -15,18 +15,25 @@ The [`Makefile`](../../../../Makefile) defines three named groups of pytest path
 
 ```make
 PYTEST_PATHS_LIGHT := \
-	tests/sanity \
-	tests/unit \
-	tests/integration/no_infra
+	tests/base/characterisation \
+	tests/base/sanity \
+	tests/base/unit \
+	tests/base/integration/no_infra \
+	$(wildcard tests/modules/*/unit) \
+	$(wildcard tests/shared/unit)
 PYTEST_PATHS_APP_INFRA := \
 	$(PYTEST_PATHS_LIGHT) \
-	tests/smoke \
-	tests/integration/with_infra
+	tests/base/smoke \
+	tests/base/integration/with_infra \
+	$(wildcard tests/modules/*/integration/with_infra) \
+	$(wildcard tests/shared/integration/with_infra)
 PYTEST_PATHS_MIGRATIONS := \
-	tests/integration/migrations
+	tests/base/integration/migrations
 ```
 
-`PYTEST_PATHS_APP_INFRA` is `PYTEST_PATHS_LIGHT` plus the two infrastructure-heavy tiers — it's a strict superset, not a separate list maintained by hand. `PYTEST_PATHS_MIGRATIONS` stands apart from both: it points at `tests/integration/migrations` (the Alembic "stairway" test, upgrading and downgrading through every revision — see [`test_stairway.py`](../../../../tests/integration/migrations/test_stairway.py)), which needs its own dedicated database service and deliberately isn't folded into either of the other two groups.
+`PYTEST_PATHS_APP_INFRA` is `PYTEST_PATHS_LIGHT` plus the infrastructure-heavy tiers (`base`'s smoke and `with_infra` tests, and every module's and `shared`'s `with_infra` folder) — it's a strict superset, not a separate list maintained by hand. `PYTEST_PATHS_MIGRATIONS` stands apart from both: it points at `tests/base/integration/migrations` (the Alembic "stairway" test, upgrading and downgrading through every revision — see [`test_stairway.py`](../../../../tests/base/integration/migrations/test_stairway.py)), which needs its own dedicated database service and deliberately isn't folded into either of the other two groups.
+
+The `$(wildcard …)` lines pick up every module's and `shared`'s tests by their folder names, so adding a module under `tests/modules/<name>/` needs no `Makefile` edit (`wildcard` lists only folders that exist).
 
 ## Which target runs what
 
@@ -45,8 +52,8 @@ PYTEST_PATHS_MIGRATIONS := \
             mall["make test-docker"]
         end
 
-        light["PYTEST_PATHS_LIGHT<br/>sanity + unit + integration/no_infra"]
-        appinfra["PYTEST_PATHS_APP_INFRA<br/>LIGHT + smoke + integration/with_infra"]
+        light["PYTEST_PATHS_LIGHT<br/>characterisation + sanity + unit + integration/no_infra<br/>(base's, plus each module's and shared's unit)"]
+        appinfra["PYTEST_PATHS_APP_INFRA<br/>LIGHT + smoke + integration/with_infra<br/>(plus each module's and shared's with_infra)"]
         migpaths["PYTEST_PATHS_MIGRATIONS<br/>integration/migrations"]
 
         mtest --> light
@@ -64,9 +71,19 @@ PYTEST_PATHS_MIGRATIONS := \
 
 - **`make test`** runs `pytest -v $(PYTEST_PATHS_LIGHT)` plus coverage flags (`--cov=src --cov-report=term-missing --cov-report=html`) — no container, no `.env`, nothing beyond the local Python environment.
 - **`make check`** runs the full [lint pipeline](code-quality-tools.md) first, then `make test`, then `uv run coverage html` — the target a developer runs before committing, entirely against the light tier.
-- **`make test-docker-app`** brings up `db_pg`, `redis`, and `worker` via `$(DC_TEST_DOCKER)` (`docker-compose.yml` + `docker-compose.test.yml` together, under the isolated `$(PROJECT_NAME)-test` compose project), waits for them to report healthy (`--wait --wait-timeout 180`), then runs a disposable one-off `app` container (`docker compose run -T --name $(TEST_RUNNER) app pytest ...`) against `$(PYTEST_PATHS_APP_INFRA)` — the light tier *plus* `tests/smoke` and `tests/integration/with_infra`. It always tears the stack back down (`down -v --remove-orphans`) afterward, whether the run passed or failed, and copies the coverage data file out of the disposable container first.
+- **`make test-docker-app`** brings up `db_pg`, `redis`, and `worker` via `$(DC_TEST_DOCKER)` (`docker-compose.yml` + `docker-compose.test.yml` together, under the isolated `$(PROJECT_NAME)-test` compose project), waits for them to report healthy (`--wait --wait-timeout 180`), then runs a disposable one-off `app` container (`docker compose run -T --name $(TEST_RUNNER) app pytest ...`) against `$(PYTEST_PATHS_APP_INFRA)` — the light tier *plus* `tests/base/smoke`, `tests/base/integration/with_infra` and every module's and `shared`'s `integration/with_infra`. It always tears the stack back down (`down -v --remove-orphans`) afterward, whether the run passed or failed, and copies the coverage data file out of the disposable container first.
 - **`make test-docker-migrations`** is a second, separate compose cycle: it brings up only `$(MIGRATION_DB_SERVICE)` (`db_pg`), runs `$(PYTEST_PATHS_MIGRATIONS)` in a disposable runner with `--no-deps` (so it doesn't also start `redis`/`worker`, which the stairway test has no use for), and tears down the same way.
 - **`make test-docker`** is just `test-docker-app` then `test-docker-migrations`, followed by merging the Docker-run coverage data into a second HTML (HyperText Markup Language) report (`htmlcov-docker/`), kept separate from `make test`'s own `htmlcov/`.
+
+## One unit's tests: `unit=`
+
+`unit=<name>` narrows `make check` or `make test-docker` to one unit's tests: `base`, `shared`, or a module's name (a folder under `tests/modules/`). It keeps only the folders under that unit's own test folder in each of the three lists above, so a unit's run is always part of the full run.
+
+- `make check unit=organizations`: every linter over the whole app (the import contracts are about the whole graph), then only `tests/modules/organizations/`'s light tests.
+- `make test-docker unit=organizations`: only `tests/modules/organizations/`'s unit and infrastructure tests, in the throwaway Docker stack, and no migration tests (those are one of `base`'s whole-app suites).
+- `make test-docker unit=base`: only `tests/base/`'s tests, including the whole-app suites (characterisation, sanity, smoke and migrations).
+
+A name make doesn't know is refused before anything runs, listing the known units; so is a unit with no tests for that run. Without either check, `pytest` given no paths would fall back to `pyproject.toml`'s `testpaths` and run every test. A unit's run is for quick feedback only: the full `make check` and `make test-docker`, without `unit=`, still run before every commit, because a unit's own tests can't show what its change breaks in another unit.
 
 ## Why `docker-compose.test.yml` exists as an overlay, not a separate stack
 
@@ -125,6 +142,6 @@ worker:
 
 ## Where to go next
 
-- [Test Infrastructure & Fixtures](test-infrastructure.md) — what `tests/smoke` and `tests/integration/with_infra` actually need from the `db_pg`/`redis`/`worker` containers this page's targets bring up.
+- [Test Infrastructure & Fixtures](test-infrastructure.md) — what `tests/base/smoke` and `tests/base/integration/with_infra` actually need from the `db_pg`/`redis`/`worker` containers this page's targets bring up.
 - [Code Quality Tools](code-quality-tools.md) — the lint pipeline `make check`/`make check-ci` run before ever reaching a test.
 - [Quick Start with Docker](../getting-started/quick-start-docker.md) — the `Makefile`'s non-test targets (`make upd`, `make up`, ...) for running the app itself.

@@ -1,17 +1,17 @@
 # Adding a New REST Endpoint
 
 !!! sourcefiles "Relevant Source Files/Folders"
-    - [`src/app/inbound/http/users/create_user.py`](../../../../src/app/inbound/http/users/create_user.py) — the worked template for this page
-    - [`src/app/inbound/http/users/router.py`](../../../../src/app/inbound/http/users/router.py) — how a use case's route joins the `/users` router
-    - [`src/app/core/commands/create_user.py`](../../../../src/app/core/commands/create_user.py) — the use case this endpoint wraps
-    - [`src/app/inbound/http/errors/router.py`](../../../../src/app/inbound/http/errors/router.py) — `make_error_aware_router`, the `error_map` mechanism
-    - [`src/app/inbound/http/errors/callbacks.py`](../../../../src/app/inbound/http/errors/callbacks.py)
-    - [`src/app/inbound/http/errors/rules.py`](../../../../src/app/inbound/http/errors/rules.py)
-    - [`tests/sanity/inbound/http/`](../../../../tests/sanity/inbound/http/) — the checks every request-body example must pass
+    - [`src/app/base/inbound/http/users/create_user.py`](../../../../src/app/base/inbound/http/users/create_user.py) — the worked template for this page
+    - [`src/app/base/inbound/http/users/router.py`](../../../../src/app/base/inbound/http/users/router.py) — how a use case's route joins the `/users` router
+    - [`src/app/base/core/commands/create_user.py`](../../../../src/app/base/core/commands/create_user.py) — the use case this endpoint wraps
+    - [`src/app/base/inbound/http/errors/router.py`](../../../../src/app/base/inbound/http/errors/router.py) — `make_error_aware_router`, the `error_map` mechanism
+    - [`src/app/base/inbound/http/errors/callbacks.py`](../../../../src/app/base/inbound/http/errors/callbacks.py)
+    - [`src/app/base/inbound/http/errors/rules.py`](../../../../src/app/base/inbound/http/errors/rules.py)
+    - [`tests/base/sanity/inbound/http/`](../../../../tests/base/sanity/inbound/http/) — the checks every request-body example must pass
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
 
-Once a use case exists as a command in `core` (see [Adding a New Use Case (Command)](adding-a-use-case.md)), exposing it over HTTP (HyperText Transfer Protocol) as a REST (Representational State Transfer) endpoint is a thin, mechanical `inbound` layer step: one small file that declares a route, injects the command, and calls it. [`create_user.py`](../../../../src/app/inbound/http/users/create_user.py) under `inbound/http/users/` is the template below.
+Once a use case exists as a command in `core` (see [Adding a New Use Case (Command)](adding-a-use-case.md)), exposing it over HTTP (HyperText Transfer Protocol) as a REST (Representational State Transfer) endpoint is a thin, mechanical `inbound` layer step: one small file that declares a route, injects the command, and calls it. [`create_user.py`](../../../../src/app/base/inbound/http/users/create_user.py) under `inbound/http/users/` is the template below.
 
 ## Request flow
 
@@ -42,7 +42,7 @@ Once a use case exists as a command in `core` (see [Adding a New Use Case (Comma
 
 ## Step 1 — Write the route file
 
-[`create_user.py`](../../../../src/app/inbound/http/users/create_user.py) declares the route:
+[`create_user.py`](../../../../src/app/base/inbound/http/users/create_user.py) declares the route:
 
 ```python
 def make_create_user_router() -> APIRouter:
@@ -83,7 +83,7 @@ A few details worth calling out explicitly, since each is a deliberate, reusable
 
 ## Request-body examples
 
-Every route with a JSON body declares at least one example, defined as a constant at the top of its own route file, in [`create_user.py`](../../../../src/app/inbound/http/users/create_user.py):
+Every route with a JSON body declares at least one example, defined as a constant at the top of its own route file, in [`create_user.py`](../../../../src/app/base/inbound/http/users/create_user.py):
 
 ```python
 CREATE_USER_EXAMPLES: Final[dict[str, Any]] = {
@@ -102,12 +102,12 @@ CREATE_USER_EXAMPLES: Final[dict[str, Any]] = {
 
 - **Why:** the example is what a developer copies from Swagger to make their first call. One that breaks a rule greets them with a confusing `400`.
 - **Where:** in `inbound`, through FastAPI's `Body(openapi_examples=...)`, never on `core`'s request type, which knows nothing about HTTP or Swagger.
-- **Checked automatically:** the sanity tests in [`tests/sanity/inbound/http/`](../../../../tests/sanity/inbound/http/) build both apps' OpenAPI documents and fail if a route with a JSON body has no example, if an example has a wrong field name, type or enum value (a role, say), or if no example of a route fills every field. They run in `make check`.
+- **Checked automatically:** the sanity tests in [`tests/base/sanity/inbound/http/`](../../../../tests/base/sanity/inbound/http/) build both apps' OpenAPI documents and fail if a route with a JSON body has no example, if an example has a wrong field name, type or enum value (a role, say), or if no example of a route fills every field. They run in `make check`.
 - **Not checked automatically:** the schema only says "string", so the tests can't tell whether a value passes `core`'s own rules (username 5–20 characters, a password of 12+ with a letter, a digit and a symbol, a South African phone number). Choose values that do, and where the request acts on existing data, use a seeded account from `scripts/seed_db.py` (`peter-parker`, say), so the example works as-is on a seeded dev stack.
 
 ## Step 2 — Register the router
 
-`make_create_user_router()` is added to the resource's router in [`router.py`](../../../../src/app/inbound/http/users/router.py):
+`make_create_user_router()` is added to the resource's router in [`router.py`](../../../../src/app/base/inbound/http/users/router.py):
 
 ```python
 def make_users_router(*, cookie_name: str) -> APIRouter:

@@ -185,6 +185,9 @@ cython_debug/
 htmlcov-docker/
 todo/
 ai_research/
+# Files that commands write while the human maintainer and an AI agent work
+# together (file lists, reports): kept locally to examine, never committed.
+logs/
 
 .constraints.in
 .secrets

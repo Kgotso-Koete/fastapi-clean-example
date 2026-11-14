@@ -1,9 +1,9 @@
 # Settings System (pydantic-settings)
 
 !!! sourcefiles "Relevant Source Files/Folders"
-    - [`src/app/main/config/settings.py`](../../../../src/app/main/config/settings.py) — plain `pydantic.BaseModel` settings groups: field names, defaults, validation
-    - [`src/app/main/config/loader.py`](../../../../src/app/main/config/loader.py) — `pydantic_settings.BaseSettings` env-loading classes and the `load_*_settings()` functions that produce the plain models
-    - [`src/app/main/run.py`](../../../../src/app/main/run.py) — `make_app()`, which calls every `load_*_settings()` function and wires the results into the DI (Dependency Injection) container
+    - [`src/app/base/main/config/settings.py`](../../../../src/app/base/main/config/settings.py) — plain `pydantic.BaseModel` settings groups: field names, defaults, validation (a unit's own groups live in its `main/config/settings.py`: `OrganizationSettings` in Organizations, `EmailSettings` in `shared`)
+    - [`src/app/base/main/config/loader.py`](../../../../src/app/base/main/config/loader.py) — `pydantic_settings.BaseSettings` env-loading classes and the `load_*_settings()` functions that produce the plain models
+    - [`src/app/base/main/run.py`](../../../../src/app/base/main/run.py) — `make_app()`, which calls every `load_*_settings()` function and wires the results into the DI (Dependency Injection) container
     - `.env` (generated from [`env.example`](../../../../env.example) + `.secrets`; see [Environment Variables](environment-variables.md)) — the actual `KEY=value` source `loader.py` reads from; gitignored, so there is no tracked file to link to directly
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
@@ -12,8 +12,8 @@
 
 This codebase deliberately splits "what a setting *is*" from "how a setting gets its value from the environment" into two separate files:
 
-- [`settings.py`](../../../../src/app/main/config/settings.py) defines plain `pydantic.BaseModel` classes — `AppSettings`, `PostgresSettings`, `JwtSettings`, and so on. These carry field names, types, defaults, and validation rules (e.g. `PasswordHasherSettings.PEPPER: str = Field(min_length=32)`), and nothing about environment variables at all. They're what the rest of the app (`make_app()`, DI providers) actually type-hints against.
-- [`loader.py`](../../../../src/app/main/config/loader.py) defines a parallel `pydantic_settings.BaseSettings` subclass for each group — `AppEnvConfig`, `PostgresEnvConfig`, `JwtEnvConfig`, etc. — each one multiply-inheriting from `BaseSettings` *and* the matching plain model from `settings.py`, adding only an `env_prefix` (e.g. `APP_`, `JWT_`, `POSTGRES_`). A `load_*_settings()` function instantiates the `EnvConfig` class (which reads and validates real environment variables) and hands back the value typed as the plain `Settings` model.
+- [`settings.py`](../../../../src/app/base/main/config/settings.py) defines plain `pydantic.BaseModel` classes — `AppSettings`, `PostgresSettings`, `JwtSettings`, and so on. These carry field names, types, defaults, and validation rules (e.g. `PasswordHasherSettings.PEPPER: str = Field(min_length=32)`), and nothing about environment variables at all. They're what the rest of the app (`make_app()`, DI providers) actually type-hints against.
+- [`loader.py`](../../../../src/app/base/main/config/loader.py) defines a parallel `pydantic_settings.BaseSettings` subclass for each group — `AppEnvConfig`, `PostgresEnvConfig`, `JwtEnvConfig`, etc. — each one multiply-inheriting from `BaseSettings` *and* the matching plain model from `settings.py`, adding only an `env_prefix` (e.g. `APP_`, `JWT_`, `POSTGRES_`). A `load_*_settings()` function instantiates the `EnvConfig` class (which reads and validates real environment variables) and hands back the value typed as the plain `Settings` model.
 
 !!! figure "Settings loading flow, one group at a time"
     ```mermaid
@@ -52,7 +52,7 @@ This codebase deliberately splits "what a setting *is*" from "how a setting gets
 
 ## Why two files instead of one
 
-Every settings group could, in principle, be a single class combining both the field definitions and the `BaseSettings`/`env_prefix` config. Splitting them keeps `settings.py` reusable outside the "read from environment variables" context — the plain `*Settings` models are exactly what `make_app()`'s keyword arguments accept for overriding settings in tests (see the `app_settings: AppSettings | None = None` pattern in [`run.py`](../../../../src/app/main/run.py)), and what the DI container's `context={...}` mapping is keyed by. A test can construct `JwtSettings(SECRET="test-secret-value-32-chars-long!")` directly, with zero environment variables involved, `BaseSettings` machinery, or `.env` file on disk — only `loader.py`'s `EnvConfig` subclasses actually touch `pydantic_settings`.
+Every settings group could, in principle, be a single class combining both the field definitions and the `BaseSettings`/`env_prefix` config. Splitting them keeps `settings.py` reusable outside the "read from environment variables" context — the plain `*Settings` models are exactly what `make_app()`'s keyword arguments accept for overriding settings in tests (see the `app_settings: AppSettings | None = None` pattern in [`run.py`](../../../../src/app/base/main/run.py)), and what the DI container's `context={...}` mapping is keyed by. A test can construct `JwtSettings(SECRET="test-secret-value-32-chars-long!")` directly, with zero environment variables involved, `BaseSettings` machinery, or `.env` file on disk — only `loader.py`'s `EnvConfig` subclasses actually touch `pydantic_settings`.
 
 !!! figure "Two ways to end up with a JwtSettings instance"
     ```mermaid
@@ -111,7 +111,7 @@ There isn't a single "final settings object" this codebase assembles once at sta
 
 `make_app()` also accepts every settings group as an optional keyword argument (`app_settings: AppSettings | None = None`, etc.) — when a test passes a settings instance directly, `load_*_settings()` for that group is skipped entirely, so a unit test can construct a full app with hand-built settings and never touch `.env` or real environment variables at all.
 
-All eleven `*EnvConfig` classes in [`loader.py`](../../../../src/app/main/config/loader.py) also share one base config, built once as `_DEFAULT_CONFIG_DICT` and merged with each class's own `env_prefix` via `SettingsConfigDict.__or__`:
+All eleven `*EnvConfig` classes in [`loader.py`](../../../../src/app/base/main/config/loader.py) also share one base config, built once as `_DEFAULT_CONFIG_DICT` and merged with each class's own `env_prefix` via `SettingsConfigDict.__or__`:
 
 ```python
 _DEFAULT_CONFIG_DICT: Final[SettingsConfigDict] = SettingsConfigDict(

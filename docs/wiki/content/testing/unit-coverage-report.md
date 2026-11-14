@@ -8,7 +8,7 @@
 
 ## What this actually is — and its one real limitation
 
-`make check` runs `tests/sanity` + `tests/unit` + `tests/integration/no_infra` (see [Running Tests](running-tests.md)) with `--cov=src`, then `uv run coverage html` writes a full, browsable coverage report to `htmlcov/index.html` at the repo root. The page below embeds that exact file directly — not a copy, not a re-generated summary.
+`make check` runs `tests/base/characterisation` + `tests/base/sanity` + `tests/base/unit` + `tests/base/integration/no_infra`, plus each module's and `shared`'s `unit` folder (see [Running Tests](running-tests.md)) with `--cov=src`, then `uv run coverage html` writes a full, browsable coverage report to `htmlcov/index.html` at the repo root. The page below embeds that exact file directly — not a copy, not a re-generated summary.
 
 Unlike the [dependency graph](../architecture/layer-dependencies.md#the-real-import-graph-generated-from-the-code-itself) and [Complexity](../complexity.md) pages, this isn't regenerated on every `make wiki-build` — `htmlcov/` is a gitignored build artifact that only updates when you actually run `make check` yourself, and doesn't exist at all on a fresh clone until then. Treat this page as a snapshot of your last local test run, not a live, always-current report.
 

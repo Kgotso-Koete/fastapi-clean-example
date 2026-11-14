@@ -62,7 +62,7 @@ OPEN_DASHBOARD_LIST := $(strip $(subst $(COMMA), ,$(OPEN_DASHBOARDS)))
 INFRA_SERVICES ?= db_pg redis
 INFRA_INIT_SERVICES ?=
 MIGRATION_DB_SERVICE ?= db_pg
-STAIRWAY_TEST ?= tests/integration/migrations/test_stairway.py
+STAIRWAY_TEST ?= tests/base/integration/migrations/test_stairway.py
 
 # -----------------------------
 # Internal vars / aliases
@@ -86,16 +86,60 @@ DC_TEST_DOCKER := docker compose \
 TEST_RUNNER := $(TEST_PROJECT)-runner
 
 # Pytest paths
+# Every module's tests are picked up by wildcard, so a module added under
+# tests/modules/<name>/ needs no edit here (docs/plans/16-modular-monolith.md,
+# user story 5). shared's tests, under tests/shared/, are picked up the same
+# way. wildcard lists only folders that exist.
 PYTEST_PATHS_LIGHT := \
-	tests/sanity \
-	tests/unit \
-	tests/integration/no_infra
+	tests/base/characterisation \
+	tests/base/sanity \
+	tests/base/unit \
+	tests/base/integration/no_infra \
+	$(wildcard tests/modules/*/unit) \
+	$(wildcard tests/shared/unit)
 PYTEST_PATHS_APP_INFRA := \
 	$(PYTEST_PATHS_LIGHT) \
-	tests/smoke \
-	tests/integration/with_infra
+	tests/base/smoke \
+	tests/base/integration/with_infra \
+	$(wildcard tests/modules/*/integration/with_infra) \
+	$(wildcard tests/shared/integration/with_infra)
 PYTEST_PATHS_MIGRATIONS := \
-	tests/integration/migrations
+	tests/base/integration/migrations
+# unit=<name> narrows the three lists above to one unit's tests
+# (docs/plans/16-modular-monolith.md, O6): base, shared or a module's name,
+# e.g. `make check unit=organizations` or `make test-docker unit=base`. It keeps
+# only the folders under that unit's own test folder (tests/base/,
+# tests/shared/ or tests/modules/<name>/), so a unit's run is always part of
+# the full run, and a new module needs no edit here. The linters in
+# `make check` still run over everything: the import rules are about the whole
+# import graph. A module's or shared's Docker run includes no migration tests:
+# they are one of base's whole-app suites, and test-docker-migrations skips
+# when its list is empty. Left out, every test runs, as before.
+# The known units are base, shared and every folder under tests/modules/ (the
+# trailing slash matches folders only, so __init__.py is left out, and
+# Python's __pycache__ is no module). A name not among them is refused before
+# anything runs: narrowed to nothing, pytest would fall back to
+# pyproject.toml's testpaths and run every test, the with_infra ones included.
+UNIT_NAMES := $(sort base shared $(filter-out __pycache__,$(patsubst tests/modules/%/,%,$(wildcard tests/modules/*/))))
+ifneq ($(strip $(unit)),)
+ifeq ($(filter $(unit),$(UNIT_NAMES)),)
+$(error Unknown unit '$(unit)'. Known units: $(UNIT_NAMES))
+endif
+UNIT_TEST_FOLDER := tests/$(if $(filter base shared,$(unit)),$(unit),modules/$(unit))
+PYTEST_PATHS_LIGHT := $(filter $(UNIT_TEST_FOLDER)/%,$(PYTEST_PATHS_LIGHT))
+PYTEST_PATHS_APP_INFRA := $(filter $(UNIT_TEST_FOLDER)/%,$(PYTEST_PATHS_APP_INFRA))
+PYTEST_PATHS_MIGRATIONS := $(filter $(UNIT_TEST_FOLDER)/%,$(PYTEST_PATHS_MIGRATIONS))
+endif
+# Stops make, naming the unit, when unit= leaves a run with no test folders:
+# a module with only infrastructure tests asked for its light tests, or a
+# module's test folder with no tests yet. pytest given no paths would fall back
+# to pyproject.toml's testpaths and run every test, the with_infra ones
+# included. Called on the first line of each recipe that runs pytest over
+# these lists. make expands a recipe just before running it (under -n too), so
+# only the run that would get nothing stops. When the list isn't empty the line
+# expands to nothing, and make runs nothing for it; without unit= the lists are
+# never empty.
+require_tests = $(if $(strip $(1)),,$(error Unit '$(unit)' has no tests for this run in $(UNIT_TEST_FOLDER)/))
 
 # Pytest args
 PYTEST_ARGS_VERBOSE := -s -vv
@@ -128,6 +172,7 @@ lint:
 	uv run mypy
 
 test:
+	$(call require_tests,$(PYTEST_PATHS_LIGHT))
 	uv run pytest -v \
 		$(PYTEST_PATHS_LIGHT) \
 		$(PYTEST_ARGS_COV)
@@ -221,7 +266,7 @@ stop-all:
 prune:
 	$(DOCKER_PRUNE)
 
-# `app.main.cli` -- `cli-up` brings the stack up if it isn't already (a
+# `app.base.main.cli` -- `cli-up` brings the stack up if it isn't already (a
 # plain `up --wait`, not `upd`'s `--force-recreate`: idempotent/no-op when
 # everything's already healthy, instead of tearing down and rebuilding every
 # container) before running the command; `cli` skips that and assumes the
@@ -234,14 +279,14 @@ cli-up: docker-env
 	  exit 2; \
 	fi
 	$(DOCKER_COMPOSE) up -d --build --wait
-	$(DOCKER_COMPOSE) exec app python -m app.main.cli $(args)
+	$(DOCKER_COMPOSE) exec app python -m app.base.main.cli $(args)
 
 cli:
 	if [ -z "$(strip $(args))" ]; then \
 	  echo 'ERROR: args is required, e.g. make cli args="users list"' >&2; \
 	  exit 2; \
 	fi
-	$(DOCKER_COMPOSE) exec app python -m app.main.cli $(args)
+	$(DOCKER_COMPOSE) exec app python -m app.base.main.cli $(args)
 
 # Migrations
 .PHONY: migration
@@ -254,6 +299,7 @@ migration: local-env
 # Tests (with infra)
 .PHONY: test-docker test-docker-app test-docker-migrations
 test-docker-app: docker-env
+	$(call require_tests,$(PYTEST_PATHS_APP_INFRA))
 	rc=0; \
 	$(DC_TEST_DOCKER) down -v --remove-orphans >/dev/null 2>&1 || true; \
 	if [ -n "$(strip $(INFRA_SERVICES))" ]; then \
@@ -293,14 +339,14 @@ test-docker-migrations: docker-env
 # One integration test file (or directory) in the same throwaway Docker test
 # stack as test-docker-app, for quick RED/GREEN cycles on a test that needs
 # real infrastructure, e.g.:
-#   make test-docker-file path=tests/integration/with_infra/organizations/test_organization_lists.py
+#   make test-docker-file path=tests/modules/organizations/integration/with_infra/test_organization_lists.py
 # The app container's `pytest` entrypoint runs the migrations first, exactly
 # as in test-docker-app. No coverage report. The full `make test-docker`
 # still runs before every commit (docs/plans/agents.md 1.3).
 .PHONY: test-docker-file
 test-docker-file: docker-env
 	if [ -z "$(strip $(path))" ]; then \
-	  echo 'ERROR: path is required, e.g. make test-docker-file path=tests/integration/with_infra/...' >&2; \
+	  echo 'ERROR: path is required, e.g. make test-docker-file path=tests/base/integration/with_infra/...' >&2; \
 	  exit 2; \
 	fi
 	rc=0; \

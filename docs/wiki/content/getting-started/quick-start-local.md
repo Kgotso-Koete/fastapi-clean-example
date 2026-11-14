@@ -20,7 +20,7 @@ There's no fully-native path in this project's own tooling — nowhere does it s
     flowchart TB
         updlocal["make upd-local"] --> db_pg[("db_pg")]
         updlocal --> redis[("redis")]
-        uvicorn["uvicorn app.main.run_public_api:make_app_with_public_api --reload"] --> app["app"]
+        uvicorn["uvicorn app.base.main.run_public_api:make_app_with_public_api --reload"] --> app["app"]
 
         linkStyle default stroke-width:3px,stroke:#333333
     ```
@@ -61,16 +61,16 @@ This generates a **different** `.env` than the Docker path does: `scripts/makefi
 
 ## Running the app
 
-Apply migrations, then start the app via `make_app()` in [`src/app/main/run.py`](../../../../src/app/main/run.py):
+Apply migrations, then start the app via `make_app()` in [`src/app/base/main/run.py`](../../../../src/app/base/main/run.py):
 
 ```shell
 alembic upgrade head
-uvicorn app.main.run_public_api:make_app_with_public_api --host 0.0.0.0 --port 8000 --reload
+uvicorn app.base.main.run_public_api:make_app_with_public_api --host 0.0.0.0 --port 8000 --reload
 ```
 
-Or run [`src/app/main/run.py`](../../../../src/app/main/run.py) directly from your IDE (Integrated Development Environment) instead of the `uvicorn` command — same entry point, easier to attach a debugger to.
+Or run [`src/app/base/main/run.py`](../../../../src/app/base/main/run.py) directly from your IDE (Integrated Development Environment) instead of the `uvicorn` command — same entry point, easier to attach a debugger to.
 
-**No `worker` process runs via this path.** `docker-entrypoint.sh`'s `worker` case is just `celery -A app.main.worker.celery_app:celery_app worker --loglevel=INFO --queues=events --concurrency=2` — a plain command you can run yourself in a second terminal if you need to exercise `"background"`-mode event handlers locally. Simpler alternative: set `CELERY_ENABLED=false` in `.secrets` for local work, so every handler runs inline regardless of its own `DISPATCH_MODE` — no worker needed at all. See [Core Patterns → Domain Events & the Transactional Outbox](../core-patterns/domain-events-outbox.md) for what `DISPATCH_MODE` actually controls.
+**No `worker` process runs via this path.** `docker-entrypoint.sh`'s `worker` case is just `celery -A app.base.main.worker.celery_app:celery_app worker --loglevel=INFO --queues=events --concurrency=2` — a plain command you can run yourself in a second terminal if you need to exercise `"background"`-mode event handlers locally. Simpler alternative: set `CELERY_ENABLED=false` in `.secrets` for local work, so every handler runs inline regardless of its own `DISPATCH_MODE` — no worker needed at all. See [Core Patterns → Domain Events & the Transactional Outbox](../core-patterns/domain-events-outbox.md) for what `DISPATCH_MODE` actually controls.
 
 ## Getting full API (Application Programming Interface) access
 

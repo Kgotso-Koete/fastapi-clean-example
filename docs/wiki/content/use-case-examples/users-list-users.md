@@ -1,21 +1,21 @@
 # Users: List Users
 
 !!! sourcefiles "Relevant Source Files/Folders"
-    - [`src/app/inbound/http/users/list_users.py`](../../../../src/app/inbound/http/users/list_users.py) — HTTP router
-    - [`src/app/core/queries/list_users.py`](../../../../src/app/core/queries/list_users.py) — the `ListUsers` query
-    - [`src/app/core/queries/ports/user_reader.py`](../../../../src/app/core/queries/ports/user_reader.py) — `UserReader` port, `ListUsersQm`
-    - [`src/app/core/queries/models/user.py`](../../../../src/app/core/queries/models/user.py) — `UserQm` query model
-    - [`src/app/core/queries/query_support/offset_pagination.py`](../../../../src/app/core/queries/query_support/offset_pagination.py) — `OffsetPaginationParams`
-    - [`src/app/core/queries/query_support/sorting.py`](../../../../src/app/core/queries/query_support/sorting.py) — `SortingParams`, `SortingOrder`
-    - [`src/app/core/common/authorization/permissions.py`](../../../../src/app/core/common/authorization/permissions.py) — `CanManageRole`
-    - [`src/app/outbound/adapters/sqla_user_reader.py`](../../../../src/app/outbound/adapters/sqla_user_reader.py) — the `UserReader` adapter
-    - [`src/app/main/ioc/core.py`](../../../../src/app/main/ioc/core.py) — DI wiring (`CoreProvider`)
+    - [`src/app/base/inbound/http/users/list_users.py`](../../../../src/app/base/inbound/http/users/list_users.py) — HTTP router
+    - [`src/app/base/core/queries/list_users.py`](../../../../src/app/base/core/queries/list_users.py) — the `ListUsers` query
+    - [`src/app/base/core/queries/ports/user_reader.py`](../../../../src/app/base/core/queries/ports/user_reader.py) — `UserReader` port, `ListUsersQm`
+    - [`src/app/base/core/queries/models/user.py`](../../../../src/app/base/core/queries/models/user.py) — `UserQm` query model
+    - [`src/app/base/core/queries/query_support/offset_pagination.py`](../../../../src/app/base/core/queries/query_support/offset_pagination.py) — `OffsetPaginationParams`
+    - [`src/app/base/core/queries/query_support/sorting.py`](../../../../src/app/base/core/queries/query_support/sorting.py) — `SortingParams`, `SortingOrder`
+    - [`src/app/base/core/common/authorization/permissions.py`](../../../../src/app/base/core/common/authorization/permissions.py) — `CanManageRole`
+    - [`src/app/base/outbound/adapters/sqla_user_reader.py`](../../../../src/app/base/outbound/adapters/sqla_user_reader.py) — the `UserReader` adapter
+    - [`src/app/base/main/ioc/core.py`](../../../../src/app/base/main/ioc/core.py) — DI wiring (`CoreProvider`)
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
 
 ## This is a query, not a command — and that shows up in the code
 
-Every other page in this section (`Create User`, `Activate User`, `Deactivate User`, `Grant Admin`, `Revoke Admin`, `Set User Password`) is a **command**: it changes state, and lives under `src/app/core/commands/`. `ListUsers` is a **query**: it only reads, and lives under a structurally separate `src/app/core/queries/` tree with its own port (`UserReader` instead of `UserTxStorage`), its own supporting types (`query_support/`), and its own return shape (a `TypedDict` query model, `ListUsersQm`, instead of a domain `User` entity — an **Entity**, i.e. a Domain-Driven Design object with identity that persists over time, per [Layer Dependencies & Import Rules](../architecture/layer-dependencies.md#what-clean-architecture-and-domain-driven-design-actually-are)). `ListUsers`'s own docstring:
+Every other page in this section (`Create User`, `Activate User`, `Deactivate User`, `Grant Admin`, `Revoke Admin`, `Set User Password`) is a **command**: it changes state, and lives under `src/app/base/core/commands/`. `ListUsers` is a **query**: it only reads, and lives under a structurally separate `src/app/base/core/queries/` tree with its own port (`UserReader` instead of `UserTxStorage`), its own supporting types (`query_support/`), and its own return shape (a `TypedDict` query model, `ListUsersQm`, instead of a domain `User` entity — an **Entity**, i.e. a Domain-Driven Design object with identity that persists over time, per [Layer Dependencies & Import Rules](../architecture/layer-dependencies.md#what-clean-architecture-and-domain-driven-design-actually-are)). `ListUsers`'s own docstring:
 
 - Open to admins.
 - Retrieves paginated list of existing users with relevant info.

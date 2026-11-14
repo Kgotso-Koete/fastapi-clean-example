@@ -1,12 +1,12 @@
 # Account: Change Password
 
 !!! sourcefiles "Relevant Source Files/Folders"
-    - [`src/app/inbound/http/account/change_password.py`](../../../../src/app/inbound/http/account/change_password.py) — the route
-    - [`src/app/outbound/auth_ctx/handlers/change_password.py`](../../../../src/app/outbound/auth_ctx/handlers/change_password.py) — the `ChangePassword` handler
-    - [`src/app/core/common/services/user.py`](../../../../src/app/core/common/services/user.py) — `UserService.is_password_valid` / `change_password`
-    - [`src/app/outbound/auth_ctx/service.py`](../../../../src/app/outbound/auth_ctx/service.py) — `AuthService.logout_current_session` / `revoke_all_sessions`
-    - [`src/app/core/common/authorization/current_user_service.py`](../../../../src/app/core/common/authorization/current_user_service.py) — `get_current_user(for_update=True)`
-    - [`src/app/outbound/auth_ctx/exceptions.py`](../../../../src/app/outbound/auth_ctx/exceptions.py) — `AuthenticationChangeError`, `ReAuthenticationError`
+    - [`src/app/base/inbound/http/account/change_password.py`](../../../../src/app/base/inbound/http/account/change_password.py) — the route
+    - [`src/app/base/outbound/auth_ctx/handlers/change_password.py`](../../../../src/app/base/outbound/auth_ctx/handlers/change_password.py) — the `ChangePassword` handler
+    - [`src/app/base/core/common/services/user.py`](../../../../src/app/base/core/common/services/user.py) — `UserService.is_password_valid` / `change_password`
+    - [`src/app/base/outbound/auth_ctx/service.py`](../../../../src/app/base/outbound/auth_ctx/service.py) — `AuthService.logout_current_session` / `revoke_all_sessions`
+    - [`src/app/base/core/common/authorization/current_user_service.py`](../../../../src/app/base/core/common/authorization/current_user_service.py) — `get_current_user(for_update=True)`
+    - [`src/app/base/outbound/auth_ctx/exceptions.py`](../../../../src/app/base/outbound/auth_ctx/exceptions.py) — `AuthenticationChangeError`, `ReAuthenticationError`
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
 
@@ -62,7 +62,7 @@
 
 ## Step 1 — The route
 
-[`change_password.py`](../../../../src/app/inbound/http/account/change_password.py) is the one route in this set with its own Pydantic request schema, purely for a nicer Swagger UI, immediately converted into the handler's own plain dataclass request:
+[`change_password.py`](../../../../src/app/base/inbound/http/account/change_password.py) is the one route in this set with its own Pydantic request schema, purely for a nicer Swagger UI, immediately converted into the handler's own plain dataclass request:
 
 ```python
 class ChangePasswordRequestSchema(BaseModel):
@@ -93,17 +93,17 @@ async def change_password(request_schema: ChangePasswordRequestSchema, handler: 
 
 ## Step 2 — Locking the current user
 
-[`ChangePassword.execute`](../../../../src/app/outbound/auth_ctx/handlers/change_password.py) starts by fetching the current user *with a row lock*:
+[`ChangePassword.execute`](../../../../src/app/base/outbound/auth_ctx/handlers/change_password.py) starts by fetching the current user *with a row lock*:
 
 ```python
 current_user = await self._current_user_service.get_current_user(for_update=True)
 ```
 
-[`CurrentUserService.get_current_user`](../../../../src/app/core/common/authorization/current_user_service.py) passes `for_update` straight through to the storage port's `get_by_id(..., for_update=True)`, which issues `SELECT ... FOR UPDATE` — this holds a row-level lock on the user for the rest of the transaction, so a concurrent second change-password (or admin action on the same user) can't interleave with this one and leave the account in an inconsistent state.
+[`CurrentUserService.get_current_user`](../../../../src/app/base/core/common/authorization/current_user_service.py) passes `for_update` straight through to the storage port's `get_by_id(..., for_update=True)`, which issues `SELECT ... FOR UPDATE` — this holds a row-level lock on the user for the rest of the transaction, so a concurrent second change-password (or admin action on the same user) can't interleave with this one and leave the account in an inconsistent state.
 
 ## Step 3 — Two checks before anything changes
 
-[`ChangePassword.execute`](../../../../src/app/outbound/auth_ctx/handlers/change_password.py) continues with two cheap checks before touching the database:
+[`ChangePassword.execute`](../../../../src/app/base/outbound/auth_ctx/handlers/change_password.py) continues with two cheap checks before touching the database:
 
 ```python
 current_password = RawPassword(request.current_password)
@@ -119,7 +119,7 @@ if not await self._user_service.is_password_valid(current_user, current_password
 
 ## Step 4 — Changing the password, then revoking everything
 
-[`ChangePassword.execute`](../../../../src/app/outbound/auth_ctx/handlers/change_password.py) then commits the new password and revokes every session:
+[`ChangePassword.execute`](../../../../src/app/base/outbound/auth_ctx/handlers/change_password.py) then commits the new password and revokes every session:
 
 ```python
 await self._user_service.change_password(current_user, new_password, now=self._utc_timer.now)
@@ -130,7 +130,7 @@ await self._auth_service.logout_current_session()
 await self._auth_service.revoke_all_sessions(current_user.id_)
 ```
 
-[`UserService.change_password`](../../../../src/app/core/common/services/user.py) just re-hashes and re-assigns `password_hash`/`updated_at` on the entity (the `User` object — see [Layer Dependencies & Import Rules](../architecture/layer-dependencies.md) for what "entity" means here) — the same `PasswordHasher` port used at signup. Once that's committed, the handler calls both revocation methods on [`AuthService`](../../../../src/app/outbound/auth_ctx/service.py): `logout_current_session()` (the same one-session deletion [Account: Log Out](account-log-out.md) covers, which also clears this response's cookie) followed by `revoke_all_sessions(current_user.id_)`, which deletes *every* session row for that user — including ones from other devices/browsers, which get silently logged out the next time they try to use their now-invalid cookie.
+[`UserService.change_password`](../../../../src/app/base/core/common/services/user.py) just re-hashes and re-assigns `password_hash`/`updated_at` on the entity (the `User` object — see [Layer Dependencies & Import Rules](../architecture/layer-dependencies.md) for what "entity" means here) — the same `PasswordHasher` port used at signup. Once that's committed, the handler calls both revocation methods on [`AuthService`](../../../../src/app/base/outbound/auth_ctx/service.py): `logout_current_session()` (the same one-session deletion [Account: Log Out](account-log-out.md) covers, which also clears this response's cookie) followed by `revoke_all_sessions(current_user.id_)`, which deletes *every* session row for that user — including ones from other devices/browsers, which get silently logged out the next time they try to use their now-invalid cookie.
 
 ## Where to go next
 

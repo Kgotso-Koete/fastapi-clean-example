@@ -4,7 +4,7 @@
     - [`env.example`](../../../../env.example) — every environment variable this project defines, documented inline, committed to the repo
     - `.secrets` — real secret values, layered on top of `env.example`; gitignored, so there is no tracked file to link to
     - [`scripts/makefile/docker_env.sh`](../../../../scripts/makefile/docker_env.sh) — generates `.env` by concatenating `env.example` then `.secrets`
-    - [`src/app/main/config/loader.py`](../../../../src/app/main/config/loader.py) — reads the generated `.env` into typed settings objects (see [Settings System](settings-system.md))
+    - [`src/app/base/main/config/loader.py`](../../../../src/app/base/main/config/loader.py) — reads the generated `.env` into typed settings objects (see [Settings System](settings-system.md))
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
 

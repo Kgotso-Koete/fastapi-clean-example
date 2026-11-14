@@ -1,0 +1,138 @@
+from pathlib import Path
+from typing import Final
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from app.base.main.config.settings import (
+    AlertSettings,  # <-- NEW
+    ApiKeySettings,
+    AppSettings,
+    CelerySettings,
+    CookieSettings,
+    JwtSettings,
+    PasswordHasherSettings,
+    PostgresSettings,
+    RedisSettings,
+    SessionSettings,
+    SqlaSettings,
+)
+from app.modules.organizations.main.config.settings import OrganizationSettings
+from app.shared.main.config.settings import EmailSettings
+
+BASE_DIR: Final[Path] = Path(__file__).resolve().parents[5]
+_ENV_FILE: Final[Path] = BASE_DIR.joinpath(".env")
+_DEFAULT_CONFIG_DICT: Final[SettingsConfigDict] = SettingsConfigDict(
+    env_file=_ENV_FILE,
+    env_file_encoding="utf-8",
+    extra="ignore",
+)
+
+
+def _load_settings[E: BaseSettings](env_cls: type[E]) -> E:
+    return env_cls()
+
+
+class AppEnvConfig(BaseSettings, AppSettings):
+    model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="APP_")
+
+
+class PostgresEnvConfig(BaseSettings, PostgresSettings):
+    model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="POSTGRES_")
+
+
+class SqlaEnvConfig(BaseSettings, SqlaSettings):
+    model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="SQLA_")
+
+
+class PasswordHasherEnvConfig(BaseSettings, PasswordHasherSettings):
+    model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="PASSWORD_")
+
+
+class JwtEnvConfig(BaseSettings, JwtSettings):
+    model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="JWT_")
+
+
+class SessionEnvConfig(BaseSettings, SessionSettings):
+    model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="SESSION_")
+
+
+class CookieEnvConfig(BaseSettings, CookieSettings):
+    model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="COOKIE_")
+
+
+class EmailEnvConfig(BaseSettings, EmailSettings):
+    model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="EMAIL_")
+
+
+class RedisEnvConfig(BaseSettings, RedisSettings):
+    model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="REDIS_")
+
+
+class CeleryEnvConfig(BaseSettings, CelerySettings):
+    model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="CELERY_")
+
+
+# vvv NEW vvv
+class AlertEnvConfig(BaseSettings, AlertSettings):
+    model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="ALERT_")
+
+
+class ApiKeyEnvConfig(BaseSettings, ApiKeySettings):
+    model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="API_KEY_")
+
+
+class OrganizationEnvConfig(BaseSettings, OrganizationSettings):
+    model_config = _DEFAULT_CONFIG_DICT | SettingsConfigDict(env_prefix="ORGANIZATION_")
+
+
+def load_app_settings() -> AppSettings:
+    return _load_settings(AppEnvConfig)
+
+
+def load_postgres_settings() -> PostgresSettings:
+    return _load_settings(PostgresEnvConfig)
+
+
+def load_sqla_settings() -> SqlaSettings:
+    return _load_settings(SqlaEnvConfig)
+
+
+def load_password_hasher_settings() -> PasswordHasherSettings:
+    return _load_settings(PasswordHasherEnvConfig)
+
+
+def load_jwt_settings() -> JwtSettings:
+    return _load_settings(JwtEnvConfig)
+
+
+def load_session_settings() -> SessionSettings:
+    return _load_settings(SessionEnvConfig)
+
+
+def load_cookie_settings() -> CookieSettings:
+    return _load_settings(CookieEnvConfig)
+
+
+def load_email_settings() -> EmailSettings:
+    return _load_settings(EmailEnvConfig)
+
+
+def load_redis_settings() -> RedisSettings:
+    return _load_settings(RedisEnvConfig)
+
+
+def load_celery_settings() -> CelerySettings:
+    return _load_settings(CeleryEnvConfig)
+
+
+# vvv NEW vvv
+def load_alert_settings() -> AlertSettings:
+    return _load_settings(AlertEnvConfig)
+
+
+def load_api_key_settings() -> ApiKeySettings:
+    return _load_settings(ApiKeyEnvConfig)
+
+
+def load_organization_settings() -> OrganizationSettings:
+    return _load_settings(OrganizationEnvConfig)

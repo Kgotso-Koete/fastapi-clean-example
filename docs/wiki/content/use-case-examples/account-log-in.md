@@ -1,14 +1,14 @@
 # Account: Log In
 
 !!! sourcefiles "Relevant Source Files/Folders"
-    - [`src/app/inbound/http/account/log_in.py`](../../../../src/app/inbound/http/account/log_in.py) — the route
-    - [`src/app/outbound/auth_ctx/handlers/log_in.py`](../../../../src/app/outbound/auth_ctx/handlers/log_in.py) — the `LogIn` handler
-    - [`src/app/outbound/auth_ctx/service.py`](../../../../src/app/outbound/auth_ctx/service.py) — `AuthService.issue_session`
-    - [`src/app/outbound/auth_ctx/jwt_processor.py`](../../../../src/app/outbound/auth_ctx/jwt_processor.py) — `JwtProcessor.encode`
-    - [`src/app/outbound/auth_ctx/cookie_manager.py`](../../../../src/app/outbound/auth_ctx/cookie_manager.py) — `CookieManager.stage_set`
-    - [`src/app/inbound/http/auth_cookie_middleware.py`](../../../../src/app/inbound/http/auth_cookie_middleware.py) — `AuthCookieMiddleware`, where the staged cookie actually gets attached to the HTTP response
-    - [`src/app/outbound/auth_ctx/model.py`](../../../../src/app/outbound/auth_ctx/model.py) — `AuthSession`
-    - [`src/app/outbound/auth_ctx/sqla_user_tx_storage.py`](../../../../src/app/outbound/auth_ctx/sqla_user_tx_storage.py) — `AuthSqlaUserTxStorage.get_by_username` / `get_by_email`
+    - [`src/app/base/inbound/http/account/log_in.py`](../../../../src/app/base/inbound/http/account/log_in.py) — the route
+    - [`src/app/base/outbound/auth_ctx/handlers/log_in.py`](../../../../src/app/base/outbound/auth_ctx/handlers/log_in.py) — the `LogIn` handler
+    - [`src/app/base/outbound/auth_ctx/service.py`](../../../../src/app/base/outbound/auth_ctx/service.py) — `AuthService.issue_session`
+    - [`src/app/base/outbound/auth_ctx/jwt_processor.py`](../../../../src/app/base/outbound/auth_ctx/jwt_processor.py) — `JwtProcessor.encode`
+    - [`src/app/base/outbound/auth_ctx/cookie_manager.py`](../../../../src/app/base/outbound/auth_ctx/cookie_manager.py) — `CookieManager.stage_set`
+    - [`src/app/base/inbound/http/auth_cookie_middleware.py`](../../../../src/app/base/inbound/http/auth_cookie_middleware.py) — `AuthCookieMiddleware`, where the staged cookie actually gets attached to the HTTP response
+    - [`src/app/base/outbound/auth_ctx/model.py`](../../../../src/app/base/outbound/auth_ctx/model.py) — `AuthSession`
+    - [`src/app/base/outbound/auth_ctx/sqla_user_tx_storage.py`](../../../../src/app/base/outbound/auth_ctx/sqla_user_tx_storage.py) — `AuthSqlaUserTxStorage.get_by_username` / `get_by_email`
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
 
@@ -59,11 +59,11 @@
         end
     ```
 
-    > The cookie is not set directly by the handler or the router — it's **staged** onto `request.state` during `execute()`, and only actually attached to the outgoing response afterward, by [`AuthCookieMiddleware`](../../../../src/app/inbound/http/auth_cookie_middleware.py) wrapping the whole app. This indirection is what lets `AuthService` (deep in `outbound`) affect the HTTP (HyperText Transfer Protocol) response without importing anything from Starlette's response API (Application Programming Interface) itself.
+    > The cookie is not set directly by the handler or the router — it's **staged** onto `request.state` during `execute()`, and only actually attached to the outgoing response afterward, by [`AuthCookieMiddleware`](../../../../src/app/base/inbound/http/auth_cookie_middleware.py) wrapping the whole app. This indirection is what lets `AuthService` (deep in `outbound`) affect the HTTP (HyperText Transfer Protocol) response without importing anything from Starlette's response API (Application Programming Interface) itself.
 
 ## Step 1 — The route
 
-[`log_in.py`](../../../../src/app/inbound/http/account/log_in.py) is a standard thin route, mapping `AuthenticationError` to `401` and `AlreadyAuthenticatedError` to `403` alongside the usual `error_map` entries — see [Adding a New REST Endpoint](adding-a-rest-endpoint.md) for the generic pattern:
+[`log_in.py`](../../../../src/app/base/inbound/http/account/log_in.py) is a standard thin route, mapping `AuthenticationError` to `401` and `AlreadyAuthenticatedError` to `403` alongside the usual `error_map` entries — see [Adding a New REST Endpoint](adding-a-rest-endpoint.md) for the generic pattern:
 
 ```python
 @router.post("/login/", error_map={..., AuthenticationError: status.HTTP_401_UNAUTHORIZED, ...}, status_code=status.HTTP_200_OK, description=getdoc(LogIn))
@@ -74,7 +74,7 @@ async def log_in(request: LogInRequest, handler: FromDishka[LogIn]) -> UserQm:
 
 ## Step 2 — The handler: credential verification
 
-[`LogIn.execute`](../../../../src/app/outbound/auth_ctx/handlers/log_in.py) rejects an already-authenticated caller the same way `SignUp` does, then resolves the submitted identifier to either an `Email` or a `Username` value object (`_resolve_identifier` tries `Email` first, falling back to `Username` on `BusinessTypeError`), looks the user up via whichever storage method matches, checks the password, and checks the account is active — each failure path raising a distinct error so the router's `error_map` can turn it into the right status code:
+[`LogIn.execute`](../../../../src/app/base/outbound/auth_ctx/handlers/log_in.py) rejects an already-authenticated caller the same way `SignUp` does, then resolves the submitted identifier to either an `Email` or a `Username` value object (`_resolve_identifier` tries `Email` first, falling back to `Username` on `BusinessTypeError`), looks the user up via whichever storage method matches, checks the password, and checks the account is active — each failure path raising a distinct error so the router's `error_map` can turn it into the right status code:
 
 ```python
 identifier = self._resolve_identifier(request.identifier)
@@ -94,11 +94,11 @@ if not user.is_active:
 await self._auth_service.issue_session(user.id_)
 ```
 
-`is_password_valid` delegates to the `PasswordHasher` port's `verify()` — the same hashing scheme (bcrypt with a server-side pepper, per [`main/ioc/core.py`](../../../../src/app/main/ioc/core.py)'s `provide_password_hasher`) used to create the hash at sign-up time.
+`is_password_valid` delegates to the `PasswordHasher` port's `verify()` — the same hashing scheme (bcrypt with a server-side pepper, per [`main/ioc/core.py`](../../../../src/app/base/main/ioc/core.py)'s `provide_password_hasher`) used to create the hash at sign-up time.
 
 ## Step 3 — Issuing the session
 
-[`AuthService.issue_session`](../../../../src/app/outbound/auth_ctx/service.py) is where the actual session record, JWT, and staged cookie all get created, in this order:
+[`AuthService.issue_session`](../../../../src/app/base/outbound/auth_ctx/service.py) is where the actual session record, JWT, and staged cookie all get created, in this order:
 
 ```python
 async def issue_session(self, user_id: UserId) -> None:
@@ -109,25 +109,25 @@ async def issue_session(self, user_id: UserId) -> None:
     self._cookie_manager.stage_set(token)
 ```
 
-The session row is committed to Postgres *before* the JWT is even created — the JWT only ever encodes a `sid` claim (the session's ID) and an `exp` claim, per [`JwtProcessor.encode`](../../../../src/app/outbound/auth_ctx/jwt_processor.py):
+The session row is committed to Postgres *before* the JWT is even created — the JWT only ever encodes a `sid` claim (the session's ID) and an `exp` claim, per [`JwtProcessor.encode`](../../../../src/app/base/outbound/auth_ctx/jwt_processor.py):
 
 ```python
 payload = {self.SESSION_ID_CLAIM: auth_session.id_, self.EXPIRATION_CLAIM: auth_session.expiration.value.timestamp()}
 return jwt.encode(payload, key=self._secret, algorithm=self._algorithm)
 ```
 
-No username, role, or other user data is ever embedded in the token itself — every subsequent request re-resolves the current user from the database via the session ID, so revoking a session (deleting its row) invalidates the JWT immediately, without needing a token blocklist. This is what [`CurrentUserService`](../../../../src/app/core/common/authorization/current_user_service.py) does on every authenticated request: `IdentityProvider.get_current_user_id()` → `AuthSessionIdentityProvider` → `AuthService.get_current_user_id()`, which decodes the cookie, looks the session up, and checks `is_expired`/`needs_refresh` — silently re-issuing a refreshed cookie if the session is getting close to expiry.
+No username, role, or other user data is ever embedded in the token itself — every subsequent request re-resolves the current user from the database via the session ID, so revoking a session (deleting its row) invalidates the JWT immediately, without needing a token blocklist. This is what [`CurrentUserService`](../../../../src/app/base/core/common/authorization/current_user_service.py) does on every authenticated request: `IdentityProvider.get_current_user_id()` → `AuthSessionIdentityProvider` → `AuthService.get_current_user_id()`, which decodes the cookie, looks the session up, and checks `is_expired`/`needs_refresh` — silently re-issuing a refreshed cookie if the session is getting close to expiry.
 
 ## Step 4 — The cookie actually reaching the client
 
-[`CookieManager.stage_set`](../../../../src/app/outbound/auth_ctx/cookie_manager.py) doesn't touch the HTTP response at all — it just records the token on the request:
+[`CookieManager.stage_set`](../../../../src/app/base/outbound/auth_ctx/cookie_manager.py) doesn't touch the HTTP response at all — it just records the token on the request:
 
 ```python
 def stage_set(self, value: str) -> None:
     setattr(self._request.state, STAGED_COOKIE, value)
 ```
 
-[`AuthCookieMiddleware.dispatch`](../../../../src/app/inbound/http/auth_cookie_middleware.py), wrapping every request, reads that same `request.state` attribute *after* the route has already produced its response, and only then calls `response.set_cookie(...)` with the configured `httponly`/`secure`/`samesite` flags:
+[`AuthCookieMiddleware.dispatch`](../../../../src/app/base/inbound/http/auth_cookie_middleware.py), wrapping every request, reads that same `request.state` attribute *after* the route has already produced its response, and only then calls `response.set_cookie(...)` with the configured `httponly`/`secure`/`samesite` flags:
 
 ```python
 staged = getattr(request.state, STAGED_COOKIE, self.MISSING)

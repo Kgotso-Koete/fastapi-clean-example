@@ -88,7 +88,7 @@ services:
       # the CPU contention of every other service starting up alongside it
       # (observed to fully settle well within this window; the worker
       # itself is typically ready in ~1s once it actually gets scheduled).
-      test: ["CMD-SHELL", "celery -A app.main.worker.celery_app:celery_app inspect ping --timeout=8 | grep -q OK"]
+      test: ["CMD-SHELL", "celery -A app.base.main.worker.celery_app:celery_app inspect ping --timeout=8 | grep -q OK"]
       interval: 5s
       timeout: 15s
       retries: 3
@@ -96,7 +96,7 @@ services:
 
   # No separate `beat` service: `worker` drains `event_outbox` itself, via
   # a plain polling loop it starts on its own process (see
-  # src/app/main/worker/outbox_drain_loop.py) rather than a Celery Beat
+  # src/app/base/main/worker/outbox_drain_loop.py) rather than a Celery Beat
   # schedule. See docs/plans/transactional-outbox.md's "Why not a Celery
   # Beat task" section for why -- in short, a Beat-scheduled task still
   # shows up in Flower/Redis on every tick even when there's nothing to

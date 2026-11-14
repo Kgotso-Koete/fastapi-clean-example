@@ -1,14 +1,14 @@
 # Account: Sign Up
 
 !!! sourcefiles "Relevant Source Files/Folders"
-    - [`src/app/inbound/http/account/sign_up.py`](../../../../src/app/inbound/http/account/sign_up.py) — the route
-    - [`src/app/outbound/auth_ctx/handlers/sign_up.py`](../../../../src/app/outbound/auth_ctx/handlers/sign_up.py) — the `SignUp` handler
-    - [`src/app/core/common/services/user.py`](../../../../src/app/core/common/services/user.py) — `UserService.create_user_with_raw_password`, where the password gets hashed and the domain event recorded
-    - [`src/app/core/common/events/user_registered.py`](../../../../src/app/core/common/events/user_registered.py) — `UserRegisteredEvent`
-    - [`src/app/core/common/events/handlers/send_welcome_email.py`](../../../../src/app/core/common/events/handlers/send_welcome_email.py) — the background subscriber to that event
-    - [`src/app/outbound/auth_ctx/sqla_user_tx_storage.py`](../../../../src/app/outbound/auth_ctx/sqla_user_tx_storage.py) — `AuthSqlaUserTxStorage`
-    - [`src/app/outbound/auth_ctx/exceptions.py`](../../../../src/app/outbound/auth_ctx/exceptions.py) — `AlreadyAuthenticatedError`
-    - [`src/app/main/ioc/outbound.py`](../../../../src/app/main/ioc/outbound.py) — `AuthProvider`, where `SignUp` and its collaborators are wired
+    - [`src/app/base/inbound/http/account/sign_up.py`](../../../../src/app/base/inbound/http/account/sign_up.py) — the route
+    - [`src/app/base/outbound/auth_ctx/handlers/sign_up.py`](../../../../src/app/base/outbound/auth_ctx/handlers/sign_up.py) — the `SignUp` handler
+    - [`src/app/base/core/common/services/user.py`](../../../../src/app/base/core/common/services/user.py) — `UserService.create_user_with_raw_password`, where the password gets hashed and the domain event recorded
+    - [`src/app/base/core/common/events/user_registered.py`](../../../../src/app/base/core/common/events/user_registered.py) — `UserRegisteredEvent`
+    - [`src/app/modules/notifications/core/common/events/handlers/send_welcome_email.py`](../../../../src/app/modules/notifications/core/common/events/handlers/send_welcome_email.py) — the background subscriber to that event
+    - [`src/app/base/outbound/auth_ctx/sqla_user_tx_storage.py`](../../../../src/app/base/outbound/auth_ctx/sqla_user_tx_storage.py) — `AuthSqlaUserTxStorage`
+    - [`src/app/base/outbound/auth_ctx/exceptions.py`](../../../../src/app/base/outbound/auth_ctx/exceptions.py) — `AlreadyAuthenticatedError`
+    - [`src/app/base/main/ioc/outbound.py`](../../../../src/app/base/main/ioc/outbound.py) — `AuthProvider`, where `SignUp` and its collaborators are wired
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
 
@@ -54,7 +54,7 @@
 
 ## Step 1 — The route
 
-[`sign_up.py`](../../../../src/app/inbound/http/account/sign_up.py) follows the same shape as any other endpoint (see [Adding a New REST Endpoint](adding-a-rest-endpoint.md) for the generic version of this pattern):
+[`sign_up.py`](../../../../src/app/base/inbound/http/account/sign_up.py) follows the same shape as any other endpoint (see [Adding a New REST Endpoint](adding-a-rest-endpoint.md) for the generic version of this pattern):
 
 ```python
 @router.post(
@@ -80,11 +80,11 @@ async def sign_up(
     return await handler.execute(request)
 ```
 
-`SIGN_UP_EXAMPLES`, defined at the top of the same file, is the sample body Swagger (`/docs`) shows; see [Adding a New REST Endpoint](adding-a-rest-endpoint.md#request-body-examples). Notice there's no `dependencies=[Depends(APIKeyCookie(...))]` here, unlike `log_out`/`change_password` — signing up requires no existing session, by definition. It's registered without a cookie dependency in [`router.py`](../../../../src/app/inbound/http/account/router.py)'s `make_account_router`.
+`SIGN_UP_EXAMPLES`, defined at the top of the same file, is the sample body Swagger (`/docs`) shows; see [Adding a New REST Endpoint](adding-a-rest-endpoint.md#request-body-examples). Notice there's no `dependencies=[Depends(APIKeyCookie(...))]` here, unlike `log_out`/`change_password` — signing up requires no existing session, by definition. It's registered without a cookie dependency in [`router.py`](../../../../src/app/base/inbound/http/account/router.py)'s `make_account_router`.
 
 ## Step 2 — The handler
 
-[`SignUp`](../../../../src/app/outbound/auth_ctx/handlers/sign_up.py) is not under `core/commands/` like `CreateUser` is — it lives under `outbound/auth_ctx/`, this codebase's self-contained authentication context (see the docstring on [`AuthSession`](../../../../src/app/outbound/auth_ctx/model.py) for why: it's deliberately structured so it *could* graduate into its own [bounded context](../architecture/outbound-layer.md) later — a Domain-Driven Design term for an explicit boundary within which one domain model applies consistently — without disturbing `core`). Its first move is a "reject if already authenticated" check, done by deliberately trying to resolve a current user and expecting failure:
+[`SignUp`](../../../../src/app/base/outbound/auth_ctx/handlers/sign_up.py) is not under `core/commands/` like `CreateUser` is — it lives under `outbound/auth_ctx/`, this codebase's self-contained authentication context (see the docstring on [`AuthSession`](../../../../src/app/base/outbound/auth_ctx/model.py) for why: it's deliberately structured so it *could* graduate into its own [bounded context](../architecture/outbound-layer.md) later — a Domain-Driven Design term for an explicit boundary within which one domain model applies consistently — without disturbing `core`). Its first move is a "reject if already authenticated" check, done by deliberately trying to resolve a current user and expecting failure:
 
 ```python
 try:
@@ -98,7 +98,7 @@ From there it mirrors `CreateUser`'s body almost exactly: parse into value objec
 
 ## Password hashing and the domain event
 
-Both happen inside [`UserService.create_user_with_raw_password`](../../../../src/app/core/common/services/user.py), not in `SignUp` itself:
+Both happen inside [`UserService.create_user_with_raw_password`](../../../../src/app/base/core/common/services/user.py), not in `SignUp` itself:
 
 ```python
 async def create_user_with_raw_password(
@@ -110,7 +110,7 @@ async def create_user_with_raw_password(
     )
 ```
 
-[`create_user`](../../../../src/app/core/common/services/user.py) (the synchronous half) constructs the `User` entity and immediately records the event on it:
+[`create_user`](../../../../src/app/base/core/common/services/user.py) (the synchronous half) constructs the `User` entity and immediately records the event on it:
 
 ```python
 user.record_event(
@@ -118,7 +118,7 @@ user.record_event(
 )
 ```
 
-`UserRegisteredEvent` just carries the data a subscriber needs — nothing about *how* it will be handled. That's decided per-handler: [`SendWelcomeEmail`](../../../../src/app/core/common/events/handlers/send_welcome_email.py) declares `DISPATCH_MODE: ClassVar[Literal["sync", "background"]] = "background"`, so `HybridEventDispatcher` writes it to the transactional outbox at `stage()` time instead of running it inline — the signup response returns before any email is sent. See [Core Patterns → Domain Events & the Transactional Outbox](../core-patterns/domain-events-outbox.md) for the full mechanism, and [Users: Create User](users-create-user.md) for the same event fired from the admin-only path.
+`UserRegisteredEvent` just carries the data a subscriber needs — nothing about *how* it will be handled. That's decided per-handler: [`SendWelcomeEmail`](../../../../src/app/modules/notifications/core/common/events/handlers/send_welcome_email.py) declares `DISPATCH_MODE: ClassVar[Literal["sync", "background"]] = "background"`, so `HybridEventDispatcher` writes it to the transactional outbox at `stage()` time instead of running it inline — the signup response returns before any email is sent. See [Core Patterns → Domain Events & the Transactional Outbox](../core-patterns/domain-events-outbox.md) for the full mechanism, and [Users: Create User](users-create-user.md) for the same event fired from the admin-only path.
 
 ## Where to go next
 

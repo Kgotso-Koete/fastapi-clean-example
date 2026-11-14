@@ -1,20 +1,20 @@
 # Authorization & RBAC (Role-Based Access Control)
 
 !!! sourcefiles "Relevant Source Files/Folders"
-    - [`src/app/core/common/authorization/base.py`](../../../../src/app/core/common/authorization/base.py) — `Permission`/`PermissionContext` base abstractions
-    - [`src/app/core/common/authorization/composite.py`](../../../../src/app/core/common/authorization/composite.py) — `AnyOf`, the OR-combinator
-    - [`src/app/core/common/authorization/permissions.py`](../../../../src/app/core/common/authorization/permissions.py) — `CanManageSelf`, `CanManageSubordinate`, `CanManageRole`
-    - [`src/app/core/common/authorization/role_hierarchy.py`](../../../../src/app/core/common/authorization/role_hierarchy.py) — `ROLE_HIERARCHY`
-    - [`src/app/core/common/authorization/authorize.py`](../../../../src/app/core/common/authorization/authorize.py) — the `authorize()` entry point
-    - [`src/app/core/common/authorization/current_user_service.py`](../../../../src/app/core/common/authorization/current_user_service.py) — `CurrentUserService`
-    - [`src/app/core/common/authorization/ports.py`](../../../../src/app/core/common/authorization/ports.py) — `AuthzUserFinder`
-    - [`src/app/core/common/authorization/exceptions.py`](../../../../src/app/core/common/authorization/exceptions.py) — `AuthorizationError`
+    - [`src/app/base/core/common/authorization/base.py`](../../../../src/app/base/core/common/authorization/base.py) — `Permission`/`PermissionContext` base abstractions
+    - [`src/app/base/core/common/authorization/composite.py`](../../../../src/app/base/core/common/authorization/composite.py) — `AnyOf`, the OR-combinator
+    - [`src/app/base/core/common/authorization/permissions.py`](../../../../src/app/base/core/common/authorization/permissions.py) — `CanManageSelf`, `CanManageSubordinate`, `CanManageRole`
+    - [`src/app/base/core/common/authorization/role_hierarchy.py`](../../../../src/app/base/core/common/authorization/role_hierarchy.py) — `ROLE_HIERARCHY`
+    - [`src/app/base/core/common/authorization/authorize.py`](../../../../src/app/base/core/common/authorization/authorize.py) — the `authorize()` entry point
+    - [`src/app/base/core/common/authorization/current_user_service.py`](../../../../src/app/base/core/common/authorization/current_user_service.py) — `CurrentUserService`
+    - [`src/app/base/core/common/authorization/ports.py`](../../../../src/app/base/core/common/authorization/ports.py) — `AuthzUserFinder`
+    - [`src/app/base/core/common/authorization/exceptions.py`](../../../../src/app/base/core/common/authorization/exceptions.py) — `AuthorizationError`
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
 
 ## The idea in one sentence
 
-Role-Based Access Control (RBAC) in this codebase isn't a library or a decorator — it's a handful of small classes in [`src/app/core/common/authorization/`](../../../../src/app/core/common/authorization/) that compose like building blocks: a `Permission` is anything that can answer "is this allowed?" against a `PermissionContext`, and `authorize()` is the one place that question actually gets asked and turned into a raised exception on "no." Everything else — `CanManageSelf`, `CanManageSubordinate`, `CanManageRole`, and the `ROLE_HIERARCHY` mapping they read from — is just a concrete `Permission` built on top of that shape.
+Role-Based Access Control (RBAC) in this codebase isn't a library or a decorator — it's a handful of small classes in [`src/app/base/core/common/authorization/`](../../../../src/app/base/core/common/authorization/) that compose like building blocks: a `Permission` is anything that can answer "is this allowed?" against a `PermissionContext`, and `authorize()` is the one place that question actually gets asked and turned into a raised exception on "no." Everything else — `CanManageSelf`, `CanManageSubordinate`, `CanManageRole`, and the `ROLE_HIERARCHY` mapping they read from — is just a concrete `Permission` built on top of that shape.
 
 !!! figure "The composable Permission shape"
     ```mermaid
@@ -50,7 +50,7 @@ Role-Based Access Control (RBAC) in this codebase isn't a library or a decorator
 
 ## `Permission` and `PermissionContext`: the two-class foundation
 
-[`base.py`](../../../../src/app/core/common/authorization/base.py):
+[`base.py`](../../../../src/app/base/core/common/authorization/base.py):
 
 ```python
 @dataclass(frozen=True, slots=True)
@@ -69,7 +69,7 @@ class Permission[PC: PermissionContext](ABC):
 
 ## `AnyOf`: the OR-combinator (and why there's no `AllOf`)
 
-[`composite.py`](../../../../src/app/core/common/authorization/composite.py):
+[`composite.py`](../../../../src/app/base/core/common/authorization/composite.py):
 
 ```python
 class AnyOf[PC: PermissionContext](Permission[PC]):
@@ -80,13 +80,13 @@ class AnyOf[PC: PermissionContext](Permission[PC]):
         return any(p.is_satisfied_by(context) for p in self._permissions)
 ```
 
-`AnyOf` is itself a `Permission` — it satisfies the exact same interface it composes over, so it can wrap any mix of concrete permissions *or* another `AnyOf`, arbitrarily nested. Its logic is a plain `any()` over whatever `Permission`s it was constructed with: satisfied the moment one of them returns `True`. Per its own test suite ([`tests/unit/core/common/authorization/test_composite.py`](../../../../tests/unit/core/common/authorization/test_composite.py)), an `AnyOf()` constructed with zero permissions is *not* satisfied — `any()` over an empty sequence is `False`, so an empty `AnyOf` denies by default rather than vacuously allowing.
+`AnyOf` is itself a `Permission` — it satisfies the exact same interface it composes over, so it can wrap any mix of concrete permissions *or* another `AnyOf`, arbitrarily nested. Its logic is a plain `any()` over whatever `Permission`s it was constructed with: satisfied the moment one of them returns `True`. Per its own test suite ([`tests/base/unit/core/common/authorization/test_composite.py`](../../../../tests/base/unit/core/common/authorization/test_composite.py)), an `AnyOf()` constructed with zero permissions is *not* satisfied — `any()` over an empty sequence is `False`, so an empty `AnyOf` denies by default rather than vacuously allowing.
 
 Grepping the codebase confirms `AnyOf` is not wired into any production command or query today — its only callers are its own unit tests. The same is true of `CanManageSelf` (below): defined and unit-tested, but not currently invoked from any real `core.commands`/`core.queries` class. Both exist as ready-to-use building blocks — e.g. a "a user may change their own profile, or an admin may change it for them" rule could compose as `AnyOf(CanManageSelf(), CanManageSubordinate())`. Profile editing was built differently, as two use cases: [`UpdateOwnProfile`](../use-case-examples/account-update-own-profile.md) needs no permission check at all, since it only ever edits the caller resolved from the session, and [`UpdateUserProfile`](../use-case-examples/users-update-user-profile.md) uses the same two checks as `SetUserPassword`. This codebase's actual use cases (below) only ever reach for `CanManageRole` and `CanManageSubordinate` directly, unwrapped. There is no `AllOf` counterpart anywhere in the source tree; if this codebase ever needs "permission A **and** permission B," that combinator doesn't exist yet and would have to be added.
 
 ## The concrete permissions and `ROLE_HIERARCHY`
 
-[`permissions.py`](../../../../src/app/core/common/authorization/permissions.py):
+[`permissions.py`](../../../../src/app/base/core/common/authorization/permissions.py):
 
 ```python
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -131,7 +131,7 @@ class CanManageRole(Permission[RoleManagementContext]):
 
 `CanManageSelf` doesn't touch `ROLE_HIERARCHY` at all — it's a plain identity check, `subject == target`, relying on `User`'s own equality. `CanManageSubordinate` and `CanManageRole` share the identical lookup shape: both take an *injectable* `role_hierarchy` mapping, defaulting to the real `ROLE_HIERARCHY`, so a unit test can substitute a fake mapping without touching dependency injection — and both do the same thing, `self._role_hierarchy.get(subject.role, set())`, then check whether the target (a role, or a `User`'s `.role`) is in that set.
 
-[`role_hierarchy.py`](../../../../src/app/core/common/authorization/role_hierarchy.py):
+[`role_hierarchy.py`](../../../../src/app/base/core/common/authorization/role_hierarchy.py):
 
 ```python
 ROLE_HIERARCHY: Final[Mapping[UserRole, set[UserRole]]] = {
@@ -145,7 +145,7 @@ This is the entire "hierarchy": a flat `dict` from one `UserRole` to the *set* o
 
 ## `authorize()`: the enforcement choke point
 
-[`authorize.py`](../../../../src/app/core/common/authorization/authorize.py):
+[`authorize.py`](../../../../src/app/base/core/common/authorization/authorize.py):
 
 ```python
 def authorize[PC: PermissionContext](
@@ -157,14 +157,14 @@ def authorize[PC: PermissionContext](
         raise AuthorizationError
 ```
 
-This function is the *only* place `is_satisfied_by()` gets called from a real use case — every `core.commands`/`core.queries` class that needs an authorization check calls `authorize(some_permission, context=...)` rather than calling `is_satisfied_by()` directly. That's a deliberate choke point: whatever `Permission` is passed in (a single concrete one, or an `AnyOf(...)` composition), the failure behavior is identical everywhere — a plain [`AuthorizationError`](../../../../src/app/core/common/authorization/exceptions.py):
+This function is the *only* place `is_satisfied_by()` gets called from a real use case — every `core.commands`/`core.queries` class that needs an authorization check calls `authorize(some_permission, context=...)` rather than calling `is_satisfied_by()` directly. That's a deliberate choke point: whatever `Permission` is passed in (a single concrete one, or an `AnyOf(...)` composition), the failure behavior is identical everywhere — a plain [`AuthorizationError`](../../../../src/app/base/core/common/authorization/exceptions.py):
 
 ```python
 class AuthorizationError(BaseError):
     default_message: ClassVar[str] = "Not authorized."
 ```
 
-`AuthorizationError` carries no extra context about *which* permission failed — by the time it's raised, the use case has already returned control to its caller, and any inbound HTTP router maps it straight to `403 Forbidden` via its `error_map` (e.g. [`src/app/inbound/http/users/grant_admin.py`](../../../../src/app/inbound/http/users/grant_admin.py)'s `AuthorizationError: status.HTTP_403_FORBIDDEN`).
+`AuthorizationError` carries no extra context about *which* permission failed — by the time it's raised, the use case has already returned control to its caller, and any inbound HTTP router maps it straight to `403 Forbidden` via its `error_map` (e.g. [`src/app/base/inbound/http/users/grant_admin.py`](../../../../src/app/base/inbound/http/users/grant_admin.py)'s `AuthorizationError: status.HTTP_403_FORBIDDEN`).
 
 !!! figure "authorize() call flow inside a use case"
     ```mermaid
@@ -198,7 +198,7 @@ class AuthorizationError(BaseError):
 
 ## `CurrentUserService`: producing the `subject`
 
-Every `authorize()` call needs a `subject` — the caller — and that always comes from [`CurrentUserService.get_current_user()`](../../../../src/app/core/common/authorization/current_user_service.py):
+Every `authorize()` call needs a `subject` — the caller — and that always comes from [`CurrentUserService.get_current_user()`](../../../../src/app/base/core/common/authorization/current_user_service.py):
 
 ```python
 async def get_current_user(self, *, for_update: bool = False) -> User:
@@ -211,7 +211,7 @@ async def get_current_user(self, *, for_update: bool = False) -> User:
     return user
 ```
 
-`IdentityProvider` answers "who does the incoming request claim to be" (a `UserId`, resolved from a session by an `outbound` adapter — see [Ports and Adapters (Repository Pattern)](ports-and-adapters.md) for what a **port** is and how `core` never imports the concrete adapter behind it); `AuthzUserFinder`, declared in [`ports.py`](../../../../src/app/core/common/authorization/ports.py), is the narrower port this file adds on top of that — just enough to fetch a live `User` by id:
+`IdentityProvider` answers "who does the incoming request claim to be" (a `UserId`, resolved from a session by an `outbound` adapter — see [Ports and Adapters (Repository Pattern)](ports-and-adapters.md) for what a **port** is and how `core` never imports the concrete adapter behind it); `AuthzUserFinder`, declared in [`ports.py`](../../../../src/app/base/core/common/authorization/ports.py), is the narrower port this file adds on top of that — just enough to fetch a live `User` by id:
 
 ```python
 class AuthzUserFinder(Protocol):
@@ -223,7 +223,7 @@ It's a `typing.Protocol`, the same structural-typing style every port in this co
 
 ## Where `authorize()` actually gets called
 
-Grepping `src/app/core/commands/` and `src/app/core/queries/` for real call sites shows a consistent shape across every command that touches another user's account (`CreateUser`, `ActivateUser`, `DeactivateUser`, `GrantAdmin`, `RevokeAdmin`, `SetUserPassword`, `UpdateUserProfile`): a coarse `authorize(CanManageRole(), context=RoleManagementContext(subject=current_user, target_role=...))` check runs *before* the target user is even fetched from storage, and — for the six commands that then load a specific target — a second, precise `authorize(CanManageSubordinate(), context=UserManagementContext(subject=current_user, target=user))` check runs once that target is in hand. [`ListUsers`](../../../../src/app/core/queries/list_users.py) only performs the first, coarse check (`target_role=UserRole.USER`), since a paginated listing has no single target user to re-check against. [Users: Grant Admin](../use-case-examples/users-grant-admin.md) and [Users: Revoke Admin](../use-case-examples/users-revoke-admin.md) walk through this exact two-stage sequence for one concrete pair of endpoints, including why passing `target_role=UserRole.ADMIN` instead of `UserRole.USER` is what actually restricts those two commands to super admins only.
+Grepping `src/app/base/core/commands/` and `src/app/base/core/queries/` for real call sites shows a consistent shape across every command that touches another user's account (`CreateUser`, `ActivateUser`, `DeactivateUser`, `GrantAdmin`, `RevokeAdmin`, `SetUserPassword`, `UpdateUserProfile`): a coarse `authorize(CanManageRole(), context=RoleManagementContext(subject=current_user, target_role=...))` check runs *before* the target user is even fetched from storage, and — for the six commands that then load a specific target — a second, precise `authorize(CanManageSubordinate(), context=UserManagementContext(subject=current_user, target=user))` check runs once that target is in hand. [`ListUsers`](../../../../src/app/base/core/queries/list_users.py) only performs the first, coarse check (`target_role=UserRole.USER`), since a paginated listing has no single target user to re-check against. [Users: Grant Admin](../use-case-examples/users-grant-admin.md) and [Users: Revoke Admin](../use-case-examples/users-revoke-admin.md) walk through this exact two-stage sequence for one concrete pair of endpoints, including why passing `target_role=UserRole.ADMIN` instead of `UserRole.USER` is what actually restricts those two commands to super admins only.
 
 ## Where to go next
 

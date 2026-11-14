@@ -25,7 +25,7 @@ TODO:
 - [x] Centralize the app/service name behind `APP_SERVICE_NAME` for the Compose project/container names, Promtail's log filter, and Prometheus/Grafana's own config (`pyproject.toml`'s name is a documented manual exception — see `docs/plans/0-production-readiness-roadmap.md`)
 - [x] Add a self-hosted documentation wiki (MkDocs + Material, ~50 hand-written content pages covering architecture/patterns/use cases) — see `docs/plans/5-self-hosted-docs-wiki.md`
 - [x] Wiki: generate the dependency-graph and complexity diagrams from real code (`grimp`/`radon`) instead of hand-drawing them, so they can't drift stale — see `docs/plans/5-self-hosted-docs-wiki.md`'s Steps 2/3/5
-- [x] Add an inbound CLI (`src/app/main/cli/`, `python -m app.main.cli` / `make cli args="..."`) so core commands/queries can be invoked directly from a terminal script for cron jobs, data seeding, and admin/ops actions, bypassing HTTP entirely — see `docs/plans/6-inbound-cli.md`
+- [x] Add an inbound CLI (`src/app/base/main/cli/`, `python -m app.base.main.cli` / `make cli args="..."`) so core commands/queries can be invoked directly from a terminal script for cron jobs, data seeding, and admin/ops actions, bypassing HTTP entirely — see `docs/plans/6-inbound-cli.md`
 - [x] Add a public-facing API with API-key authentication (issue/list/revoke keys, usage stats, shared `GetOwnProfile`), mounted at `/public` alongside the private app — see `docs/plans/8-public-api-key-auth.md`
 - [ ] Mount `GET /debug/test-error/` only in `development` (it's reachable in production today) -- see `docs/plans/0-production-readiness-roadmap.md`
 - [ ] Investigate a possible username-enumeration leak in the inbound CLI (a rule-breaking password for an existing username may get a different message than for an unknown one) -- see `docs/plans/0-production-readiness-roadmap.md`
@@ -41,10 +41,11 @@ TODO:
 - [ ] Add paginated user and organization text search (prefix/search-as-you-type and keyword) -- Postgres built-in full-text search by default, Elasticsearch optional -- sequenced after the modular monolith, not yet started, full design in `docs/plans/11-search.md`
 - [x] Add profile editing on the private API: a `description` on users, and self-service and admin user-profile editing (organization name/description editing shipped with Organizations) -- see `docs/plans/10-profile-editing.md`
 - [ ] Add file storage on the private API: image galleries on users and organizations and private documents (PDFs, images), local disk by default or any S3-compatible service (AWS S3, Cloudflare R2, MinIO) -- sequenced after search, not yet started, full design in `docs/plans/12-file-storage.md`
-- [ ] Restructure into a modular monolith (one folder per bounded context — Users/Organizations/Notifications, possibly more) before search and file storage (Row-Level Security, which was to come first, is parked) — decided, not yet started, plan in `docs/plans/16-modular-monolith.md`, see `docs/plans/0-production-readiness-roadmap.md`
+- [x] Modular monolith restructuring — done in v0.20.0 (`docs/plans/16-modular-monolith.md`): the original app (Identity included) in `src/app/base/`, Organizations and Notifications as modules in `src/app/modules/`, domain-free building blocks (email) in `src/app/shared/`, kept apart by import contracts and a module registry. Identity as a module is a later, separate plan.
 - [ ] Add Sentry error tracking (automatic error grouping/fingerprinting, release correlation) alongside the existing Prometheus/Loki/Grafana stack and email alerting — not yet started, full design in `docs/plans/13-sentry-error-tracking.md`
 - [x] Selectively bring in the original author's "Autumn 2026 Updates & Fixes" (dependency upgrades closing every `pip-audit` finding, a partial-update sentinel, cause-chain logging, a configurable DB connect timeout, session/authorization/OpenAPI-example tests, a 75% CI coverage floor), one small test-first change at a time -- see `docs/plans/15-upstream-autumn-2026.md`
-- [ ] Group `core/commands/` and `core/queries/` into folders by area (`users/`, `account/`, `organizations/`...), as `inbound/http/` already is -- pure relocation, no code rewritten -- see `docs/plans/0-production-readiness-roadmap.md`
+- [x] ~~Group `core/commands/` and `core/queries/` into folders by area (`users/`, `account/`, `organizations/`...), as `inbound/http/` already is -- pure relocation, no code rewritten~~ Superseded by the modular monolith (v0.20.0): Organizations' files left these folders; the rest are Identity's, and move when Identity becomes a module (item below) -- see `docs/plans/0-production-readiness-roadmap.md`
+- [ ] Identity as a module (users, account, sessions, API keys, the CLI's user commands), in its own plan, once the modular monolith has proven itself (`docs/plans/16-modular-monolith.md`, "Follow-ups"). Not yet planned.
 - [ ] Map every nullable value-object field with the original author's nullable-composite recipe (from profile editing) instead of an entity property and setter per field (`ApiKey`, `OrganizationMembership`) -- not yet started, see `docs/plans/0-production-readiness-roadmap.md`
 - [ ] Build a frontend master template to match this backend -- most likely candidate: https://github.com/rmanguinho/clean-react -- not yet started, see `docs/plans/0-production-readiness-roadmap.md`
 - [ ] Replace the dishka container with dependency injection written in plain Python and owned by the project, no DI framework, alongside or after the modular monolith -- not yet planned, see `docs/plans/0-production-readiness-roadmap.md`
@@ -71,8 +72,8 @@ Start locally
 ```shell
 make upd-local
 alembic upgrade head
-uvicorn app.main.run:make_app --host 0.0.0.0 --port 8000 --reload
-# or `src/app/main/run.py` in IDE
+uvicorn app.base.main.run:make_app --host 0.0.0.0 --port 8000 --reload
+# or `src/app/base/main/run.py` in IDE
 ```
 Full API access:
 - create user via sign up
@@ -98,7 +99,7 @@ make test-docker
 
 Test (one integration file)
 ```shell
-make test-docker-file path=tests/integration/with_infra/organizations/test_organization_lists.py
+make test-docker-file path=tests/base/integration/with_infra/organizations/test_organization_lists.py
 ```
 *Runs just that file (or directory) against the same throwaway Postgres/Redis stack as `make test-docker`, in about a minute instead of the full suite. For quick red/green cycles; no coverage report. Run the full `make test-docker` before committing.*
 

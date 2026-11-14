@@ -1,9 +1,9 @@
 # Observability (Prometheus, Grafana, Loki)
 
 !!! sourcefiles "Relevant Source Files/Folders"
-    - [`src/app/inbound/http/errors/alerting.py`](../../../../src/app/inbound/http/errors/alerting.py) — `AlertCooldown`, `RequestUserContext`, `build_error_alert_email()`
-    - [`src/app/inbound/http/errors/exception_middleware.py`](../../../../src/app/inbound/http/errors/exception_middleware.py) — `GlobalExceptionMiddleware`: where metrics, logs, and alert emails for unhandled errors all originate
-    - [`src/app/main/setup.py`](../../../../src/app/main/setup.py) — `setup_metrics()` (mounts `/metrics`), `setup_logging()` (JSON (JavaScript Object Notation) vs human formatter), `setup_global_exception_handlers()` (wires `AlertCooldown` from `AlertSettings`)
+    - [`src/app/base/inbound/http/errors/alerting.py`](../../../../src/app/base/inbound/http/errors/alerting.py) — `AlertCooldown`, `RequestUserContext`, `build_error_alert_email()`
+    - [`src/app/base/inbound/http/errors/exception_middleware.py`](../../../../src/app/base/inbound/http/errors/exception_middleware.py) — `GlobalExceptionMiddleware`: where metrics, logs, and alert emails for unhandled errors all originate
+    - [`src/app/base/main/setup.py`](../../../../src/app/base/main/setup.py) — `setup_metrics()` (mounts `/metrics`), `setup_logging()` (JSON (JavaScript Object Notation) vs human formatter), `setup_global_exception_handlers()` (wires `AlertCooldown` from `AlertSettings`)
     - [`observability/prometheus/`](../../../../observability/prometheus/) — `prometheus.yml.template` (the real `prometheus.yml` is generated from it)
     - [`observability/grafana/provisioning/`](../../../../observability/grafana/provisioning/) — `datasources/datasources.yml`, `dashboards/dashboards.yml.template`, `dashboards/app-overview.json`
     - [`observability/loki/loki-config.yml`](../../../../observability/loki/loki-config.yml) — Loki's own config (filesystem storage, 7-day retention)

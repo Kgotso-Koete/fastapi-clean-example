@@ -2,8 +2,8 @@
 
 !!! sourcefiles "Relevant Source Files/Folders"
     - [`Dockerfile`](../../../../Dockerfile) — the `ENVIRONMENT` build arg that changes what's installed
-    - [`src/app/main/run.py`](../../../../src/app/main/run.py) — `docs_url`/`redoc_url` gating (lines 97-108 as of this writing)
-    - [`src/app/main/config/settings.py`](../../../../src/app/main/config/settings.py) — `AppSettings.ENVIRONMENT`, `JwtSettings.SECRET`, `PasswordHasherSettings.PEPPER`
+    - [`src/app/base/main/run.py`](../../../../src/app/base/main/run.py) — `docs_url`/`redoc_url` gating (lines 109-121 as of this writing)
+    - [`src/app/base/main/config/settings.py`](../../../../src/app/base/main/config/settings.py) — `AppSettings.ENVIRONMENT`, `JwtSettings.SECRET`, `PasswordHasherSettings.PEPPER`
     - [`env.example`](../../../../env.example) — the deliberately-unusable `JWT_SECRET`/`PASSWORD_PEPPER` placeholders
     - [`docs/plans/0-production-readiness-roadmap.md`](../../../../docs/plans/0-production-readiness-roadmap.md) — the honest, up-to-date list of what's still missing
 
@@ -68,7 +68,7 @@ See [Multi-Stage Docker Build](multi-stage-build.md) for exactly how the `Docker
 
 ## The `.secrets` requirement
 
-Two settings are deliberately shipped with **unusable** placeholder values in [`env.example`](../../../../env.example): `JWT_SECRET` and `PASSWORD_PEPPER`. Both back a `pydantic` field with `Field(min_length=32)` and no default (`JwtSettings.SECRET`, `PasswordHasherSettings.PEPPER` in [`settings.py`](../../../../src/app/main/config/settings.py)) — so a deployment that never overrides them doesn't get a silently-insecure default, it gets a hard `pydantic.ValidationError` at startup and refuses to run at all. A real deployment must generate a real value for each (e.g. `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`, run twice, never reusing the same string for both) and place them in a `.secrets` file — gitignored, and layered on top of `env.example` the same way for every environment, not something special to production. See [Getting Started → Quick Start with Docker](../getting-started/quick-start-docker.md#one-time-setup-secrets) for the exact one-time setup steps.
+Two settings are deliberately shipped with **unusable** placeholder values in [`env.example`](../../../../env.example): `JWT_SECRET` and `PASSWORD_PEPPER`. Both back a `pydantic` field with `Field(min_length=32)` and no default (`JwtSettings.SECRET`, `PasswordHasherSettings.PEPPER` in [`settings.py`](../../../../src/app/base/main/config/settings.py)) — so a deployment that never overrides them doesn't get a silently-insecure default, it gets a hard `pydantic.ValidationError` at startup and refuses to run at all. A real deployment must generate a real value for each (e.g. `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`, run twice, never reusing the same string for both) and place them in a `.secrets` file — gitignored, and layered on top of `env.example` the same way for every environment, not something special to production. See [Getting Started → Quick Start with Docker](../getting-started/quick-start-docker.md#one-time-setup-secrets) for the exact one-time setup steps.
 
 ## What's genuinely still missing — read the roadmap
 

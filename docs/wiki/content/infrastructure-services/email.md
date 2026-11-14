@@ -1,12 +1,11 @@
 # Email (SMTP)
 
 !!! sourcefiles "Relevant Source Files/Folders"
-    - [`src/app/core/common/ports/email_sender.py`](../../../../src/app/core/common/ports/email_sender.py) — the `EmailSender` **port** (a `Protocol` — an abstract interface `core` declares without knowing which concrete adapter satisfies it; see [Layer Dependencies & Import Rules](../architecture/layer-dependencies.md)), the only thing `core` knows about
-    - [`src/app/outbound/adapters/console_email_sender.py`](../../../../src/app/outbound/adapters/console_email_sender.py) — `ConsoleEmailSender`, the dev/test adapter
-    - [`src/app/outbound/adapters/smtp_email_sender.py`](../../../../src/app/outbound/adapters/smtp_email_sender.py) — `SmtpEmailSender`, the real adapter (any SMTP (Simple Mail Transfer Protocol) provider)
-    - [`src/app/core/common/events/handlers/send_welcome_email.py`](../../../../src/app/core/common/events/handlers/send_welcome_email.py) — `SendWelcomeEmail`, the one domain-event handler that uses this port today
-    - [`src/app/main/ioc/core.py`](../../../../src/app/main/ioc/core.py) — `CoreProvider.provide_email_sender()`, the web process's port-to-adapter wiring
-    - [`src/app/main/worker/provider.py`](../../../../src/app/main/worker/provider.py) — `WorkerProvider.provide_email_sender()`, the worker process's own (deliberately duplicated) wiring
+    - [`src/app/base/core/common/ports/email_sender.py`](../../../../src/app/base/core/common/ports/email_sender.py) — the `EmailSender` **port** (a `Protocol` — an abstract interface `core` declares without knowing which concrete adapter satisfies it; see [Layer Dependencies & Import Rules](../architecture/layer-dependencies.md)), the only thing `core` knows about
+    - [`src/app/shared/outbound/adapters/console_email_sender.py`](../../../../src/app/shared/outbound/adapters/console_email_sender.py) — `ConsoleEmailSender`, the dev/test adapter
+    - [`src/app/shared/outbound/adapters/smtp_email_sender.py`](../../../../src/app/shared/outbound/adapters/smtp_email_sender.py) — `SmtpEmailSender`, the real adapter (any SMTP (Simple Mail Transfer Protocol) provider)
+    - [`src/app/modules/notifications/core/common/events/handlers/send_welcome_email.py`](../../../../src/app/modules/notifications/core/common/events/handlers/send_welcome_email.py) — `SendWelcomeEmail`, one of the two Notifications handlers that use this port (the other is `SendOrganizationInvitationEmail`)
+    - [`src/app/shared/main/ioc/providers.py`](../../../../src/app/shared/main/ioc/providers.py) — `SharedEmailProvider`, the port-to-adapter wiring for the web app, the CLI and the worker alike
     - [`env.example`](../../../../env.example) — every `EMAIL_*` variable
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
@@ -27,7 +26,7 @@
         linkStyle default stroke-width:3px,stroke:#333333
     ```
 
-This wiring is deliberately duplicated, not shared, between the two processes that need it: `CoreProvider.provide_email_sender()` (web process, `main/ioc/core.py`) and `WorkerProvider.provide_email_sender()` (worker process, `main/worker/provider.py`) are separate `@provide` methods with identical bodies. That's a conscious trade-off documented directly in `WorkerProvider`'s own docstring: the worker's whole provider set is built to stay independent of `CoreProvider`/`AuthProvider` so that deleting `app.main.worker` entirely would need zero changes to the web process's wiring — a small amount of duplicated plumbing accepted in exchange for that isolation.
+This wiring lives in one place: `SharedEmailProvider` in `shared` (`src/app/shared/main/ioc/providers.py`), which `shared`'s `main/module.py` lists for the web app, the CLI and the worker alike. The worker's own provider set still stays independent of `CoreProvider`/`AuthProvider`, so deleting `app.base.main.worker` needs no change to the web process's wiring. (Before plan 16 moved the adapters into `shared`, the web app and the worker each declared an identical `provide_email_sender()`.)
 
 ## Where `SendWelcomeEmail` plugs into domain events
 
@@ -47,7 +46,7 @@ This wiring is deliberately duplicated, not shared, between the two processes th
         linkStyle default stroke-width:3px,stroke:#333333
     ```
 
-    > Because `SendWelcomeEmail` is registered in `CoreProvider.provide_handler_registry()` (a plain `dict[type[DomainEvent], Sequence[EventHandler[Any]]]`, mapping `UserRegisteredEvent` to `[send_welcome_email]`), adding a *second* subscriber to the same event — say, an analytics handler — is a one-line addition to that dict, with zero changes to `SendWelcomeEmail` itself. Since its `DISPATCH_MODE` is `"background"`, the actual `.handle(event)` call happens inside the worker process (see [Background Jobs](background-jobs.md) for the full staging/relay mechanism and the `CELERY_ENABLED=false` inline fallback) — which is exactly why `WorkerProvider` needs its own `EmailSender` wiring: the handler that calls it runs there, not in the web process.
+    > Because `SendWelcomeEmail` is subscribed in Notifications' `WEB_SUBSCRIPTIONS` (`src/app/modules/notifications/main/module.py`), which `CoreProvider.provide_handler_registry()` combines with every registered unit's into one `dict[type[DomainEvent], Sequence[EventHandler[Any]]]`, adding a *second* subscriber to the same event — say, an analytics handler — is a one-line addition to a unit's subscriptions, with zero changes to `SendWelcomeEmail` itself. Since its `DISPATCH_MODE` is `"background"`, the actual `.handle(event)` call happens inside the worker process (see [Background Jobs](background-jobs.md) for the full staging/relay mechanism and the `CELERY_ENABLED=false` inline fallback) — which is exactly why the worker needs an `EmailSender` binding too, which `shared` gives it: the handler that calls it runs there, not in the web process.
 
 ## `env.example`'s `EMAIL_*` variables
 

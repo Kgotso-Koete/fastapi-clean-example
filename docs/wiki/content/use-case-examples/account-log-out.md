@@ -1,12 +1,12 @@
 # Account: Log Out
 
 !!! sourcefiles "Relevant Source Files/Folders"
-    - [`src/app/inbound/http/account/log_out.py`](../../../../src/app/inbound/http/account/log_out.py) — the route
-    - [`src/app/outbound/auth_ctx/handlers/log_out.py`](../../../../src/app/outbound/auth_ctx/handlers/log_out.py) — the `LogOut` handler
-    - [`src/app/outbound/auth_ctx/service.py`](../../../../src/app/outbound/auth_ctx/service.py) — `AuthService.logout_current_session`
-    - [`src/app/outbound/auth_ctx/cookie_manager.py`](../../../../src/app/outbound/auth_ctx/cookie_manager.py) — `CookieManager.stage_delete`
-    - [`src/app/inbound/http/auth_cookie_middleware.py`](../../../../src/app/inbound/http/auth_cookie_middleware.py) — where the staged deletion actually removes the cookie
-    - [`src/app/core/common/authorization/current_user_service.py`](../../../../src/app/core/common/authorization/current_user_service.py) — `CurrentUserService.get_current_user`, the auth gate this endpoint sits behind
+    - [`src/app/base/inbound/http/account/log_out.py`](../../../../src/app/base/inbound/http/account/log_out.py) — the route
+    - [`src/app/base/outbound/auth_ctx/handlers/log_out.py`](../../../../src/app/base/outbound/auth_ctx/handlers/log_out.py) — the `LogOut` handler
+    - [`src/app/base/outbound/auth_ctx/service.py`](../../../../src/app/base/outbound/auth_ctx/service.py) — `AuthService.logout_current_session`
+    - [`src/app/base/outbound/auth_ctx/cookie_manager.py`](../../../../src/app/base/outbound/auth_ctx/cookie_manager.py) — `CookieManager.stage_delete`
+    - [`src/app/base/inbound/http/auth_cookie_middleware.py`](../../../../src/app/base/inbound/http/auth_cookie_middleware.py) — where the staged deletion actually removes the cookie
+    - [`src/app/base/core/common/authorization/current_user_service.py`](../../../../src/app/base/core/common/authorization/current_user_service.py) — `CurrentUserService.get_current_user`, the auth gate this endpoint sits behind
 
     > These links resolve when this page is opened as a raw `.md` file in an IDE like VS Code (cmd/ctrl-click follows them straight to the file) — they 404 in the browser here, since the rendered site doesn't serve the source tree itself. That's expected, not a bug.
 
@@ -50,7 +50,7 @@
 
 ## Step 1 — The route
 
-[`log_out.py`](../../../../src/app/inbound/http/account/log_out.py) is guarded by the same cookie-auth `Depends(APIKeyCookie(...))` every protected endpoint uses, and returns `204 No Content` — there's nothing meaningful to return once the session is gone:
+[`log_out.py`](../../../../src/app/base/inbound/http/account/log_out.py) is guarded by the same cookie-auth `Depends(APIKeyCookie(...))` every protected endpoint uses, and returns `204 No Content` — there's nothing meaningful to return once the session is gone:
 
 ```python
 @router.delete(
@@ -73,7 +73,7 @@ The `Depends(APIKeyCookie(...))` here doesn't actually do the authentication its
 
 ## Step 2 — The handler
 
-[`LogOut.execute`](../../../../src/app/outbound/auth_ctx/handlers/log_out.py) is two lines:
+[`LogOut.execute`](../../../../src/app/base/outbound/auth_ctx/handlers/log_out.py) is two lines:
 
 ```python
 async def execute(self) -> None:
@@ -85,7 +85,7 @@ Calling `get_current_user()` and discarding the result looks redundant, but it's
 
 ## Step 3 — Revoking the session
 
-[`AuthService.logout_current_session`](../../../../src/app/outbound/auth_ctx/service.py):
+[`AuthService.logout_current_session`](../../../../src/app/base/outbound/auth_ctx/service.py):
 
 ```python
 async def logout_current_session(self) -> None:
@@ -100,14 +100,14 @@ Deleting the session row is what makes the revocation real and immediate: becaus
 
 ## Step 4 — Clearing the cookie
 
-[`CookieManager.stage_delete`](../../../../src/app/outbound/auth_ctx/cookie_manager.py) stages a `None` value, reusing the exact same `request.state` slot `stage_set` uses on login:
+[`CookieManager.stage_delete`](../../../../src/app/base/outbound/auth_ctx/cookie_manager.py) stages a `None` value, reusing the exact same `request.state` slot `stage_set` uses on login:
 
 ```python
 def stage_delete(self) -> None:
     setattr(self._request.state, STAGED_COOKIE, None)
 ```
 
-[`AuthCookieMiddleware`](../../../../src/app/inbound/http/auth_cookie_middleware.py) treats a staged `None` as "delete", not "do nothing" — it calls `response.delete_cookie(...)` rather than `response.set_cookie(...)`:
+[`AuthCookieMiddleware`](../../../../src/app/base/inbound/http/auth_cookie_middleware.py) treats a staged `None` as "delete", not "do nothing" — it calls `response.delete_cookie(...)` rather than `response.set_cookie(...)`:
 
 ```python
 value = cast(str | None, staged)
