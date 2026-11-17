@@ -15,6 +15,10 @@ from tests.base.unit.core.common.services.factories import create_user
 from tests.modules.organizations.unit.core.commands.factories import create_current_organization_service
 from tests.modules.organizations.unit.core.queries.organization_factories import FakeOrganizationReader
 
+# The user story these tests prove (docs/plans/user-stories/9-organizations-user-stories.md),
+# counted per story by tests/conftest.py. The outsider test also proves the privacy story.
+pytestmark = pytest.mark.story("ORG.D3.OM.J3.A1")
+
 # ListOrganizationMembers (docs/plans/9-organizations.md, Step 8): every
 # membership row of ONE organization, accepted and pending. Organization-
 # scoped, at the lowest role: any member (not just an OWNER/ADMIN) may see who
@@ -57,6 +61,7 @@ async def test_any_member_lists_this_organizations_members(caller_role: Organiza
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D1.US.J2.A1")
 async def test_a_non_member_is_told_the_organization_does_not_exist() -> None:
     reader = FakeOrganizationReader()
     sut = ListOrganizationMembers(

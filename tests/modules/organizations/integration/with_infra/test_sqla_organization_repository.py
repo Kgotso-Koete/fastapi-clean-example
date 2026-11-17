@@ -84,6 +84,7 @@ async def _persist_organization(
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D1.US.J1.A1")
 async def test_add_then_get_by_id_round_trips(
     it_session: AsyncSession,
     it_user_service: UserService,
@@ -111,6 +112,7 @@ async def test_add_then_get_by_id_round_trips(
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D1.US.J2.A1")
 async def test_get_by_id_returns_none_for_an_unknown_id(it_session: AsyncSession) -> None:
     sut = SqlaOrganizationRepository(it_session)
 
@@ -120,6 +122,7 @@ async def test_get_by_id_returns_none_for_an_unknown_id(it_session: AsyncSession
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D2.OM.J2.A1")
 async def test_a_pending_membership_round_trips_with_accepted_at_none(
     it_session: AsyncSession,
     it_user_service: UserService,
@@ -153,6 +156,7 @@ async def test_a_pending_membership_round_trips_with_accepted_at_none(
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D2.US.J3.A2")
 async def test_an_accepted_membership_round_trips_its_accepted_at(
     it_session: AsyncSession,
     it_user_service: UserService,
@@ -183,6 +187,7 @@ async def test_an_accepted_membership_round_trips_its_accepted_at(
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D1.US.J2.A1")
 async def test_get_membership_by_id_returns_none_for_a_membership_in_another_organization(
     it_session: AsyncSession,
     it_user_service: UserService,
@@ -216,6 +221,7 @@ async def test_get_membership_by_id_returns_none_for_a_membership_in_another_org
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D3.OM.J3.A5")
 async def test_count_owners_counts_only_accepted_owners_of_that_organization(
     it_session: AsyncSession,
     it_user_service: UserService,
@@ -270,6 +276,7 @@ async def test_count_owners_counts_only_accepted_owners_of_that_organization(
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D3.OM.J3.A5")
 async def test_count_owners_ignores_an_owner_whose_account_is_deactivated(
     it_session: AsyncSession,
     it_user_service: UserService,
@@ -302,6 +309,7 @@ async def test_count_owners_ignores_an_owner_whose_account_is_deactivated(
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D2.OM.J2.A1")
 async def test_a_second_membership_for_the_same_user_and_organization_is_rejected(
     it_session: AsyncSession,
     it_user_service: UserService,
@@ -340,6 +348,7 @@ async def test_a_second_membership_for_the_same_user_and_organization_is_rejecte
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D2.OM.J2.A1")
 async def test_a_pending_membership_round_trips_its_expires_at(
     it_session: AsyncSession,
     it_user_service: UserService,
@@ -373,6 +382,7 @@ async def test_a_pending_membership_round_trips_its_expires_at(
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D2.US.J3.A2")
 async def test_an_accepted_membership_round_trips_with_expires_at_none(
     it_session: AsyncSession,
     it_user_service: UserService,
@@ -406,6 +416,7 @@ async def test_an_accepted_membership_round_trips_with_expires_at_none(
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D2.OM.J2.A1")
 async def test_get_membership_for_user_finds_that_users_row_in_that_organization(
     it_session: AsyncSession,
     it_user_service: UserService,
@@ -435,6 +446,7 @@ async def test_get_membership_for_user_finds_that_users_row_in_that_organization
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D2.OM.J2.A1")
 async def test_get_membership_for_user_is_scoped_to_one_organization(
     it_session: AsyncSession,
     it_user_service: UserService,
@@ -460,6 +472,7 @@ async def test_get_membership_for_user_is_scoped_to_one_organization(
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D2.OM.J2.A1")
 async def test_get_membership_for_user_returns_none_for_a_user_with_no_row(
     it_session: AsyncSession,
     it_user_service: UserService,
@@ -480,6 +493,7 @@ async def test_get_membership_for_user_returns_none_for_a_user_with_no_row(
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D3.OM.J3.A3")
 async def test_delete_membership_removes_only_that_row_once_committed(
     it_session: AsyncSession,
     it_user_service: UserService,
@@ -520,6 +534,7 @@ async def test_delete_membership_removes_only_that_row_once_committed(
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D1.OM.J1.A3")
 async def test_delete_removes_the_organization_and_cascades_to_all_its_memberships(
     it_session: AsyncSession,
     it_user_service: UserService,

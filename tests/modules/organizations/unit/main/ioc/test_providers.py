@@ -127,6 +127,7 @@ async def test_each_entrypoints_provider_builds_todays_organizations_bindings(
     await container.close()
 
 
+@pytest.mark.story("ORG.D4.IN.J1.A1")
 async def test_the_public_api_provider_binds_no_organization_writes() -> None:
     # Writes stay off the public API until API keys can be scoped
     # (docs/plans/9-organizations.md, Step 15; test_container_bindings.py, ABSENT).

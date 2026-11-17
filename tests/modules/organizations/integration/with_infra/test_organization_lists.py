@@ -1,6 +1,7 @@
 from uuid import UUID
 
 import httpx2
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.base.core.common.services.user import UserService
@@ -27,6 +28,7 @@ INVITATIONS_ENDPOINT = f"{ORGANIZATIONS_ENDPOINT}invitations/"
 # --- GET /organizations/ (ListMyOrganizations) ---------------------------------
 
 
+@pytest.mark.story("ORG.D1.OM.J1.A1")
 async def test_list_my_organizations_returns_200_with_the_description_my_role_and_member_count(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -56,6 +58,7 @@ async def test_list_my_organizations_returns_200_with_the_description_my_role_an
     assert organization["member_count"] == 2
 
 
+@pytest.mark.story("ORG.D1.OM.J1.A1")
 async def test_list_my_organizations_returns_401_when_not_authenticated(it_client: httpx2.AsyncClient) -> None:
     r = await it_client.get(ORGANIZATIONS_ENDPOINT)
 
@@ -65,6 +68,7 @@ async def test_list_my_organizations_returns_401_when_not_authenticated(it_clien
 # --- GET /organizations/invitations/ (ListMyInvitations) -----------------------
 
 
+@pytest.mark.story("ORG.D2.US.J3.A1")
 async def test_list_my_invitations_returns_200_with_the_description_and_the_ids_the_accept_route_needs(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -91,6 +95,7 @@ async def test_list_my_invitations_returns_200_with_the_description_and_the_ids_
     assert invitation["expires_at"] is not None
 
 
+@pytest.mark.story("ORG.D2.US.J3.A1")
 async def test_list_my_invitations_returns_401_when_not_authenticated(it_client: httpx2.AsyncClient) -> None:
     r = await it_client.get(INVITATIONS_ENDPOINT)
 
@@ -100,6 +105,7 @@ async def test_list_my_invitations_returns_401_when_not_authenticated(it_client:
 # --- GET /organizations/{id}/members/ (ListOrganizationMembers) ----------------
 
 
+@pytest.mark.story("ORG.D3.OM.J3.A1")
 async def test_list_members_returns_200_for_a_plain_member_with_usernames_only(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -127,6 +133,8 @@ async def test_list_members_returns_200_for_a_plain_member_with_usernames_only(
     assert member.email not in r.text
 
 
+@pytest.mark.story("ORG.D3.OM.J3.A1")
+@pytest.mark.story("ORG.D1.US.J2.A1")
 async def test_list_members_returns_404_for_an_outsider(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -143,6 +151,7 @@ async def test_list_members_returns_404_for_an_outsider(
     assert "Organization not found." in r.text
 
 
+@pytest.mark.story("ORG.D3.OM.J3.A1")
 async def test_list_members_returns_401_when_not_authenticated(it_client: httpx2.AsyncClient) -> None:
     r = await it_client.get(members_url(UUID(int=1)))
 

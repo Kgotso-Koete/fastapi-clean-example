@@ -10,6 +10,10 @@ from app.modules.organizations.core.common.events.organization_invitation_create
     OrganizationInvitationCreatedEvent,
 )
 
+# The user story these tests prove (docs/plans/user-stories/9-organizations-user-stories.md),
+# counted per story by tests/conftest.py.
+pytestmark = pytest.mark.story("ORG.D2.SY.J1.A1")
+
 # OrganizationInvitationCreatedEvent (docs/plans/9-organizations.md, Step 6b):
 # recorded by InviteOrganizationMember, and carrying everything the invitation
 # email needs, so SendOrganizationInvitationEmail never queries the database.

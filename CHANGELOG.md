@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.2] - 2026-11-17: humans.md, agents.md at the root, and user stories with counted tests
+
+### Added
+- **`humans.md`** (with `humans.svg`) at the repo root: the human maintainer's account of how they learn. `agents.md` and the README tell every AI agent to read it at the start of each session and whenever a conversation is resumed.
+- **User stories as the north star of feature design** (`docs/plans/user-stories/`): every plan links to its feature's stories file, and human checks follow the stories' journeys. `9-organizations-user-stories.md` (feature code `ORG`, 17 stories in 4 domains) was written after the feature was built, and is the template for future stories files.
+- **Tests counted per story:** a `story` marker (registered in `pyproject.toml`) on each Organizations unit and integration test names the stories it proves, and `tests/conftest.py` prints each story's passed/run counts by kind (BU unit, BI integration, BS sanity, BSm smoke) at the end of every pytest run. The stories file's Tests passing column is copied from a full `make test-docker` run.
+- **`agents.md`:** copy markers, command blocks and readable over short (1.1); journey-based human checks, written once a domain is built, with a clear start and end (1.3); what autopilot covers (1.5); use cases drive every design, and decisions come one at a time, scored (4.10); user stories, their IDs and status columns, and tests that mirror the code while stories cut across it (6.1); external behaviour cited from its own docs (6.2); explain simply (7).
+
+### Changed
+- **`agents.md` moved from `docs/plans/` to the repo root.** Every link and mention outside this changelog points to the new place; earlier entries below keep the old path, as it was then.
+- **`docs/plans/9-organizations.md`:** links to its stories file, and records a known test gap: revoking an invitation (`ORG.D2.OM.J2.A2`) has a unit test but no integration test.
+
 ## [0.20.1] - 2026-11-14: Import-boundary human checks
 
 ### Added

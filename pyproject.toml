@@ -81,7 +81,7 @@ source = ["src"]
 omit = [
   "**/__init__.py",
   "src/app/base/main/**",
-  "**/main/seed.py",  # development seed data, never tested (docs/plans/agents.md 2.1)
+  "**/main/seed.py",  # development seed data, never tested (agents.md 2.1)
   "**/health/**",
   "**/alembic/**",
 ]
@@ -303,7 +303,12 @@ init_typed = true
 [tool.pytest]
 addopts = ["--color=yes", "-mnot(slow)", "-pno:cacheprovider"]
 filterwarnings = []
-markers = ["slow"]
+markers = [
+  "slow",
+  # The user story a test proves, counted per story by tests/conftest.py
+  # (agents.md, section 6.1; stories in docs/plans/user-stories/).
+  "story(id): the user story a test proves, such as story(\"ORG.D2.US.J3.A2\")",
+]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"

@@ -153,7 +153,7 @@ make check         # linting, type-check, import-linter, unit tests
 
 ## Human checks
 
-Simple checks a human runs by hand against the seeded data (`docs/plans/agents.md` 1.3), with copy-pasteable `curl` commands.
+Simple checks a human runs by hand against the seeded data (`agents.md` 1.3), with copy-pasteable `curl` commands.
 
 ### Setup
 

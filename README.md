@@ -2,7 +2,9 @@
 
 > **This README is just a quick-start summary, not the full guide.** For the complete walkthrough — the DDD/Clean Architecture explanation, every use case traced end-to-end with diagrams, configuration/deployment reference, and more — see the self-hosted documentation wiki under [`docs/wiki/`](docs/wiki/). Run `make wiki` (or `make upd`, which starts it alongside everything else) and open **http://localhost:8001** (`WIKI_PORT` in `env.example`).
 
-> **AI agents: read [`docs/plans/agents.md`](docs/plans/agents.md) before doing anything in this repository.** It is the single source of truth for how work is done here (TDD, permissions, verification commands, commits), and its rules override an agent's defaults.
+> **AI agents: at the start of every session, and whenever the human asks to resume a conversation, read [`humans.md`](humans.md) first.** It is the human maintainer's own account of how they learn and think, and why their attention is the bottleneck this whole way of working is built around.
+
+> **AI agents: read [`agents.md`](agents.md) before doing anything in this repository.** It is the single source of truth for how work is done here (TDD, permissions, verification commands, commits), and its rules override an agent's defaults.
 
 Stay tuned. Refactor in progress, see [`legacy-2025`](https://github.com/ivan-borovets/fastapi-clean-example/tree/legacy-2025) branch for architecture docs
 

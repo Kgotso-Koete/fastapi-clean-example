@@ -104,6 +104,7 @@ async def _persist_membership(
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D1.OM.J1.A1")
 async def test_list_for_user_returns_only_organizations_with_an_accepted_membership(
     it_session: AsyncSession,
     it_user_service: UserService,
@@ -127,6 +128,7 @@ async def test_list_for_user_returns_only_organizations_with_an_accepted_members
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D1.OM.J1.A1")
 async def test_list_for_user_includes_the_description_the_callers_role_and_member_count(
     it_session: AsyncSession,
     it_user_service: UserService,
@@ -175,6 +177,7 @@ async def test_list_for_user_includes_the_description_the_callers_role_and_membe
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D1.OM.J1.A1")
 async def test_list_for_user_paginates_and_reports_total(
     it_session: AsyncSession,
     it_user_service: UserService,
@@ -210,6 +213,7 @@ async def test_list_for_user_paginates_and_reports_total(
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D1.OM.J1.A1")
 async def test_list_for_user_sorts_descending_when_requested(
     it_session: AsyncSession,
     it_user_service: UserService,
@@ -235,6 +239,7 @@ async def test_list_for_user_sorts_descending_when_requested(
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D1.OM.J1.A1")
 async def test_list_for_user_returns_empty_with_correct_total_for_a_user_with_no_organizations(
     it_session: AsyncSession,
     it_user_service: UserService,
@@ -253,6 +258,7 @@ async def test_list_for_user_returns_empty_with_correct_total_for_a_user_with_no
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D3.OM.J3.A1")
 async def test_list_members_returns_accepted_and_pending_members_of_that_organization_only(
     it_session: AsyncSession,
     it_user_service: UserService,
@@ -312,6 +318,7 @@ async def test_list_members_returns_accepted_and_pending_members_of_that_organiz
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D3.OM.J3.A1")
 async def test_list_members_member_count_counts_only_accepted_members(
     it_session: AsyncSession,
     it_user_service: UserService,
@@ -343,6 +350,7 @@ async def test_list_members_member_count_counts_only_accepted_members(
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D3.OM.J3.A1")
 async def test_list_members_paginates_and_reports_total(
     it_session: AsyncSession,
     it_user_service: UserService,
@@ -391,6 +399,7 @@ async def test_list_members_paginates_and_reports_total(
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D2.US.J3.A1")
 async def test_list_invitations_for_user_returns_only_the_callers_pending_invitations(
     it_session: AsyncSession,
     it_user_service: UserService,
@@ -438,6 +447,7 @@ async def test_list_invitations_for_user_returns_only_the_callers_pending_invita
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D2.US.J3.A1")
 async def test_list_invitations_for_user_leaves_out_expired_invitations_and_shows_the_expiry(
     it_session: AsyncSession,
     it_user_service: UserService,

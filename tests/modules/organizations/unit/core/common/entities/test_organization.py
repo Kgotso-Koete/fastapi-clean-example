@@ -1,11 +1,17 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
+import pytest
+
 from app.base.core.common.entities.types_ import UserId
 from app.base.core.common.value_objects.description import Description
 from app.base.core.common.value_objects.utc_datetime import UtcDatetime
 from app.modules.organizations.core.common.entities.organization import Organization, OrganizationId
 from app.modules.organizations.core.common.value_objects.organization_name import OrganizationName
+
+# The user story these tests prove (docs/plans/user-stories/9-organizations-user-stories.md),
+# counted per story by tests/conftest.py.
+pytestmark = pytest.mark.story("ORG.D1.US.J1.A1")
 
 _DEFAULT_CREATED_AT = datetime(2026, 1, 1, tzinfo=UTC)
 

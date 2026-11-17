@@ -135,7 +135,7 @@ Test file before production file per step, per this project's TDD convention (RE
 
 ## Human checks
 
-Simple checks a human runs by hand against the seeded data (`docs/plans/agents.md` 1.3), using the real `make cli-up`/`make cli` targets, plus a few `curl` commands that show the result over HTTP.
+Simple checks a human runs by hand against the seeded data (`agents.md` 1.3), using the real `make cli-up`/`make cli` targets, plus a few `curl` commands that show the result over HTTP.
 
 ### Setup
 

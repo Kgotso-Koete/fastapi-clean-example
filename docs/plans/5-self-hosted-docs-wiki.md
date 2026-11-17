@@ -172,7 +172,7 @@ uv run mypy
 
 ## Human checks
 
-Simple checks a human runs by hand (`docs/plans/agents.md` 1.3). No seed data is needed: the wiki reads only files in the repository.
+Simple checks a human runs by hand (`agents.md` 1.3). No seed data is needed: the wiki reads only files in the repository.
 
 ### Setup
 

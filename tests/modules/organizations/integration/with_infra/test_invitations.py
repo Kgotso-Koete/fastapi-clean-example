@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import httpx2
+import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -64,6 +65,7 @@ async def _invite(
 # --- Invite -------------------------------------------------------------------
 
 
+@pytest.mark.story("ORG.D2.OM.J2.A1")
 async def test_invite_returns_201_and_stores_a_pending_invitation_with_the_configured_expiry(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -92,6 +94,8 @@ async def test_invite_returns_201_and_stores_a_pending_invitation_with_the_confi
     assert datetime.fromisoformat(body["expires_at"]) == membership.expires_at.value
 
 
+@pytest.mark.story("ORG.D2.OM.J2.A1")
+@pytest.mark.story("ORG.D2.SY.J1.A1")
 async def test_invite_stages_the_invitation_email_in_the_outbox(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -121,6 +125,7 @@ async def test_invite_stages_the_invitation_email_in_the_outbox(
     assert outbox_message.payload["inviter_username"] == owner.username
 
 
+@pytest.mark.story("ORG.D2.OM.J2.A1")
 async def test_reinvite_over_an_expired_invitation_renews_the_row_loaded_from_the_database(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -163,12 +168,14 @@ async def test_reinvite_over_an_expired_invitation_renews_the_row_loaded_from_th
     assert len(for_this_membership) == 2
 
 
+@pytest.mark.story("ORG.D2.OM.J2.A1")
 async def test_invite_returns_401_when_not_authenticated(it_client: httpx2.AsyncClient) -> None:
     r = await it_client.post(members_url(UUID(int=1)), json={"username": "anyone"})
 
     assert r.status_code == 401
 
 
+@pytest.mark.story("ORG.D2.OM.J2.A1")
 async def test_invite_returns_403_for_a_member_below_admin(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -186,6 +193,8 @@ async def test_invite_returns_403_for_a_member_below_admin(
     assert r.status_code == 403
 
 
+@pytest.mark.story("ORG.D2.OM.J2.A1")
+@pytest.mark.story("ORG.D1.US.J2.A1")
 async def test_invite_returns_404_for_an_outsider(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -206,6 +215,7 @@ async def test_invite_returns_404_for_an_outsider(
     assert "Organization not found." in r.text
 
 
+@pytest.mark.story("ORG.D2.OM.J2.A1")
 async def test_invite_returns_404_for_an_unknown_username(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -221,6 +231,7 @@ async def test_invite_returns_404_for_an_unknown_username(
     assert "No active user with that username." in r.text
 
 
+@pytest.mark.story("ORG.D2.OM.J2.A1")
 async def test_invite_returns_403_when_an_admin_tries_to_grant_owner(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -238,6 +249,7 @@ async def test_invite_returns_403_when_an_admin_tries_to_grant_owner(
     assert r.status_code == 403
 
 
+@pytest.mark.story("ORG.D2.OM.J2.A1")
 async def test_invite_returns_409_when_the_user_is_already_invited(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -254,6 +266,7 @@ async def test_invite_returns_409_when_the_user_is_already_invited(
     assert second.status_code == 409
 
 
+@pytest.mark.story("ORG.D2.OM.J2.A1")
 async def test_invite_returns_422_for_a_malformed_organization_id(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -271,6 +284,7 @@ async def test_invite_returns_422_for_a_malformed_organization_id(
 # --- Accept -------------------------------------------------------------------
 
 
+@pytest.mark.story("ORG.D2.US.J3.A2")
 async def test_accept_returns_204_and_the_invitee_becomes_a_member(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -291,6 +305,7 @@ async def test_accept_returns_204_and_the_invitee_becomes_a_member(
     assert membership.expires_at is None
 
 
+@pytest.mark.story("ORG.D2.US.J3.A2")
 async def test_accept_returns_404_for_someone_elses_invitation(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -311,6 +326,7 @@ async def test_accept_returns_404_for_someone_elses_invitation(
     assert membership.is_accepted is False
 
 
+@pytest.mark.story("ORG.D2.US.J3.A2")
 async def test_accept_returns_410_for_an_expired_invitation(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -336,6 +352,7 @@ async def test_accept_returns_410_for_an_expired_invitation(
 # --- Decline ------------------------------------------------------------------
 
 
+@pytest.mark.story("ORG.D2.US.J3.A3")
 async def test_decline_returns_204_and_deletes_the_invitation(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -353,6 +370,7 @@ async def test_decline_returns_204_and_deletes_the_invitation(
     assert await find_membership(it_session, membership_id) is None
 
 
+@pytest.mark.story("ORG.D2.US.J3.A3")
 async def test_decline_returns_404_for_someone_elses_invitation(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -371,6 +389,7 @@ async def test_decline_returns_404_for_someone_elses_invitation(
     assert await find_membership(it_session, membership_id) is not None
 
 
+@pytest.mark.story("ORG.D2.US.J3.A3")
 async def test_decline_returns_404_for_an_accepted_membership_and_keeps_it(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -397,6 +416,7 @@ async def test_decline_returns_404_for_an_accepted_membership_and_keeps_it(
 # --- The whole flow -------------------------------------------------------------
 
 
+@pytest.mark.story("ORG.D2.US.J3.A2")
 async def test_after_accepting_the_invitee_is_recognised_as_a_member(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
