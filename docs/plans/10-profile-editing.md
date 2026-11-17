@@ -138,7 +138,7 @@ The `Omitted` sentinel this plan relies on is built first, in `docs/plans/15-ups
 
 ## Human checks
 
-Simple checks a human runs by hand against the seeded data (`docs/plans/agents.md` 1.3). Every command's output is human-readable: JSON goes through `python3 -m json.tool`, and a command that shows its status code prints the code first, on its own line (`-w '%{stderr}%{http_code}\n'`), then the JSON.
+Simple checks a human runs by hand against the seeded data (`agents.md` 1.3). Every command's output is human-readable: JSON goes through `python3 -m json.tool`, and a command that shows its status code prints the code first, on its own line (`-w '%{stderr}%{http_code}\n'`), then the JSON.
 
 ### Setup
 

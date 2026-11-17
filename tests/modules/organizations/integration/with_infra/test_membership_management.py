@@ -1,6 +1,7 @@
 from uuid import UUID, uuid4
 
 import httpx2
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.base.core.common.entities.user import User
@@ -28,6 +29,7 @@ from tests.modules.organizations.integration.with_infra.helpers import (
 # --- Remove / leave (DELETE) --------------------------------------------------
 
 
+@pytest.mark.story("ORG.D3.OM.J3.A3")
 async def test_remove_returns_204_and_an_admin_removes_a_member(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -47,6 +49,7 @@ async def test_remove_returns_204_and_an_admin_removes_a_member(
     assert await find_membership(it_session, membership_id) is None
 
 
+@pytest.mark.story("ORG.D3.OM.J3.A4")
 async def test_remove_returns_204_when_a_member_leaves(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -64,6 +67,8 @@ async def test_remove_returns_204_when_a_member_leaves(
     assert await find_membership(it_session, membership_id) is None
 
 
+@pytest.mark.story("ORG.D3.OM.J3.A4")
+@pytest.mark.story("ORG.D3.OM.J3.A5")
 async def test_remove_returns_409_when_the_last_owner_tries_to_leave(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -81,6 +86,8 @@ async def test_remove_returns_409_when_the_last_owner_tries_to_leave(
     assert await find_membership(it_session, owner_membership_id) is not None
 
 
+@pytest.mark.story("ORG.D3.OM.J3.A4")
+@pytest.mark.story("ORG.D3.OM.J3.A5")
 async def test_remove_returns_409_when_the_only_other_owner_is_deactivated(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -108,6 +115,7 @@ async def test_remove_returns_409_when_the_only_other_owner_is_deactivated(
     assert await find_membership(it_session, owner_membership_id) is not None
 
 
+@pytest.mark.story("ORG.D3.OM.J3.A3")
 async def test_remove_returns_403_when_a_member_removes_someone_else(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -127,6 +135,7 @@ async def test_remove_returns_403_when_a_member_removes_someone_else(
     assert await find_membership(it_session, other_membership_id) is not None
 
 
+@pytest.mark.story("ORG.D3.OM.J3.A3")
 async def test_remove_returns_403_when_an_admin_removes_an_owner(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -145,6 +154,8 @@ async def test_remove_returns_403_when_an_admin_removes_an_owner(
     assert "Only an owner can remove or change another owner." in r.text
 
 
+@pytest.mark.story("ORG.D3.OM.J3.A3")
+@pytest.mark.story("ORG.D1.US.J2.A1")
 async def test_remove_returns_404_for_an_outsider(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -162,6 +173,7 @@ async def test_remove_returns_404_for_an_outsider(
     assert "Organization not found." in r.text
 
 
+@pytest.mark.story("ORG.D3.OM.J3.A3")
 async def test_remove_returns_404_for_an_unknown_membership(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -176,6 +188,7 @@ async def test_remove_returns_404_for_an_unknown_membership(
     assert "Membership not found." in r.text
 
 
+@pytest.mark.story("ORG.D3.OM.J3.A3")
 async def test_remove_returns_401_when_not_authenticated(it_client: httpx2.AsyncClient) -> None:
     r = await it_client.delete(member_url(UUID(int=1), UUID(int=2)))
 
@@ -185,6 +198,7 @@ async def test_remove_returns_401_when_not_authenticated(it_client: httpx2.Async
 # --- Change role (PATCH) -------------------------------------------------------
 
 
+@pytest.mark.story("ORG.D3.OM.J3.A2")
 async def test_change_role_returns_204_and_stores_the_new_role(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -203,6 +217,7 @@ async def test_change_role_returns_204_and_stores_the_new_role(
     assert membership.role == OrganizationRole.ADMIN
 
 
+@pytest.mark.story("ORG.D3.OM.J3.A2")
 async def test_change_role_returns_403_when_an_admin_grants_owner(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -222,6 +237,8 @@ async def test_change_role_returns_403_when_an_admin_grants_owner(
     assert "Only an owner can grant the owner role." in r.text
 
 
+@pytest.mark.story("ORG.D3.OM.J3.A2")
+@pytest.mark.story("ORG.D3.OM.J3.A5")
 async def test_change_role_returns_409_when_the_last_owner_demotes_themselves(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,
@@ -237,6 +254,7 @@ async def test_change_role_returns_409_when_the_last_owner_demotes_themselves(
     assert "The organization's last owner cannot be removed or demoted." in r.text
 
 
+@pytest.mark.story("ORG.D3.OM.J3.A2")
 async def test_change_role_returns_422_for_an_unknown_role(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,

@@ -342,7 +342,7 @@ test-docker-migrations: docker-env
 #   make test-docker-file path=tests/modules/organizations/integration/with_infra/test_organization_lists.py
 # The app container's `pytest` entrypoint runs the migrations first, exactly
 # as in test-docker-app. No coverage report. The full `make test-docker`
-# still runs before every commit (docs/plans/agents.md 1.3).
+# still runs before every commit (agents.md 1.3).
 .PHONY: test-docker-file
 test-docker-file: docker-env
 	if [ -z "$(strip $(path))" ]; then \

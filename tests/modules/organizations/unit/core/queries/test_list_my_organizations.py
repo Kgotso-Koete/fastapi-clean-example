@@ -12,6 +12,10 @@ from tests.base.unit.core.common.authorization.factories import create_current_u
 from tests.base.unit.core.common.services.factories import create_user
 from tests.modules.organizations.unit.core.queries.organization_factories import FakeOrganizationReader
 
+# The user story these tests prove (docs/plans/user-stories/9-organizations-user-stories.md),
+# counted per story by tests/conftest.py.
+pytestmark = pytest.mark.story("ORG.D1.OM.J1.A1")
+
 # ListMyOrganizations (docs/plans/9-organizations.md, Step 8): the
 # organizations the caller has an ACCEPTED membership in. User-scoped, like
 # ListApiKeys: no organization-scoped authorization at all, because "which

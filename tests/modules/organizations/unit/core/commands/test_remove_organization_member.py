@@ -93,6 +93,7 @@ class _Harness:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("caller_role", [OrganizationRole.MEMBER, OrganizationRole.ADMIN])
+@pytest.mark.story("ORG.D3.OM.J3.A4")
 async def test_any_member_can_leave(caller_role: OrganizationRole) -> None:
     # Without this, a plain MEMBER could never leave an organization.
     h = _Harness(caller_role=caller_role)
@@ -105,6 +106,8 @@ async def test_any_member_can_leave(caller_role: OrganizationRole) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D3.OM.J3.A4")
+@pytest.mark.story("ORG.D3.OM.J3.A5")
 async def test_an_owner_can_leave_when_another_owner_remains() -> None:
     h = _Harness(caller_role=OrganizationRole.OWNER)
     h.add_member(OrganizationRole.OWNER)
@@ -116,6 +119,8 @@ async def test_an_owner_can_leave_when_another_owner_remains() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D3.OM.J3.A4")
+@pytest.mark.story("ORG.D3.OM.J3.A5")
 async def test_the_last_owner_cannot_leave() -> None:
     # A pending OWNER invitation doesn't count as a remaining owner. The way
     # out is to promote someone else to OWNER first.
@@ -135,6 +140,7 @@ async def test_the_last_owner_cannot_leave() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("caller_role", [OrganizationRole.ADMIN, OrganizationRole.OWNER])
 @pytest.mark.parametrize("target_role", [OrganizationRole.MEMBER, OrganizationRole.ADMIN])
+@pytest.mark.story("ORG.D3.OM.J3.A3")
 async def test_an_admin_or_owner_removes_a_member_or_admin(
     caller_role: OrganizationRole,
     target_role: OrganizationRole,
@@ -149,6 +155,7 @@ async def test_an_admin_or_owner_removes_a_member_or_admin(
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D2.OM.J2.A2")
 async def test_an_admin_revokes_a_pending_invitation() -> None:
     h = _Harness(caller_role=OrganizationRole.ADMIN)
     invitation = h.add_member(OrganizationRole.MEMBER, accepted=False)
@@ -162,6 +169,7 @@ async def test_an_admin_revokes_a_pending_invitation() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D3.OM.J3.A3")
 async def test_a_member_cannot_remove_someone_else() -> None:
     # A real member, so 403 (they know the organization exists), not 404.
     h = _Harness(caller_role=OrganizationRole.MEMBER)
@@ -175,6 +183,7 @@ async def test_a_member_cannot_remove_someone_else() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("accepted", [True, False], ids=["owner", "pending_owner_invitation"])
+@pytest.mark.story("ORG.D3.OM.J3.A3")
 async def test_an_admin_cannot_remove_an_owner(accepted: bool) -> None:
     h = _Harness(caller_role=OrganizationRole.ADMIN)
     h.add_member(OrganizationRole.OWNER)
@@ -187,6 +196,7 @@ async def test_an_admin_cannot_remove_an_owner(accepted: bool) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D3.OM.J3.A3")
 async def test_an_owner_can_remove_another_owner() -> None:
     h = _Harness(caller_role=OrganizationRole.OWNER)
     target = h.add_member(OrganizationRole.OWNER)
@@ -200,6 +210,8 @@ async def test_an_owner_can_remove_another_owner() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D3.OM.J3.A3")
+@pytest.mark.story("ORG.D1.US.J2.A1")
 async def test_a_non_member_is_told_the_organization_does_not_exist() -> None:
     h = _Harness(caller_role=None)
     target = h.add_member(OrganizationRole.MEMBER)
@@ -220,6 +232,7 @@ async def test_a_non_member_is_told_the_organization_does_not_exist() -> None:
         pytest.param(True, id="membership_of_another_organization"),
     ],
 )
+@pytest.mark.story("ORG.D3.OM.J3.A3")
 async def test_an_unknown_or_out_of_scope_membership_is_not_found(look_in_another_organization: bool) -> None:
     h = _Harness(caller_role=OrganizationRole.ADMIN)
     elsewhere = create_membership(

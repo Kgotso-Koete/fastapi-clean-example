@@ -21,6 +21,10 @@ from tests.base.integration.with_infra.authentication import authenticate
 from tests.base.integration.with_infra.factories import create_raw_password, create_user_with_password
 from tests.modules.organizations.integration.with_infra.constants import ORGANIZATIONS_ENDPOINT
 
+# The user story these tests prove (docs/plans/user-stories/9-organizations-user-stories.md),
+# counted per story by tests/conftest.py.
+pytestmark = pytest.mark.story("ORG.D1.US.J1.A1")
+
 # End-to-end through the real HTTP route, DI container and Postgres --
 # mirrors tests/base/integration/with_infra/users/test_create_user.py. Any
 # logged-in user (platform role USER is enough) may create an organization.

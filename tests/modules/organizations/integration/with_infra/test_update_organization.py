@@ -17,6 +17,10 @@ from tests.modules.organizations.integration.with_infra.helpers import (
     new_account,
 )
 
+# The user story these tests prove (docs/plans/user-stories/9-organizations-user-stories.md),
+# counted per story by tests/conftest.py. The outsider test also proves the privacy story.
+pytestmark = pytest.mark.story("ORG.D1.OM.J1.A2")
+
 # UpdateOrganization end to end (docs/plans/9-organizations.md, Step 13):
 # PATCH /api/v1/organizations/{organization_id}/, through the real HTTP stack,
 # DI container and Postgres. The unit tests pin the rules; these prove the
@@ -132,6 +136,7 @@ async def test_a_member_gets_403_and_nothing_changes(
     await _assert_unchanged(it_session, organization_id)
 
 
+@pytest.mark.story("ORG.D1.US.J2.A1")
 async def test_an_outsider_gets_404_and_nothing_changes(
     it_client: httpx2.AsyncClient,
     it_session: AsyncSession,

@@ -28,6 +28,11 @@ from tests.modules.organizations.unit.core.commands.factories import (
     create_membership,
 )
 
+# The user story these tests prove (docs/plans/user-stories/9-organizations-user-stories.md),
+# counted per story by tests/conftest.py. The outsider test also proves the privacy story, and
+# the two last-owner tests the story that an organization always keeps an active owner.
+pytestmark = pytest.mark.story("ORG.D3.OM.J3.A2")
+
 # ChangeOrganizationMemberRole (docs/plans/9-organizations.md, Step 7). Rules,
 # from apptension/saas-boilerplate's UpdateTenantMembershipSerializer:
 #   - needs ADMIN;
@@ -127,6 +132,7 @@ async def test_a_member_cannot_change_roles() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D1.US.J2.A1")
 async def test_a_non_member_is_told_the_organization_does_not_exist() -> None:
     h = _Harness(caller_role=None)
     target = h.add_member(OrganizationRole.MEMBER)
@@ -168,6 +174,7 @@ async def test_an_admin_cannot_change_an_owners_role() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D3.OM.J3.A5")
 async def test_an_owner_demotes_another_owner_when_one_remains() -> None:
     h = _Harness(caller_role=OrganizationRole.OWNER)
     target = h.add_member(OrganizationRole.OWNER)
@@ -179,6 +186,7 @@ async def test_an_owner_demotes_another_owner_when_one_remains() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D3.OM.J3.A5")
 async def test_the_last_owner_cannot_demote_themselves() -> None:
     # A pending OWNER invitation isn't a remaining owner.
     h = _Harness(caller_role=OrganizationRole.OWNER)

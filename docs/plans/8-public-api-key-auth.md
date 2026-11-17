@@ -749,7 +749,7 @@ Exercises `ApiKeyAccessRevoker` for real, through `CurrentUserService`, the same
 
 ## Human checks
 
-Simple checks a human runs by hand against the seeded data (`docs/plans/agents.md` 1.3), with copy-pasteable `curl` commands. The public API is mounted under http://localhost:8000/public/, and every route except issuing a key needs the key in an `X-API-Key` header.
+Simple checks a human runs by hand against the seeded data (`agents.md` 1.3), with copy-pasteable `curl` commands. The public API is mounted under http://localhost:8000/public/, and every route except issuing a key needs the key in an `X-API-Key` header.
 
 ### Setup
 

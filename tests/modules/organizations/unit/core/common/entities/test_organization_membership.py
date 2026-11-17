@@ -44,6 +44,7 @@ def _create_membership(
     )
 
 
+@pytest.mark.story("ORG.D2.OM.J2.A1")
 def test_a_freshly_invited_membership_is_not_accepted() -> None:
     sut = _create_membership()
 
@@ -51,6 +52,7 @@ def test_a_freshly_invited_membership_is_not_accepted() -> None:
     assert sut.accepted_at is None
 
 
+@pytest.mark.story("ORG.D2.US.J3.A2")
 def test_accept_marks_the_membership_as_accepted() -> None:
     sut = _create_membership()
     now = UtcDatetime(datetime(2026, 6, 1, tzinfo=UTC))
@@ -61,6 +63,7 @@ def test_accept_marks_the_membership_as_accepted() -> None:
     assert sut.accepted_at == now
 
 
+@pytest.mark.story("ORG.D2.US.J3.A2")
 def test_a_membership_constructed_with_accepted_at_already_set_is_accepted() -> None:
     # Covers CreateOrganization's shape: the creator's own membership row is
     # constructed already-accepted (role=OWNER), with no accept() call needed.
@@ -78,30 +81,35 @@ def test_a_membership_constructed_with_accepted_at_already_set_is_accepted() -> 
 # same thing everywhere in this codebase.
 
 
+@pytest.mark.story("ORG.D2.OM.J2.A1")
 def test_a_pending_invitation_keeps_its_expires_at() -> None:
     sut = _create_membership(expires_at=_EXPIRES_AT)
 
     assert sut.expires_at == UtcDatetime(_EXPIRES_AT)
 
 
+@pytest.mark.story("ORG.D2.OM.J2.A1")
 def test_a_pending_invitation_is_not_expired_before_its_expiry_instant() -> None:
     sut = _create_membership(expires_at=_EXPIRES_AT)
 
     assert sut.is_expired(UtcDatetime(datetime(2026, 1, 7, 23, 59, tzinfo=UTC))) is False
 
 
+@pytest.mark.story("ORG.D2.OM.J2.A1")
 def test_a_pending_invitation_is_expired_exactly_at_its_expiry_instant() -> None:
     sut = _create_membership(expires_at=_EXPIRES_AT)
 
     assert sut.is_expired(UtcDatetime(_EXPIRES_AT)) is True
 
 
+@pytest.mark.story("ORG.D2.OM.J2.A1")
 def test_a_pending_invitation_is_expired_after_its_expiry_instant() -> None:
     sut = _create_membership(expires_at=_EXPIRES_AT)
 
     assert sut.is_expired(UtcDatetime(datetime(2026, 2, 1, tzinfo=UTC))) is True
 
 
+@pytest.mark.story("ORG.D2.US.J3.A2")
 def test_a_membership_without_expires_at_never_expires() -> None:
     # The creator's own OWNER row is constructed accepted, with no expiry.
     sut = _create_membership(role=OrganizationRole.OWNER, accepted_at=_DEFAULT_CREATED_AT)
@@ -110,6 +118,7 @@ def test_a_membership_without_expires_at_never_expires() -> None:
     assert sut.is_expired(UtcDatetime(datetime(2099, 1, 1, tzinfo=UTC))) is False
 
 
+@pytest.mark.story("ORG.D2.US.J3.A2")
 def test_accepting_clears_expires_at_so_a_membership_never_expires() -> None:
     # Expiry only ever applies to a PENDING invitation -- once accepted, the
     # membership is permanent, however long ago the invitation was sent.
@@ -132,6 +141,7 @@ def test_accepting_clears_expires_at_so_a_membership_never_expires() -> None:
 # own default, since the whole point is the combination it would prevent.
 
 
+@pytest.mark.story("ORG.D2.OM.J2.A1")
 def test_a_pending_invitation_without_expires_at_is_rejected() -> None:
     with pytest.raises(InvalidMembershipExpiryError):
         OrganizationMembership(
@@ -146,6 +156,7 @@ def test_a_pending_invitation_without_expires_at_is_rejected() -> None:
         )
 
 
+@pytest.mark.story("ORG.D2.US.J3.A2")
 def test_an_accepted_membership_with_expires_at_is_rejected() -> None:
     with pytest.raises(InvalidMembershipExpiryError):
         OrganizationMembership(

@@ -20,6 +20,10 @@ from app.modules.organizations.core.common.value_objects.organization_name impor
 from app.modules.organizations.outbound.adapters.sqla_membership_checker import SqlaMembershipChecker
 from tests.base.integration.with_infra.factories import create_user
 
+# The user story these tests prove (docs/plans/user-stories/9-organizations-user-stories.md),
+# counted per story by tests/conftest.py.
+pytestmark = pytest.mark.story("ORG.D1.US.J2.A1")
+
 # SqlaMembershipChecker answers exactly one question for CanAccessOrganization:
 # "what ACCEPTED role, if any, does this user hold in THIS organization?"
 # None is the only safe answer for anything short of an accepted membership

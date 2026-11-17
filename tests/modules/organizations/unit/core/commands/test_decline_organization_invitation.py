@@ -30,6 +30,10 @@ from tests.base.unit.core.common.authorization.factories import (
 )
 from tests.base.unit.core.common.services.factories import create_user
 
+# The user story these tests prove (docs/plans/user-stories/9-organizations-user-stories.md),
+# counted per story by tests/conftest.py.
+pytestmark = pytest.mark.story("ORG.D2.US.J3.A3")
+
 # DeclineOrganizationInvitation (docs/plans/9-organizations.md, Step 6): the
 # invitee turns down their own PENDING invitation, which deletes the row --
 # expired or not. Same "is this invitation mine?" authorization and scoped

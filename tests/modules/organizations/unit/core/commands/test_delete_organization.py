@@ -21,6 +21,10 @@ from tests.base.unit.core.commands.api_keys.factories import FakeTransactionMana
 from tests.base.unit.core.common.services.factories import create_user
 from tests.modules.organizations.unit.core.commands.factories import NOW, create_current_organization_service
 
+# The user story these tests prove (docs/plans/user-stories/9-organizations-user-stories.md),
+# counted per story by tests/conftest.py. The outsider test also proves the privacy story.
+pytestmark = pytest.mark.story("ORG.D1.OM.J1.A3")
+
 # DeleteOrganization (docs/plans/9-organizations.md, Step 11): only an OWNER
 # may delete the organization. The use case deletes just the organization row;
 # its memberships and invitations go with it through the database's
@@ -126,6 +130,7 @@ async def test_an_admin_or_member_cannot_delete_the_organization(caller_role: Or
     h.assert_nothing_deleted()
 
 
+@pytest.mark.story("ORG.D1.US.J2.A1")
 async def test_a_non_member_is_told_the_organization_does_not_exist() -> None:
     # 404 rather than 403, as everywhere in this context: an outsider can't
     # even confirm the organization exists.

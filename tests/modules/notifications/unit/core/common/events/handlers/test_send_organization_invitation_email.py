@@ -14,6 +14,10 @@ from app.modules.organizations.core.common.events.organization_invitation_create
     OrganizationInvitationCreatedEvent,
 )
 
+# The user story these tests prove (docs/plans/user-stories/9-organizations-user-stories.md),
+# counted per story by tests/conftest.py.
+pytestmark = pytest.mark.story("ORG.D2.SY.J1.A1")
+
 # SendOrganizationInvitationEmail (docs/plans/9-organizations.md, Step 6b):
 # tells the invitee who invited them, to which organization, with what role,
 # and until when. Mirrors test_send_welcome_email.py.

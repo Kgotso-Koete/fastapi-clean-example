@@ -187,7 +187,7 @@ Test file(s) before production file(s) per step, per this project's TDD conventi
 
 (planned -- to run once this plan is implemented; commands follow the routes this plan defines)
 
-Simple checks a human runs by hand against the seeded data (`docs/plans/agents.md` 1.3). The users, passwords and organizations are the ones listed in `docs/plans/9-organizations.md`'s "Human checks" section and `scripts/seed_db.py`. Note that seeded usernames use hyphens (`tony-stark`, `peter-parker`), which is exactly what Step 2's tokenization spike has to handle.
+Simple checks a human runs by hand against the seeded data (`agents.md` 1.3). The users, passwords and organizations are the ones listed in `docs/plans/9-organizations.md`'s "Human checks" section and `scripts/seed_db.py`. Note that seeded usernames use hyphens (`tony-stark`, `peter-parker`), which is exactly what Step 2's tokenization spike has to handle.
 
 Two details the plan leaves open, so check the result against the rule rather than an exact value:
 - **The name of the results list.** The plan says `{items, total, limit, offset}`, "the shape every other list endpoint already uses", but the existing list endpoints name that key after the resource (`users` in `ListUsersQm`, `organizations` in `ListMyOrganizationsQm`). The checks say "the results"; read whichever key the implementation picks.

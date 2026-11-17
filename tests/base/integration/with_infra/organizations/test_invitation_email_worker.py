@@ -1,7 +1,13 @@
+import pytest
+
 from app.base.main.worker.container import build_worker_container, close_worker_container
 from app.modules.notifications.core.common.events.handlers.send_organization_invitation_email import (
     SendOrganizationInvitationEmail,
 )
+
+# The user story this test proves (docs/plans/user-stories/9-organizations-user-stories.md),
+# counted per story by tests/conftest.py.
+pytestmark = pytest.mark.story("ORG.D2.SY.J1.A1")
 
 # The invitation email runs in the Celery worker when Celery is enabled
 # (docs/plans/9-organizations.md, Step 6b). The worker resolves each handler

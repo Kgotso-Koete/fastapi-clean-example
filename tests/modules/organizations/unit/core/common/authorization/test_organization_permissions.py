@@ -6,6 +6,10 @@ from app.modules.organizations.core.common.authorization.organization_permission
 )
 from app.modules.organizations.core.common.entities.organization_membership import OrganizationRole
 
+# The user story these tests prove (docs/plans/user-stories/9-organizations-user-stories.md),
+# counted per story by tests/conftest.py.
+pytestmark = pytest.mark.story("ORG.D1.US.J2.A1")
+
 # Unlike the platform-level ROLE_HIERARCHY (where an ADMIN cannot manage
 # another ADMIN), every organization role satisfies its OWN level too: the
 # question CanAccessOrganization answers is "does this member hold at least

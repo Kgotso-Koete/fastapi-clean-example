@@ -27,6 +27,10 @@ from tests.base.unit.core.common.authorization.factories import (
 )
 from tests.base.unit.core.common.services.factories import create_user
 
+# The user story these tests prove (docs/plans/user-stories/9-organizations-user-stories.md),
+# counted per story by tests/conftest.py.
+pytestmark = pytest.mark.story("ORG.D1.US.J1.A1")
+
 _NOW = UtcDatetime(datetime(2026, 6, 1, tzinfo=UTC))
 # Every organization must explain itself, so every request carries one.
 _DESCRIPTION = "Earth's mightiest heroes."

@@ -39,6 +39,11 @@ from tests.base.unit.core.commands.api_keys.factories import FakeTransactionMana
 from tests.base.unit.core.common.authorization.factories import create_current_user_service
 from tests.base.unit.core.common.services.factories import create_user
 
+# The user story these tests prove (docs/plans/user-stories/9-organizations-user-stories.md),
+# counted per story by tests/conftest.py. The outsider test also proves the privacy story, and
+# the two email tests the invitation email's story.
+pytestmark = pytest.mark.story("ORG.D2.OM.J2.A1")
+
 # InviteOrganizationMember (docs/plans/9-organizations.md, Step 6): an OWNER or
 # ADMIN invites an EXISTING, active user by username. The invitation is a
 # pending OrganizationMembership row (accepted_at=None) that expires after
@@ -263,6 +268,7 @@ async def test_a_member_cannot_invite() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D1.US.J2.A1")
 async def test_a_non_member_is_told_the_organization_does_not_exist() -> None:
     invitee = create_user()
     h = _Harness(caller_role=None, invitee=invitee)
@@ -409,6 +415,7 @@ def _single_event(h: _Harness) -> OrganizationInvitationCreatedEvent:
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D2.SY.J1.A1")
 async def test_inviting_records_an_invitation_created_event_for_the_email() -> None:
     invitee = create_user()
     h = _Harness(caller_role=OrganizationRole.OWNER, invitee=invitee)
@@ -429,6 +436,7 @@ async def test_inviting_records_an_invitation_created_event_for_the_email() -> N
 
 
 @pytest.mark.asyncio
+@pytest.mark.story("ORG.D2.SY.J1.A1")
 async def test_renewing_an_expired_invitation_emails_the_invitee_again() -> None:
     # A renewed invitation is a fresh offer, with a new expiry -- the invitee
     # needs to hear about it just like a first invitation.

@@ -160,7 +160,7 @@ A file is written to storage before its row is committed. If the commit then fai
 
 (planned -- to run once this plan is implemented; commands follow the routes this plan defines)
 
-Simple checks a human runs by hand against the seeded data (`docs/plans/agents.md` 1.3). The users, passwords and the Avengers come from `scripts/seed_db.py`, and are also listed in `docs/plans/9-organizations.md`'s "Human checks" section.
+Simple checks a human runs by hand against the seeded data (`agents.md` 1.3). The users, passwords and the Avengers come from `scripts/seed_db.py`, and are also listed in `docs/plans/9-organizations.md`'s "Human checks" section.
 
 **What these checks assume, because the plan doesn't fix it yet:**
 - **Route paths.** Step 8 decides them. Setup step 4 sets four shell variables to assumed paths that follow the existing routes: `/api/v1/account/...` for the caller's own files, `/api/v1/organizations/{id}/...` for an organization's. If Step 8 picks other paths, change only those four lines.

@@ -3,6 +3,10 @@ import pytest
 from app.base.core.common.exceptions import BusinessTypeError
 from app.modules.organizations.core.common.value_objects.organization_name import OrganizationName
 
+# The user story these tests prove (docs/plans/user-stories/9-organizations-user-stories.md),
+# counted per story by tests/conftest.py.
+pytestmark = pytest.mark.story("ORG.D1.US.J1.A1")
+
 # A display name, so looser than Username -- spaces are allowed ("Midnight
 # Suns") -- but still restricted to ASCII letters, digits and the separators
 # " ", "-" and "_". A separator may not start or end the name, and two

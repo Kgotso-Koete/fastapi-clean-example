@@ -18,6 +18,10 @@ from tests.modules.organizations.integration.with_infra.helpers import (
     new_account,
 )
 
+# The user story these tests prove (docs/plans/user-stories/9-organizations-user-stories.md),
+# counted per story by tests/conftest.py.
+pytestmark = pytest.mark.story("ORG.D4.IN.J1.A1")
+
 # The two read-only organization queries on the public API
 # (docs/plans/9-organizations.md, Step 15): ListMyOrganizations and
 # ListOrganizationMembers, authenticated by X-API-Key instead of a cookie.
