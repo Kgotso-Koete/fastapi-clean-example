@@ -186,19 +186,25 @@ git commit -m "feat(scope): brief description (vX.Y.Z)"
 
 Common prefixes: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`
 
-**3. Create a Pull Request**
+**3. Push the branch**
+The pre-push hook runs the full integration suite (`make test-docker`, about 10 minutes) before anything is sent. `-u` links the local branch to its GitHub copy, so `gh pr create` finds it.
+```shell
+git push -u origin feature/<short-description>
+```
+
+**4. Create a Pull Request**
 Use the GitHub CLI to open a PR for review.
 ```shell
 gh pr create --title "feat(scope): brief description" --body "Detailed explanation of changes."
 ```
 
-**4. Wait for the CI checks to pass**
+**5. Wait for the CI checks to pass**
 Watch the PR's GitHub Actions checks until they finish; merge only once every check passes. The PR number is the number at the end of the URL `gh pr create` prints.
 ```shell
 gh pr checks <PR number> --watch
 ```
 
-**5. Merge and Delete Branch**
+**6. Merge and Delete Branch**
 Once approved, squash and merge the PR, and automatically delete the feature branch.
 ```shell
 gh pr merge --squash --delete-branch
