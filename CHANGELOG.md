@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.4] - 2026-11-18: Security plan 17 and its user stories
+
+### Added
+- **`docs/plans/17-security.md`:** the security plan, researched OWASP first (cheat sheets, ASVS 5.0, the Top 10 2025) with reference code read and linked at pinned commits. Seven domains, built in this order: abuse limits, browser-facing, errors and inputs, account recovery and trust, privacy and South Africa's POPIA, who may do what, and running it safely (always last). 18 decisions, all taken, one commit per domain. Nothing is built yet.
+- **`docs/plans/user-stories/17-security-user-stories.md`:** 52 security stories (feature code `SEC`), each domain opening with a four-question OWASP threat model, abuse cases for the attacker, and a Threat column. 14 stories are protections that existed before the plan; 6 are deferred and greyed out (the second factor, scoped API keys, a secret store, a production compose file).
+- **The plan's ground rule:** tried and tested industry conventions over newer methods, so anything that goes wrong can be researched and troubleshot by a web developer.
+- **`agents.md` 1.4:** a feature's stories and plan are committed before the first RED, and later commits update the plan with what the code teaches. **`agents.md` 6.1:** the threat-model rows, the Threat column and deferred rows in stories files.
+- **`docs/plans/user-stories/README.md`:** the `SEC` feature code.
+
 ## [0.20.3] - 2026-11-18: Revoke-invitation integration test, and red 0/0 for missing tests
 
 ### Added

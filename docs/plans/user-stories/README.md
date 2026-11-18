@@ -19,3 +19,4 @@ Keep doing this even when every story has all its tests and no red shows, as in 
 Every story ID starts with its feature's code, so IDs stay unique across features (`ORG.D2.US.J3.A2`). Pick a new feature's code from letters not listed here, and add it when its stories file is created. A code never changes.
 
 - `ORG`: Organizations (multi-tenancy). Stories: [`9-organizations-user-stories.md`](9-organizations-user-stories.md). Plan: [`9-organizations.md`](../9-organizations.md).
+- `SEC`: Security. Stories: [`17-security-user-stories.md`](17-security-user-stories.md). Plan: [`17-security.md`](../17-security.md). The first stories file with threat-model rows, a Threat column and deferred rows (`agents.md` 6.1).
