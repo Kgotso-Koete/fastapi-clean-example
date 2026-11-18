@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.3] - 2026-11-18: Revoke-invitation integration test, and red 0/0 for missing tests
+
+### Added
+- **An integration test for revoking an invitation** (`ORG.D2.OM.J2.A2`): `test_remove_returns_204_and_an_admin_revokes_a_pending_invitation` in `tests/modules/organizations/integration/with_infra/test_membership_management.py`. Through the real HTTP stack and Postgres, an Admin's `DELETE .../members/{membership_id}/` on a pending invitation answers 204, the row is gone, and the invitee's invitation list goes from 1 to 0.
+- **`agents.md`:** a request to write RED or GREEN code goes at the bottom of the message, under its own heading (1.5); every session and every resume reads `humans.md`, then `agents.md` and `README.md`, in full (top); a story with no tests of a kind shows `0/0` for that kind in red, and red is used for nothing else (6.1).
+- **`docs/plans/user-stories/README.md`:** a "Missing tests show in red" section, so the rule stays even when every story has its tests.
+
+### Changed
+- **`docs/plans/user-stories/9-organizations-user-stories.md`:** `ORG.D2.OM.J2.A2` is now `1/1 (BU), 1/1 (BI)`, so every Organizations story has unit and integration tests; snapshot and counts dated 2026-11-18.
+- **`docs/plans/9-organizations.md`:** the known test gap is closed.
+
 ## [0.20.2] - 2026-11-17: humans.md, agents.md at the root, and user stories with counted tests
 
 ### Added

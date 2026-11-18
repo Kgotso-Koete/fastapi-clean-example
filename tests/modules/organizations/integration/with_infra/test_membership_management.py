@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.base.core.common.entities.user import User
 from app.base.core.common.services.user import UserService
 from app.modules.organizations.core.common.entities.organization_membership import OrganizationRole
+from tests.modules.organizations.integration.with_infra.constants import ORGANIZATIONS_ENDPOINT
 from tests.modules.organizations.integration.with_infra.helpers import (
     add_membership,
     create_organization_as,
@@ -17,7 +18,7 @@ from tests.modules.organizations.integration.with_infra.helpers import (
     new_account,
 )
 
-# Removing members, leaving, and changing roles end to end
+# Removing members, revoking invitations, leaving, and changing roles end to end
 # (docs/plans/9-organizations.md, Step 7): the DELETE and PATCH
 # .../members/{membership_id}/ routes, through the real HTTP stack, DI
 # container and Postgres. The rules themselves are unit-tested in
@@ -47,6 +48,46 @@ async def test_remove_returns_204_and_an_admin_removes_a_member(
 
     assert r.status_code == 204
     assert await find_membership(it_session, membership_id) is None
+
+
+@pytest.mark.story("ORG.D2.OM.J2.A2")
+async def test_remove_returns_204_and_an_admin_revokes_a_pending_invitation(
+    it_client: httpx2.AsyncClient,
+    it_session: AsyncSession,
+    it_user_service: UserService,
+) -> None:
+    # Revoking has no route of its own: a pending invitation is a membership
+    # row not yet accepted, so the same DELETE .../members/{membership_id}/
+    # that removes a member also revokes an invitation
+    # (RemoveOrganizationMember's docstring). The story's two acceptance
+    # criteria are checked: the 204, and "the invitee no longer sees it".
+    invitations_endpoint = f"{ORGANIZATIONS_ENDPOINT}invitations/"
+    owner = await new_account(it_session, it_user_service)
+    admin = await new_account(it_session, it_user_service)
+    invitee = await new_account(it_session, it_user_service)
+    organization_id = await create_organization_as(it_client, owner)
+    await add_membership(it_session, organization_id, admin, OrganizationRole.ADMIN)
+    # accepted=False makes a pending invitation, expiring far in the future.
+    invitation_id = await add_membership(it_session, organization_id, invitee, OrganizationRole.MEMBER, accepted=False)
+
+    # Starting state: the invitee sees the invitation. Without this, the
+    # empty list at the end could pass even if the list itself were broken.
+    await log_in(it_client, invitee)
+    before = await it_client.get(invitations_endpoint)
+    assert before.status_code == 200
+    assert before.json()["total"] == 1
+
+    await log_in(it_client, admin)
+    r = await it_client.delete(member_url(organization_id, invitation_id))
+
+    assert r.status_code == 204
+    # Read straight from Postgres: the row is really gone, not just hidden.
+    assert await find_membership(it_session, invitation_id) is None
+    # The second criterion: the invitee no longer sees it.
+    await log_in(it_client, invitee)
+    after = await it_client.get(invitations_endpoint)
+    assert after.status_code == 200
+    assert after.json()["total"] == 0
 
 
 @pytest.mark.story("ORG.D3.OM.J3.A4")
