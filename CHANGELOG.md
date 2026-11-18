@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`docs/plans/user-stories/9-organizations-user-stories.md`:** `ORG.D2.OM.J2.A2` is now `1/1 (BU), 1/1 (BI)`, so every Organizations story has unit and integration tests; snapshot and counts dated 2026-11-18.
 - **`docs/plans/9-organizations.md`:** the known test gap is closed.
 
+### Fixed
+- **`README.md`'s commit protocol:** an explicit push step (`git push -u origin feature/<short-description>`) before the pull request; the protocol went from committing straight to `gh pr create`.
+
 ## [0.20.2] - 2026-11-17: humans.md, agents.md at the root, and user stories with counted tests
 
 ### Added
